@@ -1,7 +1,7 @@
 # ClusterGit
-Overview:
-Hardware/Software:
-Features:
-Set-up:
+<p>Overview: </p>
+<p>Hardware/Software: </p>
+<p>Features: </p>
+<p>Set-up: </p>
 
-Workflows:
+<p>Workflows: </p>
