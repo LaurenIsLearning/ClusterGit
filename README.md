@@ -1,1 +1,7 @@
-# Capstone2025
+# ClusterGit
+Overview:
+Hardware/Software:
+Features:
+Set-up:
+
+Workflows:
