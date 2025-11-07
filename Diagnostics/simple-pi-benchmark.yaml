@@ -1,0 +1,97 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: simple-benchmark-script
+data:
+  benchmark.sh: |
+    #!/bin/sh
+    echo "=== Starting Simple Raspberry Pi Disk Test ==="
+    echo "Node: $NODE_NAME"
+    echo "Hostname: $(hostname)"
+    echo ""
+   
+    # Test disk space
+    echo "📊 Disk Space:"
+    df -h /
+    echo ""
+   
+    # Simple write test
+    echo "🚀 Running Write Test..."
+    start=$(date +%s)
+    dd if=/dev/zero of=/tmp/testfile.bin bs=10M count=200 oflag=direct 2>&1
+    end=$(date +%s)
+    echo "Write time: $((end - start)) seconds"
+    echo ""
+   
+    # Simple read test
+    echo "📖 Running Read Test..."
+    sync
+    echo 3 > /proc/sys/vm/drop_caches 2>/dev/null || true
+    start=$(date +%s)
+    dd if=/tmp/testfile.bin of=/dev/null bs=1M iflag=direct 2>&1
+    end=$(date +%s)
+    echo "Read time: $((end - start)) seconds"
+    echo ""
+   
+    # Cleanup
+    rm -f /tmp/testfile.bin
+   
+    echo "✅ Benchmark completed successfully!"
+    echo "=== Results Summary ==="
+    echo "If write time < 5s: ✅ EXCELLENT"
+    echo "If write time 5-10s: ✅ GOOD"
+    echo "If write time 10-20s: ⚠️ ACCEPTABLE"
+    echo "If write time > 20s: ❌ POOR"
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: simple-pi-benchmark
+spec:
+  selector:
+    matchLabels:
+      app: simple-pi-benchmark
+  template:
+    metadata:
+      labels:
+        app: simple-pi-benchmark
+    spec:
+      hostNetwork: true
+      tolerations:
+      - operator: Exists
+      containers:
+      - name: benchmark
+        image: busybox:latest
+        command: ["/bin/sh"]
+        args:
+          - "-c"
+          - |
+            # Copy and run the script
+            cat /script/benchmark.sh > /tmp/run.sh
+            chmod +x /tmp/run.sh
+            /tmp/run.sh
+            sleep 3600  # Keep running so we can see logs
+        env:
+        - name: NODE_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.nodeName
+        volumeMounts:
+        - name: script
+          mountPath: /script
+        - name: temp
+          mountPath: /tmp
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "50m"
+        securityContext:
+          runAsUser: 0
+      volumes:
+      - name: script
+        configMap:
+          name: simple-benchmark-script
+          defaultMode: 0755
+      - name: temp
+        hostPath:
+          path: /tmp
