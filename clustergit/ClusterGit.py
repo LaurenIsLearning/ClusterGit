@@ -102,7 +102,24 @@ def pull(remote, branch):
 
     subprocess.run(["git", "annex", "get"], check=True)
 
+@cli.command(help="Syncs local and remote repositories")
 
+#Allows users to run the git-annex sync command which pushes and pulls at the same time
+
+@click.option("--content", is_flag=True, help="Force syncing annexed file contents.")
+@click.argument("remote", required=False, default=None)
+
+def sync(remote, content):
+
+    cmd = ["git", "annex", "sync"]
+
+    if(remote):
+        cmd.append(remote)
+
+    if(content):
+        cmd.append("--content")
+
+    subprocess.run(cmd, check=True)
 
 if __name__ == '__main__':
     cli()
