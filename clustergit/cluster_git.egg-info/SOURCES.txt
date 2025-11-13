@@ -1,0 +1,8 @@
+ClusterGit.py
+setup.py
+cluster_git.egg-info/PKG-INFO
+cluster_git.egg-info/SOURCES.txt
+cluster_git.egg-info/dependency_links.txt
+cluster_git.egg-info/entry_points.txt
+cluster_git.egg-info/requires.txt
+cluster_git.egg-info/top_level.txt
