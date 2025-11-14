@@ -109,7 +109,7 @@ def pull(remote, branch):
     if(branch):
         pull_cmd += [branch]
     try:
-        subprocess.run(pull, check=True)
+        subprocess.run(pull_cmd, check=True)
         subprocess.run(["git", "annex", "get"], check=True)
     except subprocess.CalledProcessError as error:
         click.echo(click.style(f"Pull failed: {error}", fg="red"))
@@ -131,7 +131,7 @@ def sync(remote, content):
         sync_cmd += ["--content"]
 
     try:
-        subprocess.run(sync, check=True)
+        subprocess.run(sync_cmd, check=True)
     except subprocess.CalledProcessError as error:
         click.echo(click.style(f"Sync failed: {error}", fg="red"))
 
