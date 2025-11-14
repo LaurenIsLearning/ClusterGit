@@ -1,0 +1,32 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: stress1
+spec:
+  template:
+    spec:
+      # Pin to a specific node (replace with your node name)
+      nodeName: pi5-worker1  # or use nodeSelector
+      # nodeSelector:
+      #   kubernetes.io/hostname: pi-node-1
+      
+      containers:
+      - name: stress-ng
+        # Using debian base image which works on ARM
+        image: debian:bookworm-slim
+        command: ["/bin/bash"]
+        args:
+          - "-c"
+          - |
+            apt-get update && apt-get install -y stress-ng
+            stress-ng --cpu 2 --vm 1 --vm-bytes 512M --timeout 60s --metrics-brief
+        resources:
+          limits:
+            memory: "1Gi"
+            cpu: "2000m"
+          requests:
+            memory: "512Mi"
+            cpu: "1000m"
+      
+      restartPolicy: Never
+  backoffLimit: 0
