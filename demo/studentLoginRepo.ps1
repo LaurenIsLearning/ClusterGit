@@ -43,7 +43,7 @@ git commit -m "Initial commit from student" | Out-Null
 Write-Host ""
 Write-Host "Connecting to the cluster remote:"
 Write-Host "Mock: Connecting to cluster..."
-git remote add origin $RemoteUrl
+# git remote add origin $RemoteUrl
 
 Write-Host ""
 Write-Host "Pushing initial commit to the cluster..."
