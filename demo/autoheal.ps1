@@ -1,13 +1,5 @@
 #autoheal to show importance of autohealing
 
-<#
-  autoheal.ps1
-  - Demonstrates auto-healing / resiliency.
-  - From Windows, we SSH into the server node, inspect volumes/nodes,
-    then SSH into worker4, stop k3s-agent, and show how the cluster responds.
-  - This version uses kubectl and Longhorn CRDs *if available*.
-#>
-
 # ---------- CONFIG ----------
 $ServerUser   = "clustergit-pi5-server"
 $ServerHost   = "10.27.12.244"
