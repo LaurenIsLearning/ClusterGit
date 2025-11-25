@@ -1,13 +1,38 @@
-@REM set up environment before presentation (browser with dashboards, terminal open)
-setup.ps1
+@echo off
+setlocal
 
-@REM #student logs in, creates repo, views repo
-studentLoginRepo.ps1
+echo ===============================
+echo   ClusterGit Demo - Start
+echo ===============================
+pause
 
-@REM #student pushes to repo, progress bar of upload, view repo with files after upload
-@REM #it would be cool to see what node the data is stored on so i can kill that node for auto healing to see where the data goes
-@REM #it should be replicated, so cool to see where that is too. this might be something for longhorn UI but unsure rn
-studentPush.ps1
+echo.
+echo [1/4] Running setup.ps1 ... (SKIPPING THIS FOR NOW)
+rem powershell -ExecutionPolicy Bypass -File "%~dp0setup.ps1"
+echo.
+pause
 
-@REM #autoheal to show importance of autohealing
-autoheal.ps1
+echo.
+echo [2/4] Running studentLoginRepo.ps1 ...
+powershell -ExecutionPolicy Bypass -File "%~dp0studentLoginRepo.ps1"
+echo.
+pause
+
+echo.
+echo [3/4] Running studentPush.ps1 ...
+powershell -ExecutionPolicy Bypass -File "%~dp0studentPush.ps1"
+echo.
+pause
+
+echo.
+echo [4/4] Running autoheal.ps1 ...
+powershell -ExecutionPolicy Bypass -File "%~dp0autoheal.ps1"
+echo.
+pause
+
+echo ===============================
+echo   ClusterGit Demo - Complete
+echo ===============================
+pause
+endlocal
+
