@@ -1,8 +1,6 @@
 @echo off
 setlocal
 
-REM ========= ClusterGit Demo Driver =========
-
 echo ===============================
 echo   ClusterGit Demo - Start
 echo ===============================
@@ -10,7 +8,7 @@ pause
 
 echo.
 echo [1/4] Running setup.ps1 ... (SKIPPING THIS FOR NOW)
-REM powershell -ExecutionPolicy Bypass -File "%~dp0setup.ps1"
+rem powershell -ExecutionPolicy Bypass -File "%~dp0setup.ps1"
 echo.
 pause
 
@@ -37,3 +35,4 @@ echo   ClusterGit Demo - Complete
 echo ===============================
 pause
 endlocal
+
