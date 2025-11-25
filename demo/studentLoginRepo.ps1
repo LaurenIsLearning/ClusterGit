@@ -2,13 +2,13 @@
 
 # ---------- CONFIG ----------
 $DemoUserEmail   = "student@example.edu"
-# $DemoUserToken   = "DEMO_TOKEN_HERE" - not actually used for auth yet; just shown
+$DemoUserToken = "DEMO_FAKE_TOKEN_ABC123"
 $ClusterUser     = "clustergit-pi5-server"
 $ClusterHost     = "10.27.12.244"
 
 # Remote bare repo on the cluster:
-$RemoteRepoPath  = "/home/clustergit-pi5-server/myrepo.git"
-$RemoteUrl       = "ssh://$ClusterUser@$ClusterHost:$RemoteRepoPath"
+$RemoteRepoPath = "/srv/git/demo.git"
+$RemoteUrl = "ssh://clustergit-pi5-server@10.27.12.244:/srv/git/demo.git"
 
 # Local working directory for the student's clone:
 $LocalWorkDir    = Join-Path $PSScriptRoot "student-repo"
@@ -18,8 +18,7 @@ Write-Host "=== ClusterGit Demo: STUDENT LOGIN & REPO SETUP ===" -ForegroundColo
 Write-Host ""
 Write-Host "Pretend student logs in using a token-based CLI."
 Write-Host "Email : $DemoUserEmail"
-Write-Host "Token : $($DemoUserToken.Substring(0, [Math]::Min(8, $DemoUserToken.Length)))***"
-Write-Host ""
+Write-Host "Token : $( $DemoUserToken.Substring(0,8) )***"Write-Host ""
 Read-Host "Explain the login flow to the audience, then press ENTER to continue"
 
 if (Test-Path $LocalWorkDir) {
@@ -43,7 +42,7 @@ git commit -m "Initial commit from student" | Out-Null
 Write-Host ""
 Write-Host "Connecting to the cluster remote:"
 Write-Host "Mock: Connecting to cluster..."
-# git remote add origin $RemoteUrl
+git remote add origin $RemoteUrl
 
 Write-Host ""
 Write-Host "Pushing initial commit to the cluster..."
