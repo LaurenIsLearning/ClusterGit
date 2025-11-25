@@ -4,8 +4,8 @@
 $ServerUser   = "clustergit-pi5-server"
 $ServerHost   = "10.27.12.244"
 
-$WorkerUser   = "clustergit-pi5-worker4"   # adjust if user is different
-$WorkerHost   = "10.27.12.240"            # CHANGE to worker4 IP
+$WorkerUser   = "clustergit-pi5-worker4"
+$WorkerHost   = "10.27.12.233"
 
 # Whether Longhorn is installed. If $true, we’ll try to show volumes/replicas.
 $HasLonghorn  = $true
