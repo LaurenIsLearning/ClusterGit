@@ -10,7 +10,7 @@ pause
 
 echo.
 echo [1/4] Running setup.ps1 ...
-powershell -ExecutionPolicy Bypass -File "%~dp0setup.ps1"
+REM powershell -ExecutionPolicy Bypass -File "%~dp0setup.ps1"
 echo.
 pause
 
