@@ -11,8 +11,8 @@
 # ---------- CONFIG ----------
 $ClusterUser   = "clustergit-pi5-server"
 $ClusterHost   = "10.27.12.244"
-$RemoteRepoPath= "/home/clustergit-pi5-server/myrepo.git"
-$RemoteUrl     = "ssh://$ClusterUser@$ClusterHost:$RemoteRepoPath"
+$RemoteRepoPath = "/srv/git/demo.git"
+$RemoteUrl = "ssh://clustergit-pi5-server@10.27.12.244:/srv/git/demo.git"
 
 $LocalWorkDir  = Join-Path $PSScriptRoot "student-repo"
 
