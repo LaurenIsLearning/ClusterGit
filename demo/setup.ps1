@@ -1,1 +1,0 @@
-#set up environment before presentation (browser with dashboards, terminal open)
