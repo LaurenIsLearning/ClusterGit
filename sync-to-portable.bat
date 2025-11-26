@@ -27,16 +27,16 @@ if not exist "%PORTABLE%" (
     exit /b
 )
 
-:: Sync scripts
-echo 🔄 Syncing scripts...
+:: Sync scripts (.ps1 files)
+echo Syncing scripts...
 robocopy "%REPO%\ClusterGit-Demo\scripts" "%PORTABLE%\scripts" *.ps1 /MIR >nul
 
-:: Sync launchers (BAT scripts in launchers folder)
-echo 🔄 Syncing launchers...
-robocopy "%REPO%\ClusterGit-Demo\launchers" "%PORTABLE%" *.bat /COPY:DAT /R:1 /W:1 >nul
+:: Sync launchers (.bat files) into launchers folder
+echo Syncing launchers...
+robocopy "%REPO%\ClusterGit-Demo\launchers" "%PORTABLE%\launchers" *.bat /COPY:DAT /R:1 /W:1 >nul
 
 :: Sync assets (excluding large .bin files due to .gitignore)
-echo 🔄 Syncing assets...
+echo Syncing assets...
 robocopy "%REPO%\ClusterGit-Demo\assets" "%PORTABLE%\assets" *.* /E >nul
 
 echo.
