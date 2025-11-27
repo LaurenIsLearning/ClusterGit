@@ -1,87 +1,35 @@
 @echo off
-setlocal enabledelayedexpansion
+setlocal enabledlayedexpansion
 
 echo ==========================================
-echo     ClusterGit Portable Demo Setup
+echo   ClusterGit Portable Demo Environment
 echo ==========================================
-echo.
 
-REM -----------------------------
-REM Detect portable root
-REM -----------------------------
-set SCRIPT_DIR=%~dp0
-set PORTABLE_ROOT=%SCRIPT_DIR%..
+::move to project root
+cd /d "%~dp0\.."
+echo Working directory: %cd%
 
-echo Portable root located at:
-echo %PORTABLE_ROOT%
-echo.
+::add portable git to PATH (temp)
+echo Adding Portable Git to PATH...
+set PATH=%cd%\portable\git\bin;%cd%\portable\git\usr\bin;%PATH%
 
-REM -----------------------------
-REM Add Portable Git to PATH
-REM -----------------------------
-set GIT_PORTABLE=%PORTABLE_ROOT%\portable\git
+::force ssh to use portable home
+set HOME=%cd%\portable
+echo SSH HOME set to: %HOME%
 
-if exist "%GIT_PORTABLE%\cmd\git.exe" (
-    echo Using Portable Git from: %GIT_PORTABLE%
-    set PATH=%GIT_PORTABLE%\cmd;%GIT_PORTABLE%\usr\bin;%PATH%
-) else (
-    echo ERROR: Portable Git not found in /portable/git
-    pause
-    exit /b 1
-)
+::open Grafana dashboard
+echo Opening Grafana dashboard...
+start "" "http://10.27.12.244:31431/"
 
-git --version
-echo.
+::open PowerShell window for student demo commands
+echo Launching demo PowerShell window...
+start powershell -NoExit -Command "cd '%cd%\scripts'"
 
-REM -----------------------------
-REM Configure SSH
-REM -----------------------------
-set SSH_DIR=%PORTABLE_ROOT%\keys
-set SSH_CONFIG=%PORTABLE_ROOT%\portable\ssh_config
-set HOME=%PORTABLE_ROOT%
-
-if not exist "%SSH_DIR%\id_rsa" (
-    echo ERROR: Missing SSH key: %SSH_DIR%\id_rsa
-    pause
-    exit /b 1
-)
-
-if exist "%SSH_CONFIG%" (
-    echo SSH config loaded: %SSH_CONFIG%
-    set GIT_SSH_COMMAND=ssh -F "%SSH_CONFIG%"
-) else (
-    echo WARNING: No ssh_config found. Using raw key.
-    set GIT_SSH_COMMAND=ssh -i "%SSH_DIR%\id_rsa" -o StrictHostKeyChecking=no
-)
-
-echo SSH is configured.
-echo.
-
-REM -----------------------------
-REM Connectivity Check
-REM -----------------------------
-echo Testing SSH connection to cluster...
-
-%GIT_SSH_COMMAND% cluster "echo Connected OK"
-
-if %errorlevel% neq 0 (
-    echo ERROR: Could not contact cluster.
-    echo Are you on the correct network?
-    pause
-    exit /b 1
-)
-
-echo SSH connectivity confirmed.
-echo.
-
-REM -----------------------------
-REM Launch windows terminals + Grafana
-REM -----------------------------
-start "" "http://10.27.12.235:3000/d/cluster-overview"
-
-start powershell -NoExit -Command "cd '%PORTABLE_ROOT%\scripts'; echo Environment Loaded. Ready for: 1_setup.ps1, 2_studentLoginRepo.ps1, 3_studentPush.ps1, 4_autoheal.ps1"
+:: Step 6 — Initial cluster checks (optional but recommended)
+::echo Running setup script...
+::powershell -ExecutionPolicy Bypass -File "%cd%\scripts\1_setup.ps1"
 
 echo ==========================================
-echo     Environment Ready!
+echo Environment ready! Begin the demo.
 echo ==========================================
 pause
