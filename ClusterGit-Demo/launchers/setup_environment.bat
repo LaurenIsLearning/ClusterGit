@@ -34,9 +34,10 @@ git --version
 echo.
 
 REM -----------------------------
-REM Setup SSH environment
+REM Configure SSH
 REM -----------------------------
 set SSH_DIR=%PORTABLE_ROOT%\keys
+set SSH_CONFIG=%PORTABLE_ROOT%\portable\ssh_config
 set HOME=%PORTABLE_ROOT%
 
 if not exist "%SSH_DIR%\id_rsa" (
@@ -45,45 +46,42 @@ if not exist "%SSH_DIR%\id_rsa" (
     exit /b 1
 )
 
-REM Include config if present
-set SSH_CONFIG=%PORTABLE_ROOT%\portable\ssh_config
-
 if exist "%SSH_CONFIG%" (
-    echo SSH config found: %SSH_CONFIG%
+    echo SSH config loaded: %SSH_CONFIG%
     set GIT_SSH_COMMAND=ssh -F "%SSH_CONFIG%"
 ) else (
-    echo No ssh_config found - using key directly
+    echo WARNING: No ssh_config found. Using raw key.
     set GIT_SSH_COMMAND=ssh -i "%SSH_DIR%\id_rsa" -o StrictHostKeyChecking=no
 )
 
-echo SSH environment loaded.
+echo SSH is configured.
 echo.
 
 REM -----------------------------
-REM Connectivity check
+REM Connectivity Check
 REM -----------------------------
 echo Testing SSH connection to cluster...
 
-%GIT_SSH_COMMAND% student-demo@10.27.12.235 "echo Connected OK"
+%GIT_SSH_COMMAND% cluster "echo Connected OK"
 
 if %errorlevel% neq 0 (
-    echo ERROR: Could not reach cluster over SSH.
+    echo ERROR: Could not contact cluster.
     echo Are you on the correct network?
     pause
     exit /b 1
 )
 
-echo SSH OK.
+echo SSH connectivity confirmed.
 echo.
 
 REM -----------------------------
-REM Launch terminals & browser
+REM Launch windows terminals + Grafana
 REM -----------------------------
-echo Launching environment...
-
 start "" "http://10.27.12.235:3000/d/cluster-overview"
 
-start powershell -NoExit -Command "cd '%PORTABLE_ROOT%\scripts'; echo Ready to run demo scripts."
+start powershell -NoExit -Command "cd '%PORTABLE_ROOT%\scripts'; echo Environment Loaded. Ready for: 1_setup.ps1, 2_studentLoginRepo.ps1, 3_studentPush.ps1, 4_autoheal.ps1"
 
-echo All set!
+echo ==========================================
+echo     Environment Ready!
+echo ==========================================
 pause
