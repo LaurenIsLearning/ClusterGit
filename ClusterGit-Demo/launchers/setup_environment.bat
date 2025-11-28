@@ -11,7 +11,8 @@ echo Working directory: %cd%
 
 ::add portable git to PATH (temp)
 echo Adding Portable Git to PATH...
-set PATH=%cd%\portable\git\bin;%cd%\portable\git\usr\bin;%PATH%
+@REM SAFEST: only add Git's main Windows tools, not Unix tools
+set "PATH=%PATH%;%cd%\portable\git\bin;%cd%\portable\git\mingw64\bin"
 
 ::force ssh to use portable home
 set HOME=%cd%\portable
