@@ -4,7 +4,7 @@ Write-Section "ClusterGit Demo: Environment Check"
 
 # ssh check
 Write-Section "Testing SSH Connection to ClusterGit.." 
-$sshTest -SSH "echo Connected to $(hostName)" 2>&1
+$sshTest = Invoke-ClusterSSH "echo Connected" 2>&1
 if ($sshTest -match "Connected"){
     Write-Green "SSH OK. ClusterGit reachable."
 }else{
@@ -15,23 +15,23 @@ if ($sshTest -match "Connected"){
 
 #k3s node health check
 Write-Section "K3s Node Status"
-SSH "kubectl get nodes -o wide"
+Invoke-ClusterSSH "kubectl get nodes -o wide"
 
 #longhorn volume health
 Write-Section "Longhorn Volumes"
-SSH "kubectl -n longhorn-stystem get volumes"
+Invoke-ClusterSSH "kubectl -n longhorn-system get volumes"
 
-#git-annex availability
-$annexVersion = SHH "git annex version" 2>&1
+# git-annex availability
+$annexVersion = Invoke-ClusterSSH "git-annex version | head -n 3" 2>&1
 if ($annexVersion -match "git-annex version") {
-    Write-Green "Git-annex available: $annexVersion"
-}else{
+    Write-Green "Git-annex available:`n$annexVersion"
+} else {
     Write-Red "Git-annex NOT found in ClusterGit"
 }
 
 #disk usage
 Write-Section "Disk Usage (Longhorn)"
-SSH "df -h | grep longhorn"
+Invoke-ClusterSSH "df -h | grep longhorn"
 
 #check done
 Write-Section "Environment Check Completed"

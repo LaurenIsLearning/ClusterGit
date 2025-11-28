@@ -1,22 +1,40 @@
+$ScriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
+
 function Write-Section {
     param([string]$Text)
     Write-Host "`n==== $Text ====" -ForegroundColor Cyan
 }
 function Write-Green($t) { Write-Host $t -ForegroundColor Green }
-function Write-Red($t)   { Write-Host $t -ForegroundColor Red }
-function Write-Yellow($t){ Write-Host $t -ForegroundColor Yellow }
+function Write-Red($t) { Write-Host $t -ForegroundColor Red }
+function Write-Yellow($t) { Write-Host $t -ForegroundColor Yellow }
 
-function SSH {
+# Renamed to avoid recursion!
+function Invoke-ClusterSSH {
     param([string]$cmd)
 
-    $config = "$PSScriptRoot\..\portable\ssh_config"
+    $config = "$ScriptRoot\..\portable\ssh_config"
 
     if (Test-Path $config) {
-        ssh -F $config cluster "$cmd"
-    } else {
-        # fallback: direct key usage
-        $key = "$PSScriptRoot\..\keys\id_rsa"
-        ssh -i $key -o StrictHostKeyChecking=no student-demo@10.27.12.235 "$cmd"
+
+        # Explicit path to ssh.exe so PowerShell does NOT call this function
+        $sshExe = Resolve-Path "$ScriptRoot\..\portable\git\usr\bin\ssh.exe"
+
+        # debug
+         Write-Host "SSH Path = $sshExe" -ForegroundColor Yellow
+
+        & $sshExe -F $config cluster "$cmd"
+
+    }
+    else {
+
+        $key = "$ScriptRoot\..\portable\keys\id_rsa"
+        $sshExe = "$ScriptRoot\..\portable\git\usr\bin\ssh.exe"
+
+        & $sshExe `
+            -i $key `
+            -o StrictHostKeyChecking=no `
+            -o UserKnownHostsFile=/dev/null `
+            student-demo@10.27.12.244 "$cmd"
     }
 }
 

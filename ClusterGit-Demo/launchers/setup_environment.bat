@@ -1,5 +1,5 @@
 @echo off
-setlocal enabledlayedexpansion
+setlocal enabledelayedexpansion
 
 echo ==========================================
 echo   ClusterGit Portable Demo Environment
@@ -19,17 +19,26 @@ echo SSH HOME set to: %HOME%
 
 ::open Grafana dashboard
 echo Opening Grafana dashboard...
-start "" "http://10.27.12.244:31431/"
+start "" "http://10.27.12.244:31431/d/adnbhgt/clustergit-demo-dashboard?orgId=1&from=now-12h&to=now&timezone=browser&refresh=5s&kiosk=true"
 
-::open PowerShell window for student demo commands
+:: Open ONE PowerShell window that loads utilities and triggers all scripts to run
 echo Launching demo PowerShell window...
-start powershell -NoExit -Command "cd '%cd%\scripts'"
-
-:: Step 6 — Initial cluster checks (optional but recommended)
-::echo Running setup script...
-::powershell -ExecutionPolicy Bypass -File "%cd%\scripts\1_setup.ps1"
+start powershell -NoExit -ExecutionPolicy Bypass -Command ^
+"cd '%cd%\scripts'; ^
+ . .\utilities.ps1; ^
+ Write-Host 'Utilities loaded.' -ForegroundColor Cyan; ^
+ .\1_setup.ps1; ^
+ Read-Host 'Press ENTER to continue to Student Repo Creation...'; ^
+ .\2_studentLoginRepo.ps1; ^
+ Read-Host 'Press ENTER to continue to Student File Upload...'; ^
+ .\3_studentPush.ps1; ^
+ Read-Host 'Press ENTER to continue to Auto-Heal Demo...'; ^
+ .\4_autoheal.ps1; ^
+ Write-Host '==== Demo Complete! ====' -ForegroundColor Green"
 
 echo ==========================================
 echo Environment ready! Begin the demo.
 echo ==========================================
-pause
+@REM comment out the one you dont want, i use "pause" for debugging
+::pause
+exit
