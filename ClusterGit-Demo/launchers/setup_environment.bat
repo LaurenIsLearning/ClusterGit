@@ -23,7 +23,7 @@ start "" "http://10.27.12.244:31431/d/adnbhgt/clustergit-demo-dashboard?orgId=1&
 
 :: Open ONE PowerShell window that loads utilities and triggers all scripts to run
 echo Launching demo PowerShell window...
-start powershell -NoExit -ExecutionPolicy Bypass -Command ^
+start "" powershell -NoExit -ExecutionPolicy Bypass -Command ^
 "cd '%cd%\scripts'; ^
  . .\utilities.ps1; ^
  Write-Host 'Utilities loaded.' -ForegroundColor Cyan; ^
