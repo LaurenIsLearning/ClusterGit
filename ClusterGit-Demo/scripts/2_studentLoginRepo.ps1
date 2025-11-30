@@ -1,7 +1,7 @@
-<# 
-  studentLoginRepo.ps1
+<#
+  2_studentLoginRepo.ps1
   - Fake “login”
-  - Create /srv/git/demo.git on the cluster if needed
+  - Ensure /srv/git/demo.git exists on the cluster
   - Create local student-repo and push an initial commit
 #>
 
@@ -24,7 +24,7 @@ Write-Host "=== ClusterGit Demo: STUDENT LOGIN & REPO SETUP ===" -ForegroundColo
 Write-Host ""
 Write-Host "Pretend student logs in using a token-based CLI."
 Write-Host "Email : $DemoUserEmail"
-Write-Host "Token : $($DemoUserToken.Substring(0,8))***"
+Write-Host "Token : $($DemoUserToken.Substring(0, [Math]::Min(8, $DemoUserToken.Length)))***"
 Write-Host ""
 Read-Host "Explain the login flow to the audience, then press ENTER to continue"
 
@@ -68,6 +68,11 @@ Write-Host "Local history:"
 git log --oneline -5
 Write-Host ""
 Write-Host "On the cluster you can show:"
+Write-Host "  ssh $ClusterUser@$ClusterHost"
+Write-Host "  cd $RemoteRepoPath"
+Write-Host "  git log --oneline"
+Write-Host ""
+
 Write-Host "  ssh $ClusterUser@$ClusterHost"
 Write-Host "  cd $RemoteRepoPath"
 Write-Host "  git log --oneline"
