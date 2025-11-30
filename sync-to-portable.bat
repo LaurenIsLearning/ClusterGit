@@ -41,7 +41,7 @@ robocopy "%REPO%\ClusterGit-Demo\assets" "%PORTABLE%\assets" *.* /E >nul
 
 echo.
 echo ==========================================
-echo      SYNC COMPLETE — Portable Updated!
+echo      SYNC COMPLETE: Portable Updated!
 echo ==========================================
 echo.
 
