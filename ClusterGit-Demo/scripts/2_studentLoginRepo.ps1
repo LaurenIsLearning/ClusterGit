@@ -51,6 +51,7 @@ Write-Host ""
 Write-Host "Student is cloning the repository from the cluster"
 git clone $RemoteUrl $LocalWorkDir >$null 2>&1
 Set-Location $LocalWorkDir
+git remote add origin $RemoteUrl | Out-Null
 
 Write-Host ""
 Write-Host "Local history:"
