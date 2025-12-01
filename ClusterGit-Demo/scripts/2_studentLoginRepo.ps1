@@ -46,9 +46,3 @@ git clone $RemoteUrl $LocalWorkDir
 Write-Host "`nLocal clone created successfully."
 Read-Host "Press ENTER to continue to Student File Upload..."
 
-
-Write-Host ""
-Write-Host "Local clone created successfully."
-Write-Host "Press ENTER to continue to Student File Upload..." -ForegroundColor Yellow
-
-
