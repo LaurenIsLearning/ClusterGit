@@ -61,4 +61,3 @@ Write-Host "  ssh $ClusterUser@$ClusterHost"
 Write-Host "  cd $RemoteRepoPath"
 Write-Host "  git log --oneline"
 Write-Host ""
-
