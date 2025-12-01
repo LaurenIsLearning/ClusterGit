@@ -46,15 +46,10 @@ Read-Host "Once worker4 is Ready again in 'kubectl get nodes', press ENTER to sh
 
 Write-Host ""
 Write-Host "Final cluster state:" -ForegroundColor Yellow
-ssh "$ServerUser@$ServerHost" "kubectl get nodes -o wide || echo 'kubectl failed here – run it manually in your cluster shell.'"
+ssh "$ServerUser@$ServerHost" "kubectl get nodes -o wide || echo 'kubectl failed here – run it manually in your cluster shell.' "
 
 Write-Host ""
-Write-Host "You can now summarize: 'Even when a node fails, the system recovers without losing student submissions.'" -ForegroundColor Green
+Write-Host "You can now summarize: 'Even when a node fails, the system recovers without losing student submissions.' " -ForegroundColor Green
 Write-Host "==== Demo Complete ===="
-
-
-Write-Host ""
-Write-Host "You can now summarize: 'Even when a node fails, the system recovers without losing student submissions.'"
-Write-Host ""
 
 
