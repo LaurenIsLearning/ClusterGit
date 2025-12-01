@@ -1,7 +1,7 @@
 <#
   4_autoheal.ps1
   - Show current cluster state
-  - Give step-by-step instructions to manually “kill” worker4
+  - Give step-by-step instructions to manually "kill" worker4
   - Show cluster state again after recovery
 #>
 
@@ -15,9 +15,9 @@ Write-Host "=== ClusterGit Demo: AUTOHEALING ===" -ForegroundColor Cyan
 Write-Host ""
 
 Write-Host "Step 1: Show current cluster state..." -ForegroundColor Yellow
-Read-Host "Tell the audience what they're seeing; press ENTER to run 'kubectl get nodes' on the cluster"
+Read-Host "Tell the audience what they are seeing; press ENTER to run 'kubectl get nodes' on the cluster"
 
-ssh "$ServerUser@$ServerHost" "kubectl get nodes -o wide || echo 'kubectl failed here – run it manually in your cluster shell.'"
+ssh "$ServerUser@$ServerHost" "kubectl get nodes -o wide || echo kubectl failed here. Run it manually in your cluster shell."
 
 Write-Host ""
 Write-Host "Step 2: Simulate a node failure (worker4)." -ForegroundColor Yellow
@@ -29,13 +29,13 @@ Read-Host "After worker4 shows NotReady in 'kubectl get nodes', press ENTER to c
 
 Write-Host ""
 Write-Host "Step 3: Observe cluster state after failure..." -ForegroundColor Yellow
-ssh "$ServerUser@$ServerHost" "kubectl get nodes -o wide || echo 'kubectl failed here – run it manually in your cluster shell.'"
+ssh "$ServerUser@$ServerHost" "kubectl get nodes -o wide || echo kubectl failed here. Run it manually in your cluster shell."
 
 Write-Host ""
 Write-Host "Explain to the audience:" -ForegroundColor Cyan
-Write-Host "  'Kubernetes notices the node is NotReady and reschedules workloads / rebuilds replicas (with Longhorn in the full system).'"
+Write-Host "  Kubernetes notices the node is NotReady and reschedules workloads or rebuilds replicas (with Longhorn in the full system)."
 Write-Host ""
-Read-Host "When you're ready to 'heal' the node, press ENTER for instructions"
+Read-Host "When you are ready to heal the node, press ENTER for instructions"
 
 Write-Host ""
 Write-Host "Step 4: Bring worker4 back up." -ForegroundColor Yellow
@@ -46,10 +46,8 @@ Read-Host "Once worker4 is Ready again in 'kubectl get nodes', press ENTER to sh
 
 Write-Host ""
 Write-Host "Final cluster state:" -ForegroundColor Yellow
-ssh "$ServerUser@$ServerHost" "kubectl get nodes -o wide || echo 'kubectl failed here – run it manually in your cluster shell.' "
+ssh "$ServerUser@$ServerHost" "kubectl get nodes -o wide || echo kubectl failed here. Run it manually in your cluster shell."
 
 Write-Host ""
 Write-Host "You can now summarize that even when a node fails, the system recovers without losing student submissions."
 Write-Host "==== Demo Complete ===="
-
-
