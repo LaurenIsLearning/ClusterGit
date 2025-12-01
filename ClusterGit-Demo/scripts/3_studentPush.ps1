@@ -1,94 +1,45 @@
-<#
-  3_studentPush.ps1
-  - Student pushes a (large) file to the repo.
-  - Uses the 4GB test file from ../assets if present.
-  - Shows a fake progress bar, then runs a real git push.
-#>
+. "$PSScriptRoot\utilities.ps1"
 
-# ---------- CONFIG ----------
-$ClusterUser     = "clustergit-pi5-server"
-$ClusterHost     = "10.27.12.244"
-$RemoteRepoPath  = "/srv/git/demo.git"
+Write-Host "==== ClusterGit Demo: STUDENT PUSH LARGE FILE ===="
+Start-Sleep -Seconds 1
 
-$LocalWorkDir    = Join-Path $PSScriptRoot "student-repo"
-$AssetsDir       = Join-Path $PSScriptRoot "..\assets"
-$RepoBigFileName = "big-project-file.bin"
-# -----------------------------
+# Git identity (again, defensive)
+git config --global user.email "student@example.edu" | Out-Null
+git config --global user.name "ClusterGit Demo User" | Out-Null
 
-Write-Host "=== ClusterGit Demo: STUDENT PUSH LARGE FILE ===" -ForegroundColor Cyan
-Write-Host ""
 
-if (-not (Test-Path $LocalWorkDir)) {
-    Write-Host "ERROR: Local repo $LocalWorkDir not found. Run 2_studentLoginRepo.ps1 first." -ForegroundColor Red
-    exit 1
-}
+$StudentRepo = Join-Path $PSScriptRoot "student-repo"
+$AssetFile = Join-Path $PSScriptRoot "..\assets\sample-large-file.bin"
+$DestFile  = Join-Path $StudentRepo "big-project-file.bin"
 
-Set-Location $LocalWorkDir
-git config user.email "demo@student.local" | Out-Null
-git config user.name  "Demo Student" | Out-Null
+Write-Host "Creating README and pushing initial commit..."
+Set-Content -Path "$StudentRepo\README.md" -Value "# Demo Repo"
 
-# Decide source big file
-$SourceBigFile = $null
-if (Test-Path $AssetsDir) {
-    $bigCandidate = Get-ChildItem $AssetsDir -File | Sort-Object Length -Descending | Select-Object -First 1
-    if ($bigCandidate) {
-        $SourceBigFile = $bigCandidate.FullName
-        Write-Host "Using large demo file from assets:"
-        Write-Host "  $SourceBigFile"
-    }
-}
+Push-Location $StudentRepo
+git add . | Out-Null
+git commit -m "Initial commit" | Out-Null
 
-$TargetBigFile = Join-Path $LocalWorkDir $RepoBigFileName
+# Set remote ---- NO key, password-only SSH
+git remote add origin "ssh://clustergit-pi5-server@10.27.12.244:/srv/git/demo.git"
 
-if ($SourceBigFile) {
-    Write-Host ""
-    Write-Host "Copying large file into repo as $RepoBigFileName..."
-    Copy-Item $SourceBigFile $TargetBigFile -Force
-} else {
-    Write-Host ""
-    Write-Host "No large file found in $AssetsDir."
-    Write-Host "Generating a dummy ~50MB file as $RepoBigFileName for the demo..."
-    $sizeBytes = 50MB
-    $fs = [System.IO.File]::Create($TargetBigFile)
-    $fs.SetLength($sizeBytes)
-    $fs.Close()
-}
+# First push MUST specify main because Git now defaults to `master` not existing
+git branch -M main
+git push -u origin main
+Pop-Location
 
-Write-Host ""
-Write-Host "Staging large file..."
-git add $RepoBigFileName
+Copy-Item $AssetFile $DestFile -Force
 
-Write-Host "Committing..."
-git commit -m "Add large project file for grading" | Out-Null
+Push-Location $StudentRepo
 
-Write-Host ""
-Write-Host "Simulated upload progress:"
-for ($i = 0; $i -le 100; $i += 5) {
-    $bar   = "#" * ($i / 5)
-    $space = " " * ((100 - $i) / 5)
-    Write-Host -NoNewline ("`r[{0}{1}] {2}%%" -f $bar, $space, $i)
-    Start-Sleep -Milliseconds 150
-}
-Write-Host ""
-Write-Host ""
+git add big-project-file.bin | Out-Null
+git commit -m "Added large demo file" | Out-Null
 
-Write-Host "Now performing the actual git push to the cluster remote..."
-$pushOutput = git push origin master 2>&1
-Write-Host $pushOutput
+Write-Host "Uploading large file..."
+Start-Sleep -Seconds 1
 
-if ($LASTEXITCODE -ne 0) {
-    Write-Host "WARNING: git push failed (see above)." -ForegroundColor Yellow
-} else {
-    Write-Host ""
-    Write-Host "Large file push completed successfully." -ForegroundColor Green
-}
+git push origin main
 
-Write-Host ""
-Write-Host "On the cluster you can show:"
-Write-Host "  ssh $ClusterUser@$ClusterHost"
-Write-Host "  cd $RemoteRepoPath"
-Write-Host "  ls -lh"
-Write-Host "  git log --oneline"
-Write-Host ""
+Pop-Location
+Start-Sleep -Seconds 1
 
 
