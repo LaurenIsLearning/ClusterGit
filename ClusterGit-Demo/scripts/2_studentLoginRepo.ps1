@@ -38,6 +38,9 @@ if (Test-Path $LocalWorkDir) {
 }
 New-Item -ItemType Directory -Path $LocalWorkDir | Out-Null
 Set-Location $LocalWorkDir
+git config user.email "demo@student.local" | Out-Null
+git config user.name  "Demo Student" | Out-Null
+
 
 # Local repo init
 git init | Out-Null
