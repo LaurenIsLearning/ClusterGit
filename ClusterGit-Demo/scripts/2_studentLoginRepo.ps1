@@ -1,5 +1,5 @@
 <# 
-  studentLoginRepo.ps1
+  2_studentLoginRepo.ps1
   - Fake “login”
   - Create /srv/git/demo.git on the cluster if needed
   - Create local student-repo and push an initial commit
@@ -14,7 +14,10 @@ $ClusterHost     = "10.27.12.244"
 
 # Bare repo on the cluster
 $RemoteRepoPath  = "/srv/git/demo.git"
-$RemoteUrl       = "ssh://$ClusterUser@$ClusterHost:$RemoteRepoPath"
+
+# IMPORTANT: build URL with string concatenation so PowerShell
+# doesn't mis-parse the ':' after $ClusterHost
+$RemoteUrl       = "ssh://$ClusterUser@" + $ClusterHost + ":" + $RemoteRepoPath
 
 # Local working directory for student
 $LocalWorkDir    = Join-Path $PSScriptRoot "student-repo"
@@ -44,7 +47,7 @@ git commit -m "Initial commit from student" | Out-Null
 
 Write-Host ""
 Write-Host "Ensuring bare repo exists on the cluster at $RemoteRepoPath ..."
-ssh "$ClusterUser@$ClusterHost" "mkdir -p $RemoteRepoPath && git init --bare $RemoteRepoPath >/dev/null 2>&1 || true"
+ssh "$ClusterUser@$ClusterHost" "mkdir -p /srv/git && git init --bare $RemoteRepoPath >/dev/null 2>&1 || true"
 
 # Make sure origin points at the right place
 git remote remove origin 2>$null
