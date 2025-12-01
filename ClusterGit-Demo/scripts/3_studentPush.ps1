@@ -24,6 +24,8 @@ if (-not (Test-Path $LocalWorkDir)) {
 }
 
 Set-Location $LocalWorkDir
+git config user.email "demo@student.local" | Out-Null
+git config user.name  "Demo Student" | Out-Null
 
 # Decide source big file
 $SourceBigFile = $null
