@@ -1,18 +1,18 @@
 <# 
   3_studentPush.ps1
-  - First commit + push
-  - Add large file + push
+  - First real commit (README)
+  - Push to cluster
+  - Upload large file with git-annex
 #>
 
 # ---------- CONFIG ----------
 $ClusterUser     = "clustergit-pi5-server"
 $ClusterHost     = "10.27.12.244"
 $RemoteRepoPath  = "/srv/git/demo.git"
-
-# IMPORTANT: DO NOT BREAK THIS LINE
-$RemoteUrl = "ssh://" + $ClusterUser + "@" + $ClusterHost + ":" + $RemoteRepoPath
+$RemoteUrl       = "ssh://$ClusterUser@$ClusterHost:$RemoteRepoPath"
 
 $LocalWorkDir    = Join-Path $PSScriptRoot "student-repo"
+
 $AssetsDir       = Join-Path $PSScriptRoot "..\assets"
 $SourceBigFile   = Join-Path $AssetsDir "sample-large-file.bin"
 $DemoBigFile     = "big-project-file.bin"
@@ -20,51 +20,37 @@ $DemoBigFile     = "big-project-file.bin"
 
 Write-Host "=== ClusterGit Demo: STUDENT PUSH LARGE FILE ===" -ForegroundColor Cyan
 
-if (-not (Test-Path $LocalWorkDir)) {
-    Write-Host "ERROR: Local repo not found. Run 2_studentLoginRepo.ps1 first!" -ForegroundColor Red
+# Ensure repo exists
+if (!(Test-Path $LocalWorkDir)) {
+    Write-Host "ERROR: Local student repo not found."
     exit 1
 }
 
 Set-Location $LocalWorkDir
 
-# Ensure we are on main branch
-git switch main 2>$null
-git switch -c main 2>$null
+# ----- First commit -----
+Write-Host "Creating README and pushing initial commit..."
 
-# Ensure remote origin is set
-git remote remove origin 2>$null
-git remote add origin $RemoteUrl
+"Student project repository" | Out-File -Encoding UTF8 README.md
 
-### FIRST COMMIT ###
-Write-Host "Creating README and pushing initial commit..." -ForegroundColor Yellow
-"ClusterGit demo repository" | Out-File -Encoding utf8 "README.md"
 git add README.md
-git commit -m "Initial commit from student" | Out-Null
+git commit -m "Initial commit" --author="Student <student@purdue.edu>"
 
-git push -u origin main --force
+# Push initial commit
+git push $RemoteUrl main
 
-### LARGE FILE ###
-Write-Host "Uploading large file..." -ForegroundColor Yellow
+# ----- Upload large file -----
+Write-Host "Uploading large file..."
 
-if (Test-Path $SourceBigFile) {
-    Copy-Item $SourceBigFile $DemoBigFile -Force
-} else {
-    Write-Host "Large file missing, creating dummy 50MB file..." -ForegroundColor Yellow
-    $sizeBytes = 50MB
-    $fs = [System.IO.File]::Create($DemoBigFile)
-    $fs.SetLength($sizeBytes)
-    $fs.Close()
-}
+Copy-Item $SourceBigFile $DemoBigFile -Force
+git annex add $DemoBigFile
+git commit -m "Uploading large project file"
+git annex copy $DemoBigFile --to origin
 
-git add $DemoBigFile
-git commit -m "Add big project file" | Out-Null
+git push $RemoteUrl main
 
-git push origin main --force
+Read-Host "Press ENTER to continue to Auto-Heal Demo..."
 
-Set-Location $PSScriptRoot
-
-Write-Host "Press ENTER to continue to Auto-Heal Demo..." -ForegroundColor Yellow
-Read-Host > $null
 
 
 
