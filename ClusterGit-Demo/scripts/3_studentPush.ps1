@@ -1,14 +1,16 @@
 <# 
   3_studentPush.ps1
-  - Make first commit and push
-  - Add large file and push again
+  - First commit + push
+  - Add large file + push
 #>
 
 # ---------- CONFIG ----------
 $ClusterUser     = "clustergit-pi5-server"
 $ClusterHost     = "10.27.12.244"
 $RemoteRepoPath  = "/srv/git/demo.git"
-$RemoteUrl       = "ssh://$ClusterUser@" + $ClusterHost + ":" + $RemoteRepoPath"
+
+# IMPORTANT: DO NOT BREAK THIS LINE
+$RemoteUrl       = "ssh://$ClusterUser@$ClusterHost:$RemoteRepoPath"
 
 $LocalWorkDir    = Join-Path $PSScriptRoot "student-repo"
 $AssetsDir       = Join-Path $PSScriptRoot "..\assets"
@@ -25,11 +27,11 @@ if (-not (Test-Path $LocalWorkDir)) {
 
 Set-Location $LocalWorkDir
 
-# Ensure we are on main (fallback if cloning defaulted to “master”)
+# Ensure we are on main branch
 git switch main 2>$null
 git switch -c main 2>$null
 
-# Ensure origin URL is correct
+# Ensure remote origin is set
 git remote remove origin 2>$null
 git remote add origin $RemoteUrl
 
@@ -47,8 +49,7 @@ Write-Host "Uploading large file..." -ForegroundColor Yellow
 if (Test-Path $SourceBigFile) {
     Copy-Item $SourceBigFile $DemoBigFile -Force
 } else {
-    # If missing, create dummy 50MB file
-    Write-Host "Large file missing, creating dummy..." -ForegroundColor Yellow
+    Write-Host "Large file missing, creating dummy 50MB file..." -ForegroundColor Yellow
     $sizeBytes = 50MB
     $fs = [System.IO.File]::Create($DemoBigFile)
     $fs.SetLength($sizeBytes)
@@ -63,5 +64,7 @@ git push origin main --force
 Set-Location $PSScriptRoot
 
 Write-Host "Press ENTER to continue to Auto-Heal Demo..." -ForegroundColor Yellow
+Read-Host > $null
+
 
 
