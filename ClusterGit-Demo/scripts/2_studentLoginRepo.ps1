@@ -6,7 +6,7 @@
 #>
 
 # ---------- CONFIG ----------
-$DemoUserEmail   = "student@example.edu"
+$DemoUserEmail   = "student@purdue.edu"
 $DemoUserToken   = "DEMO_FAKE_TOKEN_1234"
 
 $ClusterUser     = "clustergit-pi5-server"
@@ -38,33 +38,19 @@ if (Test-Path $LocalWorkDir) {
 }
 New-Item -ItemType Directory -Path $LocalWorkDir | Out-Null
 Set-Location $LocalWorkDir
+git init >$null 2>&1
+git annex init >$null 2>&1
 
 # Local repo init
-git init | Out-Null
-"ClusterGit demo repository" | Out-File -Encoding utf8 "README.md"
-git add README.md
-git commit -m "Initial commit from student" | Out-Null
-
 Write-Host ""
 Write-Host "Ensuring bare repo exists on the cluster at $RemoteRepoPath ..."
-ssh "$ClusterUser@$ClusterHost" "mkdir -p /srv/git && git init --bare $RemoteRepoPath >/dev/null 2>&1 || true"
+ssh "$ClusterUser@$ClusterHost" "mkdir -p /srv/git && git init --bare && git annex init $RemoteRepoPath >/dev/null 2>&1 || true"
 
-# Make sure origin points at the right place
-git remote remove origin 2>$null
-git remote add origin $RemoteUrl
-
+#Clones created repository to the students machine
 Write-Host ""
-Write-Host "Pushing initial commit to the cluster remote..."
-$pushOutput = git push -u origin master 2>&1
-Write-Host $pushOutput
-
-if ($LASTEXITCODE -ne 0) {
-    Write-Host "WARNING: git push failed (see above)." -ForegroundColor Yellow
-    Write-Host "For the demo you can still talk through the flow and then show logs on the server manually."
-} else {
-    Write-Host ""
-    Write-Host "Repository is now created on the cluster." -ForegroundColor Green
-}
+Write-Host "Student is cloning the repository from the cluster"
+git clone $RemoteUrl $LocalWorkDir >$null 2>&1
+Set-Location $LocalWorkDir
 
 Write-Host ""
 Write-Host "Local history:"

@@ -11,7 +11,7 @@ $ClusterHost     = "10.27.12.244"
 $RemoteRepoPath  = "/srv/git/demo.git"
 
 $LocalWorkDir    = Join-Path $PSScriptRoot "student-repo"
-$AssetsDir       = Join-Path $PSScriptRoot "..\assets"
+$AssetsDir       = Join-Path $PSScriptRoot
 $RepoBigFileName = "big-project-file.bin"
 # -----------------------------
 
