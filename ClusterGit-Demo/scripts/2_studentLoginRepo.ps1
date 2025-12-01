@@ -37,8 +37,13 @@ New-Item -ItemType Directory -Path $LocalWorkDir | Out-Null
 # 2. Ensure cluster repo exists BUT remains empty
 Write-Host ""
 Write-Host "Ensuring empty bare repo exists on the cluster at $RemoteRepoPath ..." -ForegroundColor Yellow
-ssh "$ClusterUser@$ClusterHost" "rm -rf $RemoteRepoPath && mkdir -p /srv/git && git init --bare $RemoteRepoPath >/dev/null 2>&1"
-
+ssh "$ClusterUser@$ClusterHost" "
+    rm -rf $RemoteRepoPath
+    mkdir -p /srv/git
+    git init --bare $RemoteRepoPath
+    cd $RemoteRepoPath
+    git annex init >/dev/null 2>&1
+"
 # 3. Clone the clean remote repo
 Write-Host ""
 Write-Host "Student cloning clean repository from the cluster..." -ForegroundColor Yellow
