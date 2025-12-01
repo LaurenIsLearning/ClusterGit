@@ -32,8 +32,10 @@ start "" powershell -NoExit -ExecutionPolicy Bypass -Command ^
  Read-Host 'Press ENTER to continue to Student Repo Creation...'; ^
  .\2_studentLoginRepo.ps1; ^
  Read-Host 'Press ENTER to continue to Student File Upload...'; ^
+ cd '%cd%\scripts'; ^
  .\3_studentPush.ps1; ^
  Read-Host 'Press ENTER to continue to Auto-Heal Demo...'; ^
+ cd '%cd%\scripts'; ^
  .\4_autoheal.ps1; ^
  Write-Host '==== Demo Complete! ====' -ForegroundColor Green"
 
