@@ -24,19 +24,6 @@ Start-Sleep -Seconds 1
 # Ensure bare repo exists on cluster
 Write-Host "Ensuring bare repo exists on cluster..."
 ssh clustergit-pi5-server@10.27.12.244 "mkdir -p /srv/git/demo.git && git init --bare /srv/git/demo.git" 
-
-Write-Host "Creating README and pushing initial commit..."
-Set-Content -Path "$StudentRepo\README.md" -Value "# Demo Repo"
-
-Push-Location $StudentRepo
-git add . | Out-Null
-git commit -m "Initial commit" | Out-Null
-
-# Set remote ---- NO key, password-only SSH
-git remote add origin "ssh://clustergit-pi5-server@10.27.12.244:/srv/git/demo.git"
-
-# First push MUST specify main because Git now defaults to `master` not existing
-git branch -M main
 git push -u origin main
 Pop-Location
 
