@@ -10,7 +10,7 @@ $ClusterHost     = "10.27.12.244"
 $RemoteRepoPath  = "/srv/git/demo.git"
 
 # IMPORTANT: DO NOT BREAK THIS LINE
-$RemoteUrl       = "ssh://$ClusterUser@$ClusterHost:$RemoteRepoPath"
+$RemoteUrl = "ssh://" + $ClusterUser + "@" + $ClusterHost + ":" + $RemoteRepoPath
 
 $LocalWorkDir    = Join-Path $PSScriptRoot "student-repo"
 $AssetsDir       = Join-Path $PSScriptRoot "..\assets"
