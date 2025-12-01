@@ -1,45 +1,67 @@
-. "$PSScriptRoot\utilities.ps1"
+<# 
+  3_studentPush.ps1
+  - Make first commit and push
+  - Add large file and push again
+#>
 
-Write-Host "==== ClusterGit Demo: STUDENT PUSH LARGE FILE ===="
-Start-Sleep -Seconds 1
+# ---------- CONFIG ----------
+$ClusterUser     = "clustergit-pi5-server"
+$ClusterHost     = "10.27.12.244"
+$RemoteRepoPath  = "/srv/git/demo.git"
+$RemoteUrl       = "ssh://$ClusterUser@" + $ClusterHost + ":" + $RemoteRepoPath"
 
-# Git identity (again, defensive)
-git config --global user.email "student@example.edu" | Out-Null
-git config --global user.name "ClusterGit Demo User" | Out-Null
+$LocalWorkDir    = Join-Path $PSScriptRoot "student-repo"
+$AssetsDir       = Join-Path $PSScriptRoot "..\assets"
+$SourceBigFile   = Join-Path $AssetsDir "sample-large-file.bin"
+$DemoBigFile     = "big-project-file.bin"
+# -----------------------------
 
+Write-Host "=== ClusterGit Demo: STUDENT PUSH LARGE FILE ===" -ForegroundColor Cyan
 
-$StudentRepo = Join-Path $PSScriptRoot "student-repo"
-$AssetFile = Join-Path $PSScriptRoot "..\assets\sample-large-file.bin"
-$DestFile  = Join-Path $StudentRepo "big-project-file.bin"
+if (-not (Test-Path $LocalWorkDir)) {
+    Write-Host "ERROR: Local repo not found. Run 2_studentLoginRepo.ps1 first!" -ForegroundColor Red
+    exit 1
+}
 
-Write-Host "Creating README and pushing initial commit..."
-Set-Content -Path "$StudentRepo\README.md" -Value "# Demo Repo"
+Set-Location $LocalWorkDir
 
-Push-Location $StudentRepo
-git add . | Out-Null
-git commit -m "Initial commit" | Out-Null
+# Ensure we are on main (fallback if cloning defaulted to “master”)
+git switch main 2>$null
+git switch -c main 2>$null
 
-# Set remote ---- NO key, password-only SSH
-git remote add origin "ssh://clustergit-pi5-server@10.27.12.244:/srv/git/demo.git"
+# Ensure origin URL is correct
+git remote remove origin 2>$null
+git remote add origin $RemoteUrl
 
-# First push MUST specify main because Git now defaults to `master` not existing
-git branch -M main
-git push -u origin main
-Pop-Location
+### FIRST COMMIT ###
+Write-Host "Creating README and pushing initial commit..." -ForegroundColor Yellow
+"ClusterGit demo repository" | Out-File -Encoding utf8 "README.md"
+git add README.md
+git commit -m "Initial commit from student" | Out-Null
 
-Copy-Item $AssetFile $DestFile -Force
+git push -u origin main --force
 
-Push-Location $StudentRepo
+### LARGE FILE ###
+Write-Host "Uploading large file..." -ForegroundColor Yellow
 
-git add big-project-file.bin | Out-Null
-git commit -m "Added large demo file" | Out-Null
+if (Test-Path $SourceBigFile) {
+    Copy-Item $SourceBigFile $DemoBigFile -Force
+} else {
+    # If missing, create dummy 50MB file
+    Write-Host "Large file missing, creating dummy..." -ForegroundColor Yellow
+    $sizeBytes = 50MB
+    $fs = [System.IO.File]::Create($DemoBigFile)
+    $fs.SetLength($sizeBytes)
+    $fs.Close()
+}
 
-Write-Host "Uploading large file..."
-Start-Sleep -Seconds 1
+git add $DemoBigFile
+git commit -m "Add big project file" | Out-Null
 
-git push origin main
+git push origin main --force
 
-Pop-Location
-Start-Sleep -Seconds 1
+Set-Location $PSScriptRoot
+
+Write-Host "Press ENTER to continue to Auto-Heal Demo..." -ForegroundColor Yellow
 
 
