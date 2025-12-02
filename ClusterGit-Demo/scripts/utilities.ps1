@@ -20,7 +20,7 @@ function Invoke-ClusterSSH {
         $sshExe = Resolve-Path "$ScriptRoot\..\portable\git\usr\bin\ssh.exe"
 
         # debug
-         Write-Host "SSH Path = $sshExe" -ForegroundColor Yellow
+        Write-Host "SSH Path = $sshExe" -ForegroundColor Yellow
 
         & $sshExe -F $config cluster "$cmd"
 
@@ -49,3 +49,32 @@ function Show-ProgressBar {
         Start-Sleep -Milliseconds 300
     }
 }
+
+# ------Generate portable SSH config dynamically
+$PortableRoot = Resolve-Path "$ScriptRoot\.."
+$KeyPath = Join-Path $PortableRoot "keys\id_rsa"
+$SSHConfigPath = Join-Path
+$PortableRoot "ssh_config"
+$SSHExe = Join-Path
+$PortableRoot "git\usr\bin\ssh.exe"
+
+# make sure .ssh folder exists
+$SSHDir = Join-Path $PortableRoot ".ssh"
+if (!(Test-Path $SSHDir)) { New-Item -ItemType Directory -Path $SSHDir | Out-Null }
+
+#build ssh_config dynamically
+$SSHConfig = @"
+Host *
+    User student-demo
+    IdentityFile $KeyPath
+    StrictHostKeyChecking no
+    UserKnownHostsFile NUL
+
+Host cluster
+    HostName 10.27.12.244
+"@
+# Write ssh_config file
+$SSHConfig | Out-File $SSHConfigPath -Encoding ascii
+ 
+ #force git to use portable ssh
+$env:GIT_SSH_COMMAND = "$SSHExe -F $SSHConfigPath"
