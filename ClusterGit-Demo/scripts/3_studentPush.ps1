@@ -31,6 +31,12 @@ git config user.email "student@purdue.edu"
 
 $sshConfig = "ssh -i `"$KeyPath`""
 
+#Deletes pushed file for next demo run
+git rm $DemoBigFile >$null 2>&1
+git commit -m "Clean up for next run" >$null 2>&1
+
+git -c core.sshCommand="$sshConfig" push origin main
+
 # 1) Initial commit & push
 Write-Host "Creating README and pushing initial commit..."
 "ClusterGit demo repository" | Set-Content -Encoding utf8 "README.md"
@@ -59,12 +65,6 @@ git -c core.sshCommand="$sshConfig" push origin main
 if ($LASTEXITCODE -eq 0){
   Write-Host "Push Successful!" -ForegroundColor Green
 }
-
-#Deletes pushed file for next demo run
-git rm $DemoBigFile >$null 2>&1
-git commit -m "Clean up for next run" >$null 2>&1
-
-git -c core.sshCommand="$sshConfig" push origin main
 
 Read-Host "Press ENTER to continue to Auto-Heal Demo..."
 
