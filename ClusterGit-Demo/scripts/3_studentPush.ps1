@@ -25,67 +25,46 @@ if (-not (Test-Path $LocalWorkDir)) {
 
 Set-Location $LocalWorkDir
 
-# Decide source big file
-$SourceBigFile = $null
-if (Test-Path $AssetsDir) {
-    $bigCandidate = Get-ChildItem $AssetsDir -File | Sort-Object Length -Descending | Select-Object -First 1
-    if ($bigCandidate) {
-        $SourceBigFile = $bigCandidate.FullName
-        Write-Host "Using large demo file from assets:"
-        Write-Host "  $SourceBigFile"
-    }
+# Use local identity just for this repo (no global config needed)
+git config user.name  "Student"
+git config user.email "student@purdue.edu"
+
+$sshConfig = "ssh -i `"$KeyPath`""
+
+# 1) Initial commit & push
+Write-Host "Creating README and pushing initial commit..."
+"ClusterGit demo repository" | Set-Content -Encoding utf8 "README.md"
+
+git add README.md >$null 2>&1
+git commit -m "Initial commit" >$null 2>&1
+
+git -c core.sshCommand="$sshConfig" push -u origin main
+
+# 2) Large file commit & push
+Write-Host "Uploading large file..."
+
+if (-not (Test-Path $SourceBigFile)) {
+    Write-Host "ERROR: sample large file not found at $SourceBigFile" -ForegroundColor Red
+    Read-Host "Press ENTER to continue to Auto-Heal Demo..."
+    exit 1
 }
 
-$TargetBigFile = Join-Path $LocalWorkDir $RepoBigFileName
+Copy-Item $SourceBigFile $DemoBigFile -Force
 
-if ($SourceBigFile) {
-    Write-Host ""
-    Write-Host "Copying large file into repo as $RepoBigFileName..."
-    Copy-Item $SourceBigFile $TargetBigFile -Force
-} else {
-    Write-Host ""
-    Write-Host "No large file found in $AssetsDir."
-    Write-Host "Generating a dummy ~50MB file as $RepoBigFileName for the demo..."
-    $sizeBytes = 50MB
-    $fs = [System.IO.File]::Create($TargetBigFile)
-    $fs.SetLength($sizeBytes)
-    $fs.Close()
+git add $DemoBigFile >$null 2>&1
+git commit -m "Add large project file" >$null 2>&1
+
+git -c core.sshCommand="$sshConfig" push origin main
+
+if ($LASTEXITCODE -eq 0){
+  Write-Host "Push Successful!" -ForegroundColor Green
 }
 
-Write-Host ""
-Write-Host "Staging large file..."
-git add $RepoBigFileName
+#Deletes pushed file for next demo run
+git rm $DemoBigFile >$null 2>&1
+git commit -m "Clean up for next run" >$null 2>&1
 
-Write-Host "Committing..."
-git commit -m "Add large project file for grading" | Out-Null
+git -c core.sshCommand="$sshConfig" push origin main
 
-Write-Host ""
-Write-Host "Simulated upload progress:"
-for ($i = 0; $i -le 100; $i += 5) {
-    $bar   = "#" * ($i / 5)
-    $space = " " * ((100 - $i) / 5)
-    Write-Host -NoNewline ("`r[{0}{1}] {2}%%" -f $bar, $space, $i)
-    Start-Sleep -Milliseconds 150
-}
-Write-Host ""
-Write-Host ""
-
-Write-Host "Now performing the actual git push to the cluster remote..."
-$pushOutput = git push origin master 2>&1
-Write-Host $pushOutput
-
-if ($LASTEXITCODE -ne 0) {
-    Write-Host "WARNING: git push failed (see above)." -ForegroundColor Yellow
-} else {
-    Write-Host ""
-    Write-Host "Large file push completed successfully." -ForegroundColor Green
-}
-
-Write-Host ""
-Write-Host "On the cluster you can show:"
-Write-Host "  ssh $ClusterUser@$ClusterHost"
-Write-Host "  cd $RemoteRepoPath"
-Write-Host "  ls -lh"
-Write-Host "  git log --oneline"
-Write-Host ""
+Read-Host "Press ENTER to continue to Auto-Heal Demo..."
 
