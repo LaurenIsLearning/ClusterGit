@@ -51,14 +51,17 @@ function Show-ProgressBar {
 }
 
 # ------Generate portable SSH config dynamically
-$PortableRoot = Resolve-Path "$ScriptRoot\.."
+$PortableRoot = Resolve-Path (Join-Path $ScriptRoot "..\portable")
 $KeyPath = Join-Path $PortableRoot "keys\id_rsa"
 $SSHConfigPath = Join-Path $PortableRoot "ssh_config"
 $SSHExe = Join-Path $PortableRoot "git\usr\bin\ssh.exe"
 
-# make sure .ssh folder exists
-$SSHDir = Join-Path $PortableRoot ".ssh"
-if (!(Test-Path $SSHDir)) { New-Item -ItemType Directory -Path $SSHDir | Out-Null }
+Write-Host "Writing ssh_config to: $SSHConfigPath" -ForegroundColor Cyan
+
+# Convert Windows paths to SSH-friendly forward slashes
+$SSHExe        = $SSHExe -replace '\\','/'
+$SSHConfigPath = $SSHConfigPath -replace '\\','/'
+$KeyPath       = $KeyPath -replace '\\','/'
 
 #build ssh_config dynamically
 $SSHConfig = @"
@@ -71,6 +74,7 @@ Host *
 Host cluster
     HostName 10.27.12.244
 "@
+
 # Write ssh_config file
 $SSHConfig | Out-File $SSHConfigPath -Encoding ascii
  
