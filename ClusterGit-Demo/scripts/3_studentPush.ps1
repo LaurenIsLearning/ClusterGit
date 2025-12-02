@@ -1,71 +1,92 @@
 <#
   3_studentPush.ps1
-  - Use the cloned student-repo
-  - Create README and push first commit
-  - Add large file, commit, push again
-  - Git-only on Windows (no git-annex here)
+  - Student pushes a (large) file to the repo.
+  - Uses the test file from ../assets if present.
+  - Shows a fake progress bar, then does real git push.
 #>
 
 # ---------- CONFIG ----------
-$ssh = Join-Path $PSScriptRoot "..\portable\git\usr\bin\ssh.exe"
-$sshConfig = Join-Path $PSScriptRoot "..\portable\ssh_config"
-$env:GIT_SSH_COMMAND = "`"$ssh`" -F `"$sshConfig`" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
-
 $ClusterUser     = "clustergit-pi5-server"
 $ClusterHost     = "10.27.12.244"
 $RemoteRepoPath  = "/srv/git/demo.git"
-$RemoteUrl       = "ssh://$ClusterUser@${ClusterHost}:$RemoteRepoPath"
+
+$PortableRoot    = Resolve-Path (Join-Path $PSScriptRoot "..\portable")
+$SshExe          = Join-Path $PortableRoot "git\usr\bin\ssh.exe"
+$KeyPath         = Join-Path $PortableRoot "keys\id_rsa"
 
 $LocalWorkDir    = Join-Path $PSScriptRoot "student-repo"
-
-$AssetsDir       = Join-Path $PSScriptRoot "..\assets"
+$AssetsDir       = Resolve-Path (Join-Path $PSScriptRoot "..\assets")
 $SourceBigFile   = Join-Path $AssetsDir "sample-large-file.bin"
 $DemoBigFile     = "big-project-file.bin"
-
-$KeyPath         = Join-Path $PSScriptRoot "..\portable\keys\id_rsa"
 # -----------------------------
 
-Write-Host "=== ClusterGit Demo: STUDENT PUSH LARGE FILE ==="
+# Make git use the same SSH + key, silence warnings
+$env:GIT_SSH_COMMAND = "`"$SshExe`" -i `"$KeyPath`" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR"
 
-# Ensure local repo exists
+Write-Host "=== ClusterGit Demo: STUDENT PUSH LARGE FILE ===" -ForegroundColor Cyan
+Write-Host ""
+
 if (-not (Test-Path $LocalWorkDir)) {
-    Write-Host "ERROR: $LocalWorkDir not found. Run 2_studentLoginRepo.ps1 first." -ForegroundColor Red
-    Read-Host "Press ENTER to continue to Auto-Heal Demo..."
+    Write-Host "ERROR: Local repo $LocalWorkDir not found. Run 2_studentLoginRepo.ps1 first." -ForegroundColor Red
     exit 1
 }
 
 Set-Location $LocalWorkDir
 
-# Use local identity just for this repo (no global config needed)
-git config user.name  "Student"
-git config user.email "student@purdue.edu"
+# Local identity for this repo only
+git config user.name  "Student"        | Out-Null
+git config user.email "student@purdue.edu" | Out-Null
 
-$sshConfig = "ssh -i `"$KeyPath`""
-
-# 1) Initial commit & push
+# 1) Initial README commit & push (only if not already there)
 Write-Host "Creating README and pushing initial commit..."
-"ClusterGit demo repository" | Set-Content -Encoding utf8 "README.md"
 
-git add README.md
-git commit -m "Initial commit" | Out-Null
+if (-not (Test-Path "README.md")) {
+    "ClusterGit demo repository" | Set-Content -Encoding utf8 "README.md"
+    git add README.md    >$null 2>&1
+    git commit -m "Initial commit" >$null 2>&1
+} else {
+    Write-Host "README.md already exists; re-using it."
+}
 
-git -c core.sshCommand="$sshConfig" push -u origin main
+git push -u origin main 2>&1 | Write-Host
 
-# 2) Large file commit & push
+# 2) Large file commit & progress bar + push
 Write-Host "Uploading large file..."
 
 if (-not (Test-Path $SourceBigFile)) {
-    Write-Host "ERROR: sample large file not found at $SourceBigFile" -ForegroundColor Red
-    Read-Host "Press ENTER to continue to Auto-Heal Demo..."
-    exit 1
+    Write-Host "Test file not found at $SourceBigFile" -ForegroundColor Yellow
+    Write-Host "Generating a dummy ~50MB file instead..."
+    $sizeBytes = 50MB
+    $fs = [System.IO.File]::Create($DemoBigFile)
+    $fs.SetLength($sizeBytes)
+    $fs.Close()
+} else {
+    Copy-Item $SourceBigFile $DemoBigFile -Force
 }
 
-Copy-Item $SourceBigFile $DemoBigFile -Force
+git add $DemoBigFile >$null 2>&1
+git commit -m "Add large project file" >$null 2>&1
 
-git add $DemoBigFile
-git commit -m "Add large project file" | Out-Null
+Write-Host "Simulated upload progress:"
+for ($i = 0; $i -le 100; $i += 5) {
+    $bar   = "#" * ($i / 5)
+    $space = " " * ((100 - $i) / 5)
+    Write-Host -NoNewline ("`r[{0}{1}] {2}%%" -f $bar, $space, $i)
+    Start-Sleep -Milliseconds 150
+}
+Write-Host ""
 
-git -c core.sshCommand="$sshConfig" push origin main
+git push origin main 2>&1 | Write-Host
+
+if ($LASTEXITCODE -eq 0) {
+    Write-Host "Push Successful!" -ForegroundColor Green
+} else {
+    Write-Host "WARNING: git push reported an error (see above)." -ForegroundColor Yellow
+}
+
+# Optional cleanup so you can re-run demo cleanly
+git rm $DemoBigFile >$null 2>&1
+git commit -m "Clean up for next run" >$null 2>&1
+git push origin main 2>&1 | Write-Host
 
 Read-Host "Press ENTER to continue to Auto-Heal Demo..."
-
