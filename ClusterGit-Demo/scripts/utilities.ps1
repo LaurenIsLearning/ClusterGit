@@ -53,10 +53,8 @@ function Show-ProgressBar {
 # ------Generate portable SSH config dynamically
 $PortableRoot = Resolve-Path "$ScriptRoot\.."
 $KeyPath = Join-Path $PortableRoot "keys\id_rsa"
-$SSHConfigPath = Join-Path
-$PortableRoot "ssh_config"
-$SSHExe = Join-Path
-$PortableRoot "git\usr\bin\ssh.exe"
+$SSHConfigPath = Join-Path $PortableRoot "ssh_config"
+$SSHExe = Join-Path $PortableRoot "git\usr\bin\ssh.exe"
 
 # make sure .ssh folder exists
 $SSHDir = Join-Path $PortableRoot ".ssh"
