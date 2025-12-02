@@ -1,6 +1,7 @@
 # sanity check. (powershell isn't good for opening windows. bat files do that easily)
 . "$PSScriptRoot\utilities.ps1"
 Write-Section "ClusterGit Demo: Environment Check"
+
 # ssh check
 Write-Section "Testing SSH Connection to ClusterGit.." 
 $sshTest = Invoke-ClusterSSH "echo Connected" 2>&1
