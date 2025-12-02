@@ -15,9 +15,9 @@ Write-Host "=== ClusterGit Demo: AUTOHEALING ===" -ForegroundColor Cyan
 Write-Host ""
 
 Write-Host "Step 1: Show current cluster state..." -ForegroundColor Yellow
-Read-Host "Tell the audience what they're seeing; press ENTER to run 'kubectl get nodes' on the cluster"
+Read-Host "Tell the audience what they are seeing; press ENTER to run 'kubectl get nodes' on the cluster"
+ssh "$ServerUser@$ServerHost" 'KUBECONFIG=$HOME/.kube/config kubectl get nodes -o wide || echo kubectl failed here. Run it manually in your cluster shell.'
 
-ssh "$ServerUser@$ServerHost" "kubectl get nodes -o wide || echo 'kubectl failed here – run it manually in your cluster shell.'"
 
 Write-Host ""
 Write-Host "Step 2: Simulate a node failure (worker4)." -ForegroundColor Yellow
@@ -29,7 +29,7 @@ Read-Host "After worker4 shows NotReady in 'kubectl get nodes', press ENTER to c
 
 Write-Host ""
 Write-Host "Step 3: Observe cluster state after failure..." -ForegroundColor Yellow
-ssh "$ServerUser@$ServerHost" "kubectl get nodes -o wide || echo 'kubectl failed here – run it manually in your cluster shell.'"
+ssh "$ServerUser@$ServerHost" 'KUBECONFIG=$HOME/.kube/config kubectl get nodes -o wide || echo kubectl failed here. Run it manually in your cluster shell.'
 
 Write-Host ""
 Write-Host "Explain to the audience:" -ForegroundColor Cyan
@@ -46,7 +46,7 @@ Read-Host "Once worker4 is Ready again in 'kubectl get nodes', press ENTER to sh
 
 Write-Host ""
 Write-Host "Final cluster state:" -ForegroundColor Yellow
-ssh "$ServerUser@$ServerHost" "kubectl get nodes -o wide || echo 'kubectl failed here – run it manually in your cluster shell.'"
+ssh "$ServerUser@$ServerHost" 'KUBECONFIG=$HOME/.kube/config kubectl get nodes -o wide || echo kubectl failed here. Run it manually in your cluster shell.'
 
 Write-Host ""
 Write-Host "You can now summarize: 'Even when a node fails, the system recovers without losing student submissions.'" -ForegroundColor Green
