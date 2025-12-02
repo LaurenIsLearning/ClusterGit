@@ -1,73 +1,36 @@
-<#
-  2_studentLoginRepo.ps1
-  - Fake “login”
-  - Create EMPTY /srv/git/demo.git on the cluster
-  - Create EMPTY local student-repo
-  - Clone empty repo (no commits yet)
-#>
-
-$proc = Start-Process powershell -ArgumentList "ssh clustergit-pi5-server@10.27.12.244" -WindowStyle Normal
-Start-Sleep 1
-Add-Type -AssemblyName System.Windows.Forms
-[System.Windows.Forms.SendKeys]::SendWait("E$870u@dDO1e%{ENTER}")
-
-
 # ---------- CONFIG ----------
-$DemoUserEmail   = "student@purdue.edu"
-$DemoUserToken   = "DEMO_FAKE_TOKEN"
-
 $ClusterUser     = "clustergit-pi5-server"
 $ClusterHost     = "10.27.12.244"
 $RemoteRepoPath  = "/srv/git/demo.git"
-$RemoteUrl       = "ssh://$ClusterUser@${ClusterHost}:$RemoteRepoPath"
 
-# Paths relative to scripts folder
-$PortableRoot    = Resolve-Path (Join-Path $PSScriptRoot "..\portable")
-$SshExe          = Join-Path $PortableRoot "git\usr\bin\ssh.exe"
-$KeyPath         = Join-Path $PortableRoot "keys\id_rsa"
+$SSH = "ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR"
+$RemoteUrl = "ssh://$ClusterUser@$ClusterHost:$RemoteRepoPath"
 
-# This is the local working repo
-$LocalWorkDir    = Join-Path $PSScriptRoot "student-repo"
+$LocalWorkDir = Join-Path $PSScriptRoot "student-repo"
 # -----------------------------
 
-# Make git (clone/push) use the same SSH + key, and silence warnings
-$env:GIT_SSH_COMMAND = "`"$SshExe`" -i `"$KeyPath`" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR"
-
-# Base SSH args for direct ssh calls
-$SshBaseArgs = @(
-    "-i", $KeyPath,
-    "-o", "StrictHostKeyChecking=no",
-    "-o", "UserKnownHostsFile=/dev/null",
-    "-o", "LogLevel=ERROR"
-)
-
 Write-Host "=== ClusterGit Demo: STUDENT LOGIN & REPO SETUP ===" -ForegroundColor Cyan
-Write-Host "Email : $DemoUserEmail"
-Write-Host "Token : $($DemoUserToken.Substring(0,8))***"
+Write-Host "Email : student@purdue.edu"
+Write-Host "Token : DEMO_FAK***"
 Read-Host "Press ENTER to continue"
 
-# ----- Reset local repo (folder only, no git yet) -----
 Write-Host "Recreating local repo folder..."
-if (Test-Path $LocalWorkDir) {
-    Remove-Item -Recurse -Force $LocalWorkDir
-}
+if (Test-Path $LocalWorkDir) { Remove-Item -Recurse -Force $LocalWorkDir }
+New-Item -ItemType Directory -Path $LocalWorkDir | Out-Null
 
-# DO NOT create directory here; git clone will create it
+Write-Host "`nEnsuring empty bare repo exists on the cluster at $RemoteRepoPath ..."
+& $SSH "$ClusterUser@$ClusterHost" @"
+rm -rf $RemoteRepoPath
+mkdir -p /srv/git
+git init --bare $RemoteRepoPath
+cd $RemoteRepoPath
+git annex init
+"@ 2>$null
 
-# ----- Reset cluster bare repo (with git-annex init on server) -----
-Write-Host ""
-Write-Host "Ensuring empty bare repo exists on the cluster at $RemoteRepoPath ..."
+Write-Host "`nStudent cloning clean repository from the cluster..."
+git -c core.sshCommand="$SSH" clone $RemoteUrl $LocalWorkDir
 
-& $SshExe @SshBaseArgs "$ClusterUser@$ClusterHost" `
-  "rm -rf $RemoteRepoPath && mkdir -p /srv/git && git init --bare $RemoteRepoPath && cd $RemoteRepoPath && git-annex init ClusterGitDemo || true" `
-  | Out-Null
-
-# ----- Clone empty repo -----
-Write-Host ""
-Write-Host "Student cloning clean repository from the cluster..."
-git clone $RemoteUrl $LocalWorkDir 2>&1 | Write-Host
-
-Write-Host ""
-Write-Host "Local clone created successfully."
+Write-Host "`nLocal clone created successfully."
 Read-Host "Press ENTER to continue to Student File Upload..."
+
 
