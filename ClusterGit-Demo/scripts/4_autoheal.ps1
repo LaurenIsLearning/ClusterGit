@@ -5,6 +5,10 @@
   - Show cluster state again after recovery
 #>
 
+$ssh = Join-Path $PSScriptRoot "..\portable\git\usr\bin\ssh.exe"
+$sshConfig = Join-Path $PSScriptRoot "..\portable\ssh_config"
+$env:GIT_SSH_COMMAND = "`"$ssh`" -F `"$sshConfig`" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
+
 $ServerUser = "clustergit-pi5-server"
 $ServerHost = "10.27.12.244"
 
