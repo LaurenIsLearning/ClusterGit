@@ -7,6 +7,10 @@
 #>
 
 # ---------- CONFIG ----------
+$ssh = Join-Path $PSScriptRoot "..\portable\git\usr\bin\ssh.exe"
+$sshConfig = Join-Path $PSScriptRoot "..\portable\ssh_config"
+$env:GIT_SSH_COMMAND = "`"$ssh`" -F `"$sshConfig`" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
+
 $ClusterUser     = "clustergit-pi5-server"
 $ClusterHost     = "10.27.12.244"
 $RemoteRepoPath  = "/srv/git/demo.git"
