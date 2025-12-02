@@ -1,6 +1,9 @@
 # sanity check. (powershell isn't good for opening windows. bat files do that easily)
 . "$PSScriptRoot\utilities.ps1"
 Write-Section "ClusterGit Demo: Environment Check"
+$ssh = Join-Path $PSScriptRoot "..\portable\git\usr\bin\ssh.exe"
+$sshConfig = Join-Path $PSScriptRoot "..\portable\ssh_config"
+$env:GIT_SSH_COMMAND = "`"$ssh`" -F `"$sshConfig`" -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
 
 # ssh check
 Write-Section "Testing SSH Connection to ClusterGit.." 
