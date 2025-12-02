@@ -1,4 +1,10 @@
 # sanity check. (powershell isn't good for opening windows. bat files do that easily)
+
+Start-Process powershell -ArgumentList "ssh clustergit-pi5-server@10.27.12.244" -WindowStyle Normal
+Start-Sleep 1
+Add-Type -AssemblyName System.Windows.Forms
+[System.Windows.Forms.SendKeys]::SendWait("YOURPASSWORD{ENTER}")
+
 . "$PSScriptRoot\utilities.ps1"
 Write-Section "ClusterGit Demo: Environment Check"
 # ssh check
