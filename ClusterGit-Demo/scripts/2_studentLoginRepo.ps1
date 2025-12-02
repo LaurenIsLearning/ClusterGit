@@ -12,9 +12,11 @@ $DemoUserToken   = "DEMO_FAKE_TOKEN"
 
 $ClusterUser     = "clustergit-pi5-server"
 $ClusterHost     = "10.27.12.244"
-
 $RemoteRepoPath  = "/srv/git/demo.git"
-$RemoteUrl       = "ssh://$ClusterUser@$ClusterHost:$RemoteRepoPath"
+
+# FIXED URL BUILDING
+$RemoteUrl       = "ssh://$ClusterUser@${ClusterHost}:$RemoteRepoPath"
+
 
 $LocalWorkDir    = Join-Path $PSScriptRoot "student-repo"
 # -----------------------------
