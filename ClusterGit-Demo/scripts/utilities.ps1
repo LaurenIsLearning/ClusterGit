@@ -20,7 +20,7 @@ function Invoke-ClusterSSH {
         $sshExe = Resolve-Path "$ScriptRoot\..\portable\git\usr\bin\ssh.exe"
 
         # debug
-        Write-Host "SSH Path = $sshExe" -ForegroundColor Yellow
+         Write-Host "SSH Path = $sshExe" -ForegroundColor Yellow
 
         & $sshExe -F $config cluster "$cmd"
 

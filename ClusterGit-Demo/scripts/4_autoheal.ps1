@@ -1,7 +1,7 @@
 <#
   4_autoheal.ps1
   - Show current cluster state
-  - Give step-by-step instructions to manually "kill" worker4
+  - Give step-by-step instructions to manually “kill” worker4
   - Show cluster state again after recovery
 #>
 
@@ -33,9 +33,9 @@ ssh "$ServerUser@$ServerHost" 'KUBECONFIG=$HOME/.kube/config kubectl get nodes -
 
 Write-Host ""
 Write-Host "Explain to the audience:" -ForegroundColor Cyan
-Write-Host "  Kubernetes notices the node is NotReady and reschedules workloads or rebuilds replicas (with Longhorn in the full system)."
+Write-Host "  'Kubernetes notices the node is NotReady and reschedules workloads / rebuilds replicas (with Longhorn in the full system).'"
 Write-Host ""
-Read-Host "When you are ready to heal the node, press ENTER for instructions"
+Read-Host "When you're ready to 'heal' the node, press ENTER for instructions"
 
 Write-Host ""
 Write-Host "Step 4: Bring worker4 back up." -ForegroundColor Yellow
@@ -49,5 +49,12 @@ Write-Host "Final cluster state:" -ForegroundColor Yellow
 ssh "$ServerUser@$ServerHost" 'KUBECONFIG=$HOME/.kube/config kubectl get nodes -o wide || echo kubectl failed here. Run it manually in your cluster shell.'
 
 Write-Host ""
-Write-Host "You can now summarize that even when a node fails, the system recovers without losing student submissions."
+Write-Host "You can now summarize: 'Even when a node fails, the system recovers without losing student submissions.'" -ForegroundColor Green
 Write-Host "==== Demo Complete ===="
+
+
+Write-Host ""
+Write-Host "You can now summarize: 'Even when a node fails, the system recovers without losing student submissions.'"
+Write-Host ""
+
+
