@@ -69,7 +69,7 @@ Host *
     User student-demo
     IdentityFile $KeyPath
     StrictHostKeyChecking no
-    UserKnownHostsFile NUL
+    UserKnownHostsFile /dev/null
 
 Host cluster
     HostName 10.27.12.244
