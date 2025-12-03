@@ -1,82 +1,88 @@
-$ScriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
+<# 
+  utilities.ps1
+  - Shared helpers for ClusterGit demo
+  - Sets up portable SSH with quiet logging (no hostkey spam)
+#>
 
+# Basic colored output helpers
 function Write-Section {
     param([string]$Text)
-    Write-Host "`n==== $Text ====" -ForegroundColor Cyan
-}
-function Write-Green($t) { Write-Host $t -ForegroundColor Green }
-function Write-Red($t) { Write-Host $t -ForegroundColor Red }
-function Write-Yellow($t) { Write-Host $t -ForegroundColor Yellow }
-
-# Renamed to avoid recursion!
-function Invoke-ClusterSSH {
-    param([string]$cmd)
-
-    $config = "$ScriptRoot\..\portable\ssh_config"
-
-    if (Test-Path $config) {
-
-        # Explicit path to ssh.exe so PowerShell does NOT call this function
-        $sshExe = Resolve-Path "$ScriptRoot\..\portable\git\usr\bin\ssh.exe"
-
-        # debug
-        Write-Host "SSH Path = $sshExe" -ForegroundColor Yellow
-
-        & $sshExe -F $config cluster "$cmd"
-
-    }
-    else {
-
-        $key = "$ScriptRoot\..\portable\keys\id_rsa"
-        $sshExe = "$ScriptRoot\..\portable\git\usr\bin\ssh.exe"
-
-        & $sshExe `
-            -i $key `
-            -o StrictHostKeyChecking=no `
-            -o UserKnownHostsFile=/dev/null `
-            student-demo@10.27.12.244 "$cmd"
-    }
+    Write-Host ""
+    Write-Host "==== $Text ====" -ForegroundColor Cyan
 }
 
-function Show-ProgressBar {
-    param(
-        [int]$Duration = 20,
-        [string]$Message = "Working..."
-    )
-    for ($i = 0; $i -le $Duration; $i++) {
-        $percent = [math]::Round(($i / $Duration) * 100)
-        Write-Progress -Activity $Message -Status "$percent% Complete" -PercentComplete $percent
-        Start-Sleep -Milliseconds 300
-    }
+function Write-Green {
+    param([string]$Text)
+    Write-Host $Text -ForegroundColor Green
 }
 
-# ------Generate portable SSH config dynamically
-$PortableRoot = Resolve-Path (Join-Path $ScriptRoot "..\portable")
-$KeyPath = Join-Path $PortableRoot "keys\id_rsa"
-$SSHConfigPath = Join-Path $PortableRoot "ssh_config"
-$SSHExe = Join-Path $PortableRoot "git\usr\bin\ssh.exe"
+function Write-Yellow {
+    param([string]$Text)
+    Write-Host $Text -ForegroundColor Yellow
+}
 
-Write-Host "Writing ssh_config to: $SSHConfigPath" -ForegroundColor Cyan
+function Write-Red {
+    param([string]$Text)
+    Write-Host $Text -ForegroundColor Red
+}
 
-# Convert Windows paths to SSH-friendly forward slashes
-$SSHExe        = $SSHExe -replace '\\','/'
-$SSHConfigPath = $SSHConfigPath -replace '\\','/'
-$KeyPath       = $KeyPath -replace '\\','/'
+# ---- Portable SSH wiring ----
 
-#build ssh_config dynamically
-$SSHConfig = @"
+# DemoRoot    = C:\CAPSTONE\ClusterGit-Demo-Portable
+# Scripts dir = C:\CAPSTONE\ClusterGit-Demo-Portable\scripts
+# Portable    = C:\CAPSTONE\ClusterGit-Demo-Portable\portable
+
+$ScriptRoot   = Split-Path -Parent $MyInvocation.MyCommand.Path
+$DemoRoot     = Split-Path -Parent $ScriptRoot
+$PortableDir  = Join-Path $DemoRoot "portable"
+
+# Git for Windows ssh.exe
+$Global:SshExePath    = Join-Path $PortableDir "git\usr\bin\ssh.exe"
+$Global:SshConfigPath = Join-Path $PortableDir "ssh_config"
+
+function Initialize-PortableSSH {
+    if (-not (Test-Path $PortableDir)) {
+        Write-Red "ERROR: portable directory not found at: $PortableDir"
+        return
+    }
+
+    # Minimal config: accept hostkeys quietly, no known_hosts, no info-level spam
+    $configContent = @"
 Host *
-    User student-demo
-    IdentityFile $KeyPath
     StrictHostKeyChecking no
     UserKnownHostsFile /dev/null
-
-Host cluster
-    HostName 10.27.12.244
+    LogLevel ERROR
 "@
 
-# Write ssh_config file
-$SSHConfig | Out-File $SSHConfigPath -Encoding ascii
- 
- #force git to use portable ssh
-$env:GIT_SSH_COMMAND = "$SSHExe -F $SSHConfigPath"
+    $configContent | Set-Content -Encoding ascii $Global:SshConfigPath
+
+    Write-Host "Writing ssh_config to: $Global:SshConfigPath"
+
+    if (Test-Path $Global:SshExePath) {
+        Write-Host "SSH Path = $Global:SshExePath"
+        # Make all git ssh calls use this with our config and quiet logging
+        $env:GIT_SSH_COMMAND = "`"$Global:SshExePath`" -F `"$Global:SshConfigPath`""
+    } else {
+        Write-Yellow "WARNING: ssh.exe not found at $Global:SshExePath"
+    }
+}
+
+function Invoke-ClusterSSH {
+    param(
+        [Parameter(Mandatory=$true)][string]$Command
+    )
+
+    if (-not (Test-Path $Global:SshExePath)) {
+        Write-Red "ERROR: ssh.exe not found at $Global:SshExePath"
+        return
+    }
+
+    # Use quiet logging; host key stuff and banner noise suppressed
+    & $Global:SshExePath `
+        -F $Global:SshConfigPath `
+        "clustergit-pi5-server@10.27.12.244" `
+        $Command
+}
+
+# Initialize SSH wiring as soon as utilities is loaded
+Initialize-PortableSSH
