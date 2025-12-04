@@ -45,7 +45,7 @@ Write-Host "Creating LARGE file (simulated 4GB)..." -ForegroundColor Yellow
 Start-Sleep -Milliseconds 300
 
 for ($i = 1; $i -le 100; $i += 5) {
-    Write-Progress -Activity "Allocating 4GB File..." `
+    Write-Progress "Allocating 4GB File..." `
                     -Status "$i% Complete" `
                     -PercentComplete $i
     Start-Sleep -Milliseconds 40
