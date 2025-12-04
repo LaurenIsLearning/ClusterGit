@@ -1,53 +1,144 @@
-<#
-  4_autoheal.ps1
-  - Show current cluster state
-  - Give step-by-step instructions to manually "kill" worker4
-  - Show cluster state again after recovery
-#>
+#MAIN THINGS TO CHANGE ARE RIGHT HERE
+$Worker4NodeName       = "pi5-worker4"
+$ServerHostAlias       = "clustergit-pi5-server@10.27.12.244" #MAINLY THIS
+$DemoDeploymentName    = "autoheal-demo"
+$DemoLabel             = "app=autoheal-demo"
 
-$ServerUser = "clustergit-pi5-server"
-$ServerHost = "10.27.12.244"
+function SSH-Server {
+    param([string]$cmd)
+    ssh $ServerHostAlias $cmd
+}
 
-$WorkerUser = "clustergit-pi5-worker4"
-$WorkerHost = "10.27.12.233"
+function Kube {
+    param([string]$cmd)
+    SSH-Server "KUBECONFIG=`$HOME/.kube/config kubectl $cmd"
+}
 
-Write-Host "=== ClusterGit Demo: AUTOHEALING ===" -ForegroundColor Cyan
-Write-Host ""
+function Section {
+    param([string]$msg)
+    Write-Host ""
+    Write-Host $msg -ForegroundColor Cyan
+}
 
-Write-Host "Step 1: Show current cluster state..." -ForegroundColor Yellow
-Read-Host "Tell the audience what they are seeing; press ENTER to run 'kubectl get nodes' on the cluster"
-ssh "$ServerUser@$ServerHost" 'KUBECONFIG=$HOME/.kube/config kubectl get nodes -o wide || echo kubectl failed here. Run it manually in your cluster shell.'
+function Prompt {
+    param([string]$msg)
+    Write-Host ""
+    Write-Host $msg -ForegroundColor Yellow
+    Read-Host
+}
 
+function Result {
+    param([string]$msg)
+    Write-Host $msg -ForegroundColor Green
+}
 
-Write-Host ""
-Write-Host "Step 2: Simulate a node failure (worker4)." -ForegroundColor Yellow
-Write-Host "In a separate terminal, run these commands manually:" -ForegroundColor Cyan
-Write-Host "  ssh $WorkerUser@$WorkerHost"
-Write-Host "  sudo systemctl stop k3s-agent"
-Write-Host ""
-Read-Host "After worker4 shows NotReady in 'kubectl get nodes', press ENTER to continue"
+function Show-Nodes {
+    Section "Nodes (worker4 will be drained)"
+    Kube "get nodes"
+}
 
-Write-Host ""
-Write-Host "Step 3: Observe cluster state after failure..." -ForegroundColor Yellow
-ssh "$ServerUser@$ServerHost" 'KUBECONFIG=$HOME/.kube/config kubectl get nodes -o wide || echo kubectl failed here. Run it manually in your cluster shell.'
+function Get-PodsOnWorker4 {
+    Kube ("get pods -A --field-selector spec.nodeName={0} -o custom-columns=NAMESPACE:.metadata.namespace,NAME:.metadata.name,NODE:.spec.nodeName --no-headers" -f $Worker4NodeName)
+}
 
-Write-Host ""
-Write-Host "Explain to the audience:" -ForegroundColor Cyan
-Write-Host "  Kubernetes notices the node is NotReady and reschedules workloads or rebuilds replicas (with Longhorn in the full system)."
-Write-Host ""
-Read-Host "When you are ready to heal the node, press ENTER for instructions"
+function Show-PodsOnWorker4 {
+    Section ("Pods on ${Worker4NodeName}")
+    $pods = Get-PodsOnWorker4
+    if ($pods) {
+        $pods | ForEach-Object { Write-Host $_ }
+    } else {
+        Write-Host ("[None] - no pods currently on {0}." -f $Worker4NodeName)
+    }
+}
 
-Write-Host ""
-Write-Host "Step 4: Bring worker4 back up." -ForegroundColor Yellow
-Write-Host "In that worker4 SSH terminal, run:" -ForegroundColor Cyan
-Write-Host "  sudo systemctl start k3s-agent"
-Write-Host ""
-Read-Host "Once worker4 is Ready again in 'kubectl get nodes', press ENTER to show final state"
+function Get-DemoPodsAllNodes {
+    Kube ("get pods -n default -l {0} -o custom-columns=NAME:.metadata.name,NODE:.spec.nodeName --no-headers" -f $DemoLabel)
+}
 
-Write-Host ""
-Write-Host "Final cluster state:" -ForegroundColor Yellow
-ssh "$ServerUser@$ServerHost" 'KUBECONFIG=$HOME/.kube/config kubectl get nodes -o wide || echo kubectl failed here. Run it manually in your cluster shell.'
+function Show-DemoPods {
+    param([string]$title)
+    Section $title
+    $demoPods = Get-DemoPodsAllNodes
+    if ($demoPods) {
+        $demoPods | ForEach-Object { Result $_ }
+    } else {
+        Write-Host ("[None] - no pods for label {0}." -f $DemoLabel)
+    }
+}
 
-Write-Host ""
-Write-Host "You can now summarize that even when a node fails, the system recovers without losing student submissions."
-Write-Host "==== Demo Complete ===="
+function Ensure-DemoWorkloadOnWorker4 {
+    Section ("Ensure demo workload '${DemoDeploymentName}' exists")
+    $existing = Kube ("get deployment {0} -n default --no-headers 2>/dev/null" -f $DemoDeploymentName)
+
+    if (-not [string]::IsNullOrWhiteSpace($existing)) {
+        Result ("Deployment '${DemoDeploymentName}' already exists")
+        return $false
+    }
+
+    Result ("Creating deployment '${DemoDeploymentName}' (3 replicas)")
+    Kube ("create deployment ${DemoDeploymentName} --image=nginx:stable-alpine -n default") | Out-Null
+    Kube ("scale deployment ${DemoDeploymentName} -n default --replicas=3") | Out-Null
+
+    Start-Sleep -Seconds 10
+
+    $maxTries = 6
+    for ($i = 1; $i -le $maxTries; $i++) {
+        $podsOn4 = Kube ("get pods -n default -l ${DemoLabel} --field-selector spec.nodeName=${Worker4NodeName} -o custom-columns=NAME:.metadata.name,NODE:.spec.nodeName --no-headers")
+
+        if (-not [string]::IsNullOrWhiteSpace($podsOn4)) {
+            Result ("Pod(s) landed on ${Worker4NodeName}:")
+            $podsOn4 | ForEach-Object { Write-Host $_ }
+            return $true
+        }
+
+        Write-Host ("Waiting for scheduling (${i}/${maxTries})...")
+        Start-Sleep -Seconds 10
+    }
+
+    Write-Host "Scheduler did not place demo pod on worker4"
+    return $true
+}
+
+$CreatedDemoDeployment = $false
+
+Show-Nodes
+Prompt "Press ENTER to ensure a demo app is running on worker4"
+
+$CreatedDemoDeployment = Ensure-DemoWorkloadOnWorker4
+
+Show-PodsOnWorker4
+Show-DemoPods "Demo pods BEFORE drain (NAME -> NODE)"
+
+Prompt "Press ENTER to drain worker4 via kubectl"
+
+Section ("Draining ${Worker4NodeName}")
+Kube ("drain ${Worker4NodeName} --ignore-daemonsets --delete-emptydir-data --force")
+
+Start-Sleep -Seconds 10
+
+Section ("Pods on ${Worker4NodeName} AFTER drain")
+$podsAfter = Get-PodsOnWorker4
+if ($podsAfter) {
+    $podsAfter | ForEach-Object { Write-Host $_ }
+} else {
+    Result ("All workloads moved off ${Worker4NodeName}")
+}
+
+Show-DemoPods "Demo pods AFTER drain (NAME -> NODE)"
+
+Prompt "Press ENTER to uncordon worker4"
+
+Section ("Uncordoning ${Worker4NodeName}")
+Kube ("uncordon ${Worker4NodeName}") | Out-Null
+Start-Sleep 5
+Show-Nodes
+
+if ($CreatedDemoDeployment) {
+    $cleanup = Read-Host "Delete demo deployment '${DemoDeploymentName}' now? (Y/N)"
+    if ($cleanup -in @("y","Y","yes","YES")) {
+        Section ("Deleting ${DemoDeploymentName}")
+        Kube ("delete deployment ${DemoDeploymentName} -n default") | Out-Null
+    }
+}
+
+Section "Autoheal demo complete"
