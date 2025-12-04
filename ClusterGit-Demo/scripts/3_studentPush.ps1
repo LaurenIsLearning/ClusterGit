@@ -27,9 +27,6 @@ Write-Host "Uploading LARGE file (simulated 4GB)..."
 Write-Host "Creating dummy file..."
 fsutil file createnew "$LargeFile" 4294967296 | Out-Null
 
-git -C "$RepoPath" annex add "$LargeFile"
 git -C "$RepoPath" commit -m "Add large file"
-git -C "$RepoPath" annex sync
-
 Write-Host "Large file upload started..."
 Read-Host "Press ENTER to continue to Auto-Heal Demo..."
