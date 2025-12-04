@@ -5,6 +5,9 @@
   - Create EMPTY local student-repo
   - Clone empty repo (no commits yet)
 #>
+# Configure commit identity locally (suppresses "tell me who you are" error)
+git config user.name "Student Demo"
+git config user.email "student@purdue.edu"
 
 # ---------- CONFIG ----------
 $DemoUserEmail   = "student@purdue.edu"
