@@ -32,5 +32,6 @@ cmd /c "$SSH $ClusterUser@$ClusterHost kubectl get volumes.longhorn.io -A" 2>$nu
 Write-Host ""
 Write-Host "==== Environment Check Completed ===="
 Write-Host "Cluster is healthy!"
-Read-Host "Next step: Run 2_studentLoginRepo.ps1 — press ENTER"
+Read-Host "Next step: Run 2_studentLoginRepo.ps1 - press ENTER"
+
 
