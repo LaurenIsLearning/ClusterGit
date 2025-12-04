@@ -20,7 +20,7 @@ function Invoke-ClusterSSH {
         $sshExe = Resolve-Path "$ScriptRoot\..\portable\git\usr\bin\ssh.exe"
 
         # debug
-        Write-Host "SSH Path = $sshExe" -ForegroundColor Yellow
+         Write-Host "SSH Path = $sshExe" -ForegroundColor Yellow
 
         & $sshExe -F $config cluster "$cmd"
 
@@ -75,14 +75,10 @@ Host cluster
     HostName 10.27.12.244
 
 Host pi-server 10.27.12.244
-    User clustergit-pi5-server
-    IdentityFile ~/.ssh/pi_cluster_ed25519
-    IdentitiesOnly yes
+    User student-demo
 
 Host pi-worker4 10.27.12.233
-    User clustergit-pi5-worker4
-    IdentityFile ~/.ssh/pi_cluster_ed25519
-    IdentitiesOnly yes
+    User student-demo
 "@
 
 # Write ssh_config file
