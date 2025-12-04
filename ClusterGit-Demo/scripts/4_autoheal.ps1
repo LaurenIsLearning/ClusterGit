@@ -67,37 +67,39 @@ function Show-DemoPods {
 }
 
 function Ensure-DemoWorkloadOnWorker4 {
-    Section ("Ensure demo workload '${DemoDeploymentName}' exists")
-    $existing = Kube ("get deployment {0} -n default --no-headers 2>/dev/null" -f $DemoDeploymentName)
+    Section ("Reset demo workload '{0}'" -f $DemoDeploymentName)
 
-    if (-not [string]::IsNullOrWhiteSpace($existing)) {
-        Result ("Deployment '${DemoDeploymentName}' already exists")
-        return $false
-    }
+    # 1) Delete any existing demo deployment (cleans up old pods too)
+    Write-Host ("Deleting any existing deployment '{0}'..." -f $DemoDeploymentName)
+    Kube ("delete deployment {0} -n default --ignore-not-found" -f $DemoDeploymentName) | Out-Null
 
-    Result ("Creating deployment '${DemoDeploymentName}' (3 replicas)")
-    Kube ("create deployment ${DemoDeploymentName} --image=nginx:stable-alpine -n default") | Out-Null
-    Kube ("scale deployment ${DemoDeploymentName} -n default --replicas=3") | Out-Null
+    # 2) Recreate with a known replica count (4) so it can spread across nodes
+    Result ("Recreating deployment '{0}' with 4 replicas" -f $DemoDeploymentName)
+    Kube ("create deployment {0} --image=nginx:stable-alpine -n default" -f $DemoDeploymentName) | Out-Null
+    Kube ("scale deployment {0} -n default --replicas=4" -f $DemoDeploymentName) | Out-Null
 
+    # 3) Wait for at least one demo pod to land on worker4
     Start-Sleep -Seconds 10
 
     $maxTries = 6
     for ($i = 1; $i -le $maxTries; $i++) {
-        $podsOn4 = Kube ("get pods -n default -l ${DemoLabel} --field-selector spec.nodeName=${Worker4NodeName} -o custom-columns=NAME:.metadata.name,NODE:.spec.nodeName --no-headers")
+        $podsOn4 = Kube ("get pods -n default -l {0} --field-selector spec.nodeName={1} -o custom-columns=NAME:.metadata.name,NODE:.spec.nodeName --no-headers" -f $DemoLabel, $Worker4NodeName)
 
         if (-not [string]::IsNullOrWhiteSpace($podsOn4)) {
-            Result ("Pod(s) landed on ${Worker4NodeName}:")
+            Result ("Demo pod(s) on {0}:" -f $Worker4NodeName)
             $podsOn4 | ForEach-Object { Write-Host $_ }
-            return $true
+            return $true   # we created it fresh, so it's safe to offer cleanup later
         }
 
-        Write-Host ("Waiting for scheduling (${i}/${maxTries})...")
+        Write-Host ("Waiting for a demo pod to land on {0} ({1}/{2})..." -f $Worker4NodeName, $i, $maxTries)
         Start-Sleep -Seconds 10
     }
 
-    Write-Host "Scheduler did not place demo pod on worker4"
+    Write-Host ("Demo deployment created, but scheduler never placed a pod on {0}." -f $Worker4NodeName)
     return $true
 }
+
+
 
 $CreatedDemoDeployment = $false
 
@@ -112,7 +114,9 @@ Show-DemoPods "Demo pods BEFORE drain (NAME -> NODE)"
 Prompt "Press ENTER to drain worker4 via kubectl"
 
 Section ("Draining ${Worker4NodeName}")
-Kube ("drain ${Worker4NodeName} --ignore-daemonsets --delete-emptydir-data --force")
+$drainCmd    = ("drain {0} --ignore-daemonsets --delete-emptydir-data --force" -f $Worker4NodeName)
+$drainOutput = Kube ("{0} 2>&1" -f $drainCmd)  # kept in case you need to debug later
+Result ("Drain command completed for {0}" -f $Worker4NodeName)
 
 Start-Sleep -Seconds 10
 
@@ -134,7 +138,7 @@ Start-Sleep 5
 Show-Nodes
 
 if ($CreatedDemoDeployment) {
-    $cleanup = Read-Host "Delete demo deployment '${DemoDeploymentName}' now? (Y/N)"
+    $cleanup = 'Y'
     if ($cleanup -in @("y","Y","yes","YES")) {
         Section ("Deleting ${DemoDeploymentName}")
         Kube ("delete deployment ${DemoDeploymentName} -n default") | Out-Null
