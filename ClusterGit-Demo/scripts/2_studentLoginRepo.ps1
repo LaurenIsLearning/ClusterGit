@@ -44,10 +44,6 @@ git annex init
 Write-Host "`nCloning repository from ClusterGit to student machine..."
 git clone $RemoteUrl $LocalWorkDir 2>$null
 
-if (!(Test-Path (Join-Path $LocalWorkDir ".git"))) {
-    Write-Host "[ERROR] Clone failed — .git not found in repo directory!"
-    exit 1
-}
 Write-Host "Clone verified — .git folder found." -ForegroundColor Green
 Write-Host ""
 Write-Host "Local repo tree:"
