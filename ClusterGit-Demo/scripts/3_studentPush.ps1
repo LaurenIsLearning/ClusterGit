@@ -6,6 +6,10 @@
 #>
 
 # ---------- CONFIG ----------
+#If it doesn't work check if you need to put the path to the ssh_config file here
+$env:GIT_SSH_COMMAND = "ssh -F C:/Users/12604/OneDrive/Documents/GitHub/ClusterGit-Demo-Portable/portable/ssh_config"
+
+#Suppresses all ssh warnings
 $env:GIT_SSH_COMMAND = "ssh -q -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
 
 Write-Host "=== ClusterGit Demo: STUDENT PUSH LARGE FILE ===" -ForegroundColor Cyan
