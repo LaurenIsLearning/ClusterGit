@@ -5,6 +5,9 @@
   - Create EMPTY local student-repo
   - Clone empty repo (no commits yet)
 #>
+# Configure commit identity locally (suppresses "tell me who you are" error)
+git config --global user.name "Student Demo"
+git config --global user.email "student@purdue.edu"
 
 # ---------- CONFIG ----------
 $DemoUserEmail   = "student@purdue.edu"
@@ -47,4 +50,3 @@ git clone $RemoteUrl $LocalWorkDir
 
 Write-Host "`nLocal clone created successfully."
 Read-Host "Press ENTER to continue to Student File Upload..."
-
