@@ -1,4 +1,7 @@
 # 3_studentPush.ps1 – fixed fatal error
+# Configure commit identity locally (suppresses "tell me who you are" error)
+git config user.name "Student Demo"
+git config user.email "student@purdue.edu"
 
 Write-Host "=== ClusterGit Demo: STUDENT PUSH LARGE FILE ===" -ForegroundColor Cyan
 
