@@ -1,10 +1,10 @@
-<#
+<# 
   2_studentLoginRepo.ps1
-  Phase 2: Student Login + Repo Setup
+  - Fake “login”
+  - Create EMPTY /srv/git/demo.git on the cluster
+  - Create EMPTY local student-repo
+  - Clone empty repo (no commits yet)
 #>
-
-# Force Git to use custom SSH config and suppress warnings
-$env:GIT_SSH_COMMAND = "ssh -F C:/CAPSTONE/ClusterGit-Demo-Portable/portable/ssh_config"
 
 # ---------- CONFIG ----------
 $DemoUserEmail   = "student@purdue.edu"
@@ -14,8 +14,9 @@ $ClusterUser     = "clustergit-pi5-server"
 $ClusterHost     = "10.27.12.244"
 $RemoteRepoPath  = "/srv/git/demo.git"
 
-# Correct URL format
-$RemoteUrl = "ssh://$ClusterUser@$ClusterHost$RemoteRepoPath"
+# FIXED URL BUILDING
+$RemoteUrl       = "ssh://$ClusterUser@${ClusterHost}:$RemoteRepoPath"
+
 
 $LocalWorkDir    = Join-Path $PSScriptRoot "student-repo"
 # -----------------------------
@@ -25,14 +26,14 @@ Write-Host "Email : $DemoUserEmail"
 Write-Host "Token : $($DemoUserToken.Substring(0,8))***"
 Read-Host "Press ENTER to continue"
 
-# Reset local repo
+# ----- Reset local repo -----
 Write-Host "Recreating local repo folder..."
 if (Test-Path $LocalWorkDir) { Remove-Item -Recurse -Force $LocalWorkDir }
 New-Item -ItemType Directory -Path $LocalWorkDir | Out-Null
 
-# Reset cluster bare repo
+# ----- Reset cluster bare repo -----
 Write-Host "`nEnsuring empty bare repo exists on the cluster at $RemoteRepoPath ..."
-ssh $ClusterUser@$ClusterHost @"
+ssh "$ClusterUser@$ClusterHost" @"
 rm -rf $RemoteRepoPath
 mkdir -p /srv/git
 git init --bare $RemoteRepoPath
@@ -40,20 +41,9 @@ cd $RemoteRepoPath
 git annex init
 "@ 2>$null
 
-# Clone repo
-Write-Host "`nCloning repository from ClusterGit to student machine..."
-git clone $RemoteUrl $LocalWorkDir 2>$null
+# ----- Clone empty repo -----
+Write-Host "`nStudent cloning clean repository from the cluster..."
+git clone $RemoteUrl $LocalWorkDir
 
-Write-Host "Clone verified — .git folder found." -ForegroundColor Green
-Write-Host ""
-Write-Host "Local repo tree:"
-Get-ChildItem $LocalWorkDir | Format-Table Name
-Write-Host ""
-
+Write-Host "`nLocal clone created successfully."
 Read-Host "Press ENTER to continue to Student File Upload..."
-
-
-Write-Host ""
-Write-Host "Local repo created successfully (no commits yet)."
-Read-Host "Press ENTER to continue to Student File Upload..."
-
