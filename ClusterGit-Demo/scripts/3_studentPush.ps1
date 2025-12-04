@@ -1,9 +1,16 @@
+<#
+  3_studentPush.ps1
+  - Student pushes a (large) file to the repo.
+  - Fake progress bar
+  - Shows clean tree output
+#>
+
 # ---------- CONFIG ----------
 $env:GIT_SSH_COMMAND = "ssh -q -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
 
 Write-Host "=== ClusterGit Demo: STUDENT PUSH LARGE FILE ===" -ForegroundColor Cyan
 
-$LocalPath    = Join-Path $PSScriptRoot "student-repo"
+$LocalPath = Join-Path $PSScriptRoot "student-repo"
 $LargeFile = Join-Path $LocalPath "largefileexample"
 
 Write-Host $LocalPath
@@ -14,7 +21,7 @@ git config user.name  "Student" | Out-Null
 git config user.email "student@purdue.edu" | Out-Null
 
 # Clean previous runs
-Write-Host "Clean up from last run" -ForegroundColor Yellow
+Write-Host "Clean up from last run..." -ForegroundColor Yellow
 git annex drop largefileexample --from=origin --force --quiet 2>$null
 git commit -am "Remove large file" --quiet 2>$null
 git annex sync --quiet 2>$null
@@ -32,51 +39,41 @@ Write-Host "Initial commit successful!" -ForegroundColor Green
 Write-Host ""
 
 # -------------------------------------------
-# PROGRESS BAR ADDITION
+# FAST PROGRESS BAR (fake)
 # -------------------------------------------
-Write-Host "Creating a LARGE file (simulated 4GB)..." -ForegroundColor Yellow
+Write-Host "Creating LARGE file (simulated 4GB)..." -ForegroundColor Yellow
+Start-Sleep -Milliseconds 300
 
-# 4GB in 200MB chunks for progress feedback
-$chunkSize = 200MB
-$totalSize = 4GB
-$iterations = [math]::Ceiling($totalSize / $chunkSize)
-$progress = 0
-
-# Create empty file first
+for ($i = 1; $i -le 100; $i += 5) {
+    Write-Progress -Activity "Allocating 4GB File..." `
+                    -Status "$i% Complete" `
+                    -PercentComplete $i
+    Start-Sleep -Milliseconds 40
+}
 fsutil file createnew "$LargeFile" 1 | Out-Null
-
-$stream = [System.IO.File]::OpenWrite($LargeFile)
-try {
-    for ($i = 1; $i -le $iterations; $i++) {
-        $null = $stream.Seek($chunkSize, 'Current')
-        $progress = [math]::Round(($i / $iterations) * 100)
-        Write-Progress -Activity "Allocating 4GB File..." `
-                        -Status "$progress% Complete" `
-                        -PercentComplete $progress
-    }
-}
-finally {
-    $stream.Close()
-}
+Write-Progress -Completed
 Write-Host "File Created!" -ForegroundColor Green
 
 Write-Host ""
-Write-Host "Pushing large file to the cluster (this takes a while)..." -ForegroundColor Yellow
+Write-Host "Pushing large file to the cluster (this continues during node failure)..." -ForegroundColor Yellow
+
 git -C "$LocalPath" annex add "$LargeFile" --quiet
-git -C "$LocalPath" commit -m "Add large file"  --quiet 2>$null
+git -C "$LocalPath" commit -m "Add large file" --quiet 2>$null
 git -C "$LocalPath" annex sync --quiet 2>$null
 
 Write-Host "Push Successful!" -ForegroundColor Green
 
 # -------------------------------------------
-# TREE-STYLE OUTPUT ADDITION
+# CLEAN TREE OUTPUT
 # -------------------------------------------
 Write-Host "`nRepository structure:" -ForegroundColor Cyan
 
-$tree = & cmd /c "tree `"$LocalPath`" /F"
-Write-Host $tree
+$treeLines = & cmd /c "tree `"$LocalPath`" /F"
+$relativeTree = $treeLines -replace [regex]::Escape($LocalPath), "."
+Write-Host $relativeTree
 
-Write-Host "`nLarge file upload started..." -ForegroundColor Cyan
+Write-Host "`nLarge file upload continues in background..." -ForegroundColor Cyan
+
 
 
 Write-Host "Push Successful!" -ForegroundColor Green
