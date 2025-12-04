@@ -10,7 +10,7 @@ $env:GIT_SSH_COMMAND = "ssh -F C:/CAPSTONE/ClusterGit-Demo-Portable/portable/ssh
 $ClusterUser     = "clustergit-pi5-server"
 $ClusterHost     = "10.27.12.244"
 $RemoteRepoPath  = "/srv/git/demo.git"
-$RemoteUrl       = "ssh://$ClusterUser@$ClusterHost:$RemoteRepoPath"
+$RemoteUrl = "ssh://$ClusterUser@$ClusterHost$RemoteRepoPath"
 
 $LocalWorkDir    = Join-Path $PSScriptRoot "student-repo"
 $DemoBigFile     = Join-Path $LocalWorkDir "big-project-file.bin"
