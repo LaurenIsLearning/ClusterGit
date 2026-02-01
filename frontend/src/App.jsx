@@ -1,4 +1,5 @@
 import { Routes, Route, Navigate } from 'react-router-dom';
+import { useApp } from './context/AppContext';
 import PublicLayout from './layouts/PublicLayout';
 import DashboardLayout from './layouts/DashboardLayout';
 import Landing from './pages/Landing';
@@ -18,6 +19,28 @@ const Placeholder = ({ title }) => (
   </div>
 );
 
+// Protected Route wrapper
+function ProtectedRoute({ children }) {
+  const { user, isLoading } = useApp();
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[--accent-primary] mx-auto mb-4"></div>
+          <p className="text-[--text-secondary]">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return <Navigate to="/login" replace />;
+  }
+
+  return children;
+}
+
 function App() {
   return (
     <Routes>
@@ -28,7 +51,11 @@ function App() {
       </Route>
 
       {/* Authenticated Dashboard Routes */}
-      <Route element={<DashboardLayout />}>
+      <Route element={
+        <ProtectedRoute>
+          <DashboardLayout />
+        </ProtectedRoute>
+      }>
         <Route path="/dashboard" element={<StudentDashboard />} />
         <Route path="/projects" element={<StudentProjects />} />
         <Route path="/settings" element={<StudentSettings />} />
@@ -45,3 +72,4 @@ function App() {
 }
 
 export default App;
+

@@ -1,75 +1,144 @@
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
-import { User, ShieldCheck } from 'lucide-react';
+import { User, Mail, Lock, AlertCircle } from 'lucide-react';
 import { useToast } from '../context/ToastContext';
 
 export default function Login() {
-    const { login, isLoading } = useApp();
+    const { login, register, isLoading } = useApp();
     const navigate = useNavigate();
     const { addToast } = useToast();
 
-    const handleLogin = async (role) => {
-        await login(role);
-        addToast(`Welcome back, ${role === 'student' ? 'Student' : 'Administrator'}`, 'success');
-        navigate(role === 'student' ? '/dashboard' : '/admin');
+    const [isRegisterMode, setIsRegisterMode] = useState(false);
+    const [email, setEmail] = useState('');
+    const [password, setPassword] = useState('');
+    const [error, setError] = useState('');
+
+    const handleSubmit = async (e) => {
+        e.preventDefault();
+        setError('');
+
+        if (!email || !password) {
+            setError('Please fill in all fields');
+            return;
+        }
+
+        if (password.length < 6) {
+            setError('Password must be at least 6 characters');
+            return;
+        }
+
+        const result = isRegisterMode
+            ? await register(email, password)
+            : await login(email, password);
+
+        if (result.success) {
+            addToast(
+                isRegisterMode
+                    ? 'Account created successfully! Welcome to ClusterGit.'
+                    : 'Welcome back!',
+                'success'
+            );
+            navigate('/dashboard');
+        } else {
+            setError(result.error || 'Authentication failed');
+        }
     };
-
-
 
     return (
         <div className="flex items-center justify-center min-h-[80vh] px-4">
-            <div className="w-full max-w-4xl grid md:grid-cols-2 gap-8">
-                {/* Student Login Card */}
-                <div
-                    onClick={() => handleLogin('student')}
-                    className="group relative cursor-pointer overflow-hidden rounded-2xl border border-[--border-color] bg-[--bg-secondary] p-8 hover:border-[--accent-primary] transition-all"
-                >
-                    <div className="absolute inset-0 bg-gradient-to-br from-blue-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
-
-                    <div className="relative z-10 flex flex-col items-center text-center space-y-6">
-                        <div className="h-20 w-20 rounded-2xl bg-[--bg-tertiary] flex items-center justify-center group-hover:scale-110 transition-transform">
-                            <User className="h-10 w-10 text-[--accent-primary]" />
+            <div className="w-full max-w-md">
+                <div className="rounded-2xl border border-[--border-color] bg-[--bg-secondary] p-8">
+                    <div className="flex flex-col items-center text-center space-y-4 mb-8">
+                        <div className="h-16 w-16 rounded-2xl bg-[--bg-tertiary] flex items-center justify-center">
+                            <User className="h-8 w-8 text-[--accent-primary]" />
                         </div>
-
                         <div>
-                            <h2 className="text-2xl font-bold mb-2">Student Access</h2>
+                            <h2 className="text-2xl font-bold mb-2">
+                                {isRegisterMode ? 'Create Account' : 'Student Login'}
+                            </h2>
                             <p className="text-[--text-secondary]">
-                                Manage your project files, view quotas, and access your repositories.
+                                {isRegisterMode
+                                    ? 'Sign up to access your ClusterGit portal'
+                                    : 'Sign in to access your projects and repositories'}
                             </p>
                         </div>
-
-                        <button disabled={isLoading} className="btn btn-secondary w-full group-hover:bg-[--accent-primary] group-hover:text-white">
-                            {isLoading ? 'Connecting...' : 'Continue as Student'}
-                        </button>
                     </div>
-                </div>
 
-                {/* Admin Login Card */}
-                <div
-                    onClick={() => handleLogin('admin')}
-                    className="group relative cursor-pointer overflow-hidden rounded-2xl border border-[--border-color] bg-[--bg-secondary] p-8 hover:border-[--status-warning] transition-all"
-                >
-                    <div className="absolute inset-0 bg-gradient-to-br from-amber-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+                    <form onSubmit={handleSubmit} className="space-y-4">
+                        {error && (
+                            <div className="flex items-center gap-2 p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-red-500">
+                                <AlertCircle className="h-5 w-5 flex-shrink-0" />
+                                <span className="text-sm">{error}</span>
+                            </div>
+                        )}
 
-                    <div className="relative z-10 flex flex-col items-center text-center space-y-6">
-                        <div className="h-20 w-20 rounded-2xl bg-[--bg-tertiary] flex items-center justify-center group-hover:scale-110 transition-transform">
-                            <ShieldCheck className="h-10 w-10 text-[--status-warning]" />
+                        <div>
+                            <label className="block text-sm font-medium mb-2">Email</label>
+                            <div className="relative">
+                                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-[--text-muted]" />
+                                <input
+                                    type="email"
+                                    value={email}
+                                    onChange={(e) => setEmail(e.target.value)}
+                                    placeholder="student@university.edu"
+                                    className="w-full pl-10 pr-4 py-2.5 rounded-lg border border-[--border-color] bg-[--bg-tertiary] focus:outline-none focus:ring-2 focus:ring-[--accent-primary]"
+                                    disabled={isLoading}
+                                />
+                            </div>
                         </div>
 
                         <div>
-                            <h2 className="text-2xl font-bold mb-2">Admin Console</h2>
-                            <p className="text-[--text-secondary]">
-                                Monitor cluster health, manage nodes, and configure user allocations.
-                            </p>
+                            <label className="block text-sm font-medium mb-2">Password</label>
+                            <div className="relative">
+                                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-[--text-muted]" />
+                                <input
+                                    type="password"
+                                    value={password}
+                                    onChange={(e) => setPassword(e.target.value)}
+                                    placeholder="••••••••"
+                                    className="w-full pl-10 pr-4 py-2.5 rounded-lg border border-[--border-color] bg-[--bg-tertiary] focus:outline-none focus:ring-2 focus:ring-[--accent-primary]"
+                                    disabled={isLoading}
+                                />
+                            </div>
+                            {isRegisterMode && (
+                                <p className="text-xs text-[--text-muted] mt-1">
+                                    Must be at least 6 characters
+                                </p>
+                            )}
                         </div>
 
-                        <button disabled={isLoading} className="btn btn-secondary w-full group-hover:bg-[--status-warning] group-hover:text-white">
-                            {isLoading ? 'Connecting...' : 'Continue as Admin'}
+                        <button
+                            type="submit"
+                            disabled={isLoading}
+                            className="btn btn-primary w-full"
+                        >
+                            {isLoading
+                                ? 'Processing...'
+                                : isRegisterMode
+                                    ? 'Create Account'
+                                    : 'Sign In'}
+                        </button>
+                    </form>
+
+                    <div className="mt-6 text-center">
+                        <button
+                            onClick={() => {
+                                setIsRegisterMode(!isRegisterMode);
+                                setError('');
+                                setEmail('');
+                                setPassword('');
+                            }}
+                            className="text-sm text-[--accent-primary] hover:underline"
+                            disabled={isLoading}
+                        >
+                            {isRegisterMode
+                                ? 'Already have an account? Sign in'
+                                : "Don't have an account? Sign up"}
                         </button>
                     </div>
                 </div>
             </div>
-
         </div>
     );
 }

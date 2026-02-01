@@ -15,14 +15,8 @@ export default function DashboardLayout() {
     const { user, logout } = useApp();
     const navigate = useNavigate();
 
-    if (!user) {
-        // In a real app we'd redirect, but for prototype maybe we handle it in App.jsx routing
-        // or just safeguard here
-        return null;
-    }
-
-    const handleLogout = () => {
-        logout();
+    const handleLogout = async () => {
+        await logout();
         navigate('/');
     };
 
