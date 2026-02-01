@@ -13,7 +13,9 @@ export function AppProvider({ children }) {
         setAuthError(null);
         try {
             const data = await authService.register(email, password);
-            setUser(data.user);
+            // Add default student role
+            const userWithRole = { ...data.user, role: 'student' };
+            setUser(userWithRole);
             return { success: true, data };
         } catch (error) {
             setAuthError(error.message);
@@ -28,7 +30,9 @@ export function AppProvider({ children }) {
         setAuthError(null);
         try {
             const data = await authService.login(email, password);
-            setUser(data.user);
+            // Add default student role
+            const userWithRole = { ...data.user, role: 'student' };
+            setUser(userWithRole);
             return { success: true, data };
         } catch (error) {
             setAuthError(error.message);
@@ -54,7 +58,9 @@ export function AppProvider({ children }) {
             try {
                 const session = await authService.getSession();
                 if (session?.user) {
-                    setUser(session.user);
+                    // Add default student role
+                    const userWithRole = { ...session.user, role: 'student' };
+                    setUser(userWithRole);
                 }
             } catch (error) {
                 console.error('Session restore error:', error);
@@ -68,7 +74,9 @@ export function AppProvider({ children }) {
         // Listen for auth state changes
         const { data: { subscription } } = authService.onAuthStateChange((event, session) => {
             if (event === 'SIGNED_IN') {
-                setUser(session?.user || null);
+                // Add default student role
+                const userWithRole = session?.user ? { ...session.user, role: 'student' } : null;
+                setUser(userWithRole);
             } else if (event === 'SIGNED_OUT') {
                 setUser(null);
             }

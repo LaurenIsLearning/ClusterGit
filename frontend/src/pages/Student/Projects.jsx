@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
-import { mockService } from '../../services/mockData';
+import { projectService } from '../../services/projectService';
 import { FolderGit2, FileCode, Film, Database, HardDrive, Plus, MoreVertical, Github } from 'lucide-react';
 import UploadModal from '../../components/UploadModal';
+import NewProjectModal from '../../components/NewProjectModal';
 import { useToast } from '../../context/ToastContext';
 
 export default function StudentProjects() {
@@ -9,22 +10,37 @@ export default function StudentProjects() {
     const [selectedProject, setSelectedProject] = useState(null);
     const [files, setFiles] = useState([]);
     const [isUploadOpen, setIsUploadOpen] = useState(false);
+    const [isNewProjectOpen, setIsNewProjectOpen] = useState(false);
     const [loading, setLoading] = useState(true);
     const { addToast } = useToast();
 
     // Load projects on mount
     useEffect(() => {
-        mockService.getProjects().then(data => {
-            setProjects(data);
-            if (data.length > 0) setSelectedProject(data[0].id);
-            setLoading(false);
-        });
+        loadProjects();
     }, []);
+
+    const loadProjects = async () => {
+        try {
+            setLoading(true);
+            const data = await projectService.getMyProjects();
+            setProjects(data);
+            if (data.length > 0 && !selectedProject) {
+                setSelectedProject(data[0].id);
+            }
+        } catch (error) {
+            console.error('Failed to load projects:', error);
+            addToast('Failed to load projects', 'error');
+        } finally {
+            setLoading(false);
+        }
+    };
 
     // Load files when project changes
     useEffect(() => {
         if (selectedProject) {
-            mockService.getProjectFiles(selectedProject).then(setFiles);
+            // For now, files are not implemented
+            // In the future, this would fetch git-annex tracked files
+            setFiles([]);
         }
     }, [selectedProject]);
 
@@ -41,11 +57,21 @@ export default function StudentProjects() {
     };
 
     const handleNewProject = () => {
-        addToast("Create Project Wizard not implemented in prototype", "info");
+        setIsNewProjectOpen(true);
+    };
+
+    const handleCreateProject = async (name, description) => {
+        try {
+            await projectService.createProject(name, description);
+            addToast('Project created successfully!', 'success');
+            await loadProjects();
+        } catch (error) {
+            throw error; // Let modal handle the error display
+        }
     };
 
     const handleFileAction = (fileName) => {
-        addToast(`Options for ${fileName} coming soon`, "info");
+        addToast(`Options for ${fileName} coming soon`, 'info');
     };
 
     if (loading) return <div className="p-10 text-center">Loading projects...</div>;
@@ -59,6 +85,12 @@ export default function StudentProjects() {
                 isOpen={isUploadOpen}
                 onClose={() => setIsUploadOpen(false)}
                 onComplete={handleUploadComplete}
+            />
+
+            <NewProjectModal
+                isOpen={isNewProjectOpen}
+                onClose={() => setIsNewProjectOpen(false)}
+                onCreateProject={handleCreateProject}
             />
 
             {/* Project List Sidebar */}
