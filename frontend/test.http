@@ -1,0 +1,24 @@
+### REGISTER
+POST http://localhost:3000/api/auth/register
+Content-Type: application/json
+{
+"email": "test@pfw.edu",
+"password": "password123"
+}
+### LOGIN
+POST http://localhost:3000/api/auth/login
+Content-Type: application/json
+{
+"email": "test@pfw.edu",
+"password": "password123"
+}
+### CREATE REPO
+POST http://localhost:3000/api/repos/create
+Authorization: Bearer {{token}}
+Content-Type: application/json
+{
+"repo_name": "big-project"
+}
+### LIST MY REPOS
+GET http://localhost:3000/api/repos/my
+Authorization: Bearer {{token}}

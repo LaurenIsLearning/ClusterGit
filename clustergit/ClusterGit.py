@@ -15,8 +15,9 @@ def cli():
 @click.argument("remote", required=False)
 @click.argument("remote_name", required=False, default="origin")
 @click.option("-w", "--welcome", is_flag=True, help="Displays the ClusterGit logo before initializing the repo")
+@click.option("-b", "--bare", is_flag=True, help="Initializes a bare repository")
 
-def gitinit(welcome, directory, remote, remote_name):
+def gitinit(welcome, bare, directory, remote, remote_name):
     if welcome:
         clusterGit = ("""
   ______   __                        __                           ______   __    __     
@@ -33,7 +34,10 @@ def gitinit(welcome, directory, remote, remote_name):
 
     #Initializes the repo with subprocess commands
     click.echo(f"Initializing git-annex repo in: {directory}")
-    subprocess.run(["git", "init", directory])
+    init_cmd = ["git", "init", directory]
+    if(bare):
+        init_cmd += ["--bare"]
+    subprocess.run(init_cmd)
     subprocess.run(["git", "annex", "init"], cwd=directory)
 
     if remote:
@@ -75,16 +79,22 @@ def push(files, remote, message, branch):
 
     subprocess.run(["git", "add", *files], check=True)
 
-    if(message):
-        subprocess.run(["git", "commit", "-m", message])
-    else:
-        subprocess.run(["git", "commit"], check=False)
-    if(branch):
-        subprocess.run(["git", "push", remote, branch], check=True)
-    else:
-        subprocess.run(["git", "push", remote], check=True)
+    commit_cmd = ["git", "commit"]
 
-    subprocess.run(["git-annex", "push", remote], check=True)
+    if(message):
+        commit_cmd += ["-m", message]
+    subprocess.run(commit_cmd, check=False)
+
+    push_cmd = ["git", "push", remote]
+
+    if(branch):
+        push_cmd += [branch]
+
+    try:
+        subprocess.run(push_cmd, check=True)
+        subprocess.run(["git", "annex", "push", remote], check=True)
+    except subprocess.CalledProcessError as error:
+        click.echo(click.style(f"Push failed: {error}", fg="red"))
 
 @cli.command(help="Allows the user to pull from a repository")
 
@@ -95,12 +105,14 @@ def push(files, remote, message, branch):
 
 def pull(remote, branch):
 
+    pull_cmd = ["git", "pull", remote]
     if(branch):
-        subprocess.run(["git", "pull", remote, branch], check=True)
-    else:
-        subprocess.run(["git", "pull", remote], check=True)
-
-    subprocess.run(["git", "annex", "get"], check=True)
+        pull_cmd += [branch]
+    try:
+        subprocess.run(pull_cmd, check=True)
+        subprocess.run(["git", "annex", "get"], check=True)
+    except subprocess.CalledProcessError as error:
+        click.echo(click.style(f"Pull failed: {error}", fg="red"))
 
 @cli.command(help="Syncs local and remote repositories")
 
@@ -111,16 +123,17 @@ def pull(remote, branch):
 
 def sync(remote, content):
 
-    cmd = ["git", "annex", "sync"]
+    sync_cmd = ["git", "annex", "sync"]
 
     if(remote):
-        cmd.append(remote)
-
+        sync_cmd += [remote]
     if(content):
-        cmd.append("--content")
+        sync_cmd += ["--content"]
 
-    subprocess.run(cmd, check=True)
+    try:
+        subprocess.run(sync_cmd, check=True)
+    except subprocess.CalledProcessError as error:
+        click.echo(click.style(f"Sync failed: {error}", fg="red"))
 
 if __name__ == '__main__':
     cli()
-
