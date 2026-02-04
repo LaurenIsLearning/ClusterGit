@@ -1,0 +1,19 @@
+node_modules
+.env
+
+#for demo to ignore keys and portable git files
+# Ignore portable runtime
+portable/
+keys/
+*.zip
+*.7z
+*.exe
+*.bin
+*.iso
+*.img
+
+# Ignore runtime copies
+ClusterGit-Demo-Portable/
+ClusterGit-Demo/portable/
+ClusterGit-Demo/keys/
+ClusterGit-Demo/assets/*.bin
