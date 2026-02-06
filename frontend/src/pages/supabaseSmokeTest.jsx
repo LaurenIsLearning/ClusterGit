@@ -1,8 +1,10 @@
 import { useEffect, useState } from "react";
 import { supabase } from "../services/supabaseClient";
 
+
 export default function SupabaseSmokeTest() {
   const [state, setState] = useState({ loading: true });
+  const { data } = await supabase.auth.getSession();
 
   useEffect(() => {
     (async () => {
@@ -24,4 +26,5 @@ export default function SupabaseSmokeTest() {
     </div>
   );
 }
+
 
