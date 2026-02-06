@@ -1,8 +1,3 @@
-import SupabaseSmokeTest from "./pages/SupabaseSmokeTest";
-
-export default function App() {
-  return <SupabaseSmokeTest />;
-}
 
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { useApp } from './context/AppContext';
