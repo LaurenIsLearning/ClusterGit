@@ -1,4 +1,4 @@
-
+import SupabaseSmokeTest from "./pages/SupabaseSmokeTest";
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { useApp } from './context/AppContext';
 import PublicLayout from './layouts/PublicLayout';
