@@ -1,66 +1,129 @@
+// frontend/src/context/AuthContext.jsx
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import { supabase } from "../services/supabaseClient";
+import { authService } from "../services/authService";
 
 const AuthContext = createContext(null);
+
+async function fetchRoleForUser(userId) {
+  if (!userId) return null;
+
+  const { data, error } = await supabase
+    .from("user_profiles")
+    .select("role")
+    .eq("user_id", userId)
+    .single();
+
+  if (error) return null; // row missing or RLS blocked
+  return data?.role ?? null;
+}
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [role, setRole] = useState(null);
+
   const [loading, setLoading] = useState(true);
+  const [authError, setAuthError] = useState(null);
 
-  async function loadRole(uid) {
-    if (!uid) {
-      setRole(null);
-      return;
-    }
-    const { data, error } = await supabase
-      .from("user_profiles")
-      .select("role")
-      .eq("user_id", uid)
-      .single();
+  const syncUserAndRole = async (sessionUser) => {
+    setUser(sessionUser ?? null);
+    const r = await fetchRoleForUser(sessionUser?.id);
+    setRole(r);
+  };
 
-    if (error) {
-      // Don’t crash the app; just treat as unknown role
-      setRole(null);
-      return;
-    }
-    setRole(data?.role ?? null);
-  }
-
+  // Initial session restore + listener
   useEffect(() => {
-    let mounted = true;
+    let alive = true;
 
     (async () => {
-      const { data } = await supabase.auth.getSession();
-      const sessionUser = data?.session?.user ?? null;
+      try {
+        const session = await authService.getSession();
+        if (!alive) return;
 
-      if (!mounted) return;
-      setUser(sessionUser);
-      await loadRole(sessionUser?.id);
-      setLoading(false);
+        const sessionUser = session?.user ?? null;
+        await syncUserAndRole(sessionUser);
+      } catch (e) {
+        if (!alive) return;
+        setAuthError(e?.message ?? String(e));
+      } finally {
+        if (alive) setLoading(false);
+      }
     })();
 
-    const { data: sub } = supabase.auth.onAuthStateChange(async (_event, session) => {
-      const sessionUser = session?.user ?? null;
-      setUser(sessionUser);
-      await loadRole(sessionUser?.id);
+    const { data: sub } = authService.onAuthStateChange(async (_event, session) => {
+      setLoading(true);
+      setAuthError(null);
+      await syncUserAndRole(session?.user ?? null);
       setLoading(false);
     });
 
     return () => {
-      mounted = false;
+      alive = false;
       sub?.subscription?.unsubscribe?.();
     };
   }, []);
+
+  // Auth actions
+  const register = async (email, password) => {
+    setLoading(true);
+    setAuthError(null);
+    try {
+      const data = await authService.register(email, password);
+      // Supabase may require email confirmation; session might be null
+      const sessionUser = data?.user ?? null;
+      await syncUserAndRole(sessionUser);
+      return { success: true, data };
+    } catch (e) {
+      setAuthError(e?.message ?? String(e));
+      return { success: false, error: e?.message ?? String(e) };
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const login = async (email, password) => {
+    setLoading(true);
+    setAuthError(null);
+    try {
+      const data = await authService.login(email, password);
+      const sessionUser = data?.user ?? null;
+      await syncUserAndRole(sessionUser);
+      return { success: true, data };
+    } catch (e) {
+      setAuthError(e?.message ?? String(e));
+      return { success: false, error: e?.message ?? String(e) };
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const logout = async () => {
+    setLoading(true);
+    setAuthError(null);
+    try {
+      await authService.logout();
+      setUser(null);
+      setRole(null);
+      return { success: true };
+    } catch (e) {
+      setAuthError(e?.message ?? String(e));
+      return { success: false, error: e?.message ?? String(e) };
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const value = useMemo(
     () => ({
       user,
       role,
       loading,
-      signOut: () => supabase.auth.signOut(),
+      authError,
+      register,
+      login,
+      logout,
     }),
-    [user, role, loading]
+    [user, role, loading, authError]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
