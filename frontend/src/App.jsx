@@ -49,6 +49,7 @@ function App() {
       <Route element={<PublicLayout />}>
         <Route path="/" element={<Landing />} />
         <Route path="/login" element={<Login />} />
+        <Route path="/__supabase_test" element={<SupabaseSmokeTest />} />
       </Route>
 
       {/* Authenticated Dashboard Routes */}
