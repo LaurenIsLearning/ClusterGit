@@ -1,3 +1,4 @@
+// frontend/src/services/authService.js
 import { supabase } from "./supabaseClient";
 
 export const authService = {
@@ -17,5 +18,14 @@ export const authService = {
     const { error } = await supabase.auth.signOut();
     if (error) throw error;
   },
-};
 
+  async getSession() {
+    const { data, error } = await supabase.auth.getSession();
+    if (error) throw error;
+    return data.session;
+  },
+
+  onAuthStateChange(callback) {
+    return supabase.auth.onAuthStateChange(callback);
+  },
+};
