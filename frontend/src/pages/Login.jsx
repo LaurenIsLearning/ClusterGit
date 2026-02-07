@@ -8,6 +8,8 @@ export default function Login() {
     const { login, register, isLoading } = useApp();
     const navigate = useNavigate();
     const { addToast } = useToast();
+    const { role, loading } = useAuth(); 
+    if (loading) return null;
 
     const [isRegisterMode, setIsRegisterMode] = useState(false);
     const [email, setEmail] = useState('');
