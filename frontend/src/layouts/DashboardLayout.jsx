@@ -7,21 +7,19 @@ import {
   Server,
   Users,
   LogOut,
-  Database,
+  Database
 } from "lucide-react";
 
 export default function DashboardLayout() {
   const { role, loading, signOut } = useAuth();
   const navigate = useNavigate();
 
-  if (loading) return null; // or a spinner component
-
-  const safeRole = role ?? "unknown";
-
   const handleLogout = async () => {
     await signOut();
     navigate("/");
   };
+
+  if (loading) return null; // or spinner
 
   const NavItem = ({ to, icon: Icon, label }) => (
     <NavLink
@@ -39,9 +37,6 @@ export default function DashboardLayout() {
     </NavLink>
   );
 
-  const isAdmin = safeRole === "admin";
-  const isStudent = safeRole === "student";
-
   return (
     <div className="flex min-h-screen bg-[--bg-primary]">
       <aside className="fixed left-0 top-0 h-screen w-64 bg-[--bg-secondary] border-r border-[--border-color] flex flex-col">
@@ -49,29 +44,24 @@ export default function DashboardLayout() {
           <Database className="w-6 h-6 text-[--accent-primary] mr-2" />
           <span className="font-bold text-lg">ClusterGit</span>
           <span className="ml-2 px-2 py-0.5 rounded text-xs bg-[--bg-tertiary] text-[--text-muted] uppercase">
-            {safeRole}
+            {role ?? "unknown"}
           </span>
         </div>
 
         <nav className="flex-1 p-4 flex flex-col gap-2 overflow-y-auto">
-          {isAdmin ? (
-            <>
-              <NavItem to="/admin" icon={LayoutDashboard} label="Cluster Health" />
-              <NavItem to="/admin/nodes" icon={Server} label="Nodes" />
-              <NavItem to="/admin/users" icon={Users} label="User Allocations" />
-            </>
-          ) : isStudent ? (
+          {role === "student" ? (
             <>
               <NavItem to="/dashboard" icon={LayoutDashboard} label="Overview" />
               <NavItem to="/projects" icon={FolderGit2} label="Projects" />
               <NavItem to="/settings" icon={Settings} label="Settings" />
             </>
-          ) : (
+          ) : role === "admin" ? (
             <>
-              <NavItem to="/dashboard" icon={LayoutDashboard} label="Overview" />
-              <NavItem to="/settings" icon={Settings} label="Settings" />
+              <NavItem to="/admin" icon={LayoutDashboard} label="Cluster Health" />
+              <NavItem to="/admin/nodes" icon={Server} label="Nodes" />
+              <NavItem to="/admin/users" icon={Users} label="User Allocations" />
             </>
-          )}
+          ) : null}
         </nav>
 
         <div className="p-4 border-t border-[--border-color]">
@@ -93,4 +83,5 @@ export default function DashboardLayout() {
     </div>
   );
 }
+
 
