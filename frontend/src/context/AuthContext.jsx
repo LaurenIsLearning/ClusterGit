@@ -1,59 +1,60 @@
-// frontend/src/context/AuthContext.jsx
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import { supabase } from "../services/supabaseClient";
 import { authService } from "../services/authService";
 
 const AuthContext = createContext(null);
 
-async function fetchRoleForUser(userId) {
+async function fetchRole(userId) {
   if (!userId) return null;
 
   const { data, error } = await supabase
     .from("user_profiles")
     .select("role")
     .eq("user_id", userId)
-    .single();
+    .maybeSingle();
 
-  if (error) return null; // row missing or RLS blocked
+  // If no row, data will be null. That’s not a crash — role becomes null/unknown.
+  if (error) return null;
   return data?.role ?? null;
 }
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [role, setRole] = useState(null);
-
   const [loading, setLoading] = useState(true);
   const [authError, setAuthError] = useState(null);
 
-  const syncUserAndRole = async (sessionUser) => {
-    setUser(sessionUser ?? null);
-    const r = await fetchRoleForUser(sessionUser?.id);
+  async function refreshRole(uid) {
+    const r = await fetchRole(uid);
     setRole(r);
-  };
+  }
 
-  // Initial session restore + listener
   useEffect(() => {
     let alive = true;
 
     (async () => {
       try {
+        setLoading(true);
         const session = await authService.getSession();
-        if (!alive) return;
-
         const sessionUser = session?.user ?? null;
-        await syncUserAndRole(sessionUser);
+
+        if (!alive) return;
+        setUser(sessionUser);
+        await refreshRole(sessionUser?.id);
       } catch (e) {
         if (!alive) return;
-        setAuthError(e?.message ?? String(e));
+        setAuthError(e?.message ?? "Failed to load session");
       } finally {
         if (alive) setLoading(false);
       }
     })();
 
     const { data: sub } = authService.onAuthStateChange(async (_event, session) => {
-      setLoading(true);
+      const sessionUser = session?.user ?? null;
+      setUser(sessionUser);
       setAuthError(null);
-      await syncUserAndRole(session?.user ?? null);
+      setLoading(true);
+      await refreshRole(sessionUser?.id);
       setLoading(false);
     });
 
@@ -63,65 +64,36 @@ export function AuthProvider({ children }) {
     };
   }, []);
 
-  // Auth actions
-  const register = async (email, password) => {
-    setLoading(true);
-    setAuthError(null);
-    try {
-      const data = await authService.register(email, password);
-      // Supabase may require email confirmation; session might be null
-      const sessionUser = data?.user ?? null;
-      await syncUserAndRole(sessionUser);
-      return { success: true, data };
-    } catch (e) {
-      setAuthError(e?.message ?? String(e));
-      return { success: false, error: e?.message ?? String(e) };
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const login = async (email, password) => {
-    setLoading(true);
-    setAuthError(null);
-    try {
-      const data = await authService.login(email, password);
-      const sessionUser = data?.user ?? null;
-      await syncUserAndRole(sessionUser);
-      return { success: true, data };
-    } catch (e) {
-      setAuthError(e?.message ?? String(e));
-      return { success: false, error: e?.message ?? String(e) };
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const logout = async () => {
-    setLoading(true);
-    setAuthError(null);
-    try {
-      await authService.logout();
-      setUser(null);
-      setRole(null);
-      return { success: true };
-    } catch (e) {
-      setAuthError(e?.message ?? String(e));
-      return { success: false, error: e?.message ?? String(e) };
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const value = useMemo(
     () => ({
       user,
-      role,
+      role, // can be null => treat as UNKNOWN in UI
       loading,
       authError,
-      register,
-      login,
-      logout,
+
+      signUp: async (email, password) => {
+        setAuthError(null);
+        const data = await authService.signUp(email, password);
+        return data;
+      },
+
+      signIn: async (email, password) => {
+        setAuthError(null);
+        const data = await authService.signIn(email, password);
+        return data;
+      },
+
+      signInWithGitHub: async (redirectTo) => {
+        setAuthError(null);
+        return authService.signInWithGitHub(redirectTo);
+      },
+
+      signOut: async () => {
+        setAuthError(null);
+        await authService.signOut();
+      },
+
+      refreshRole: async () => refreshRole(user?.id),
     }),
     [user, role, loading, authError]
   );
@@ -134,3 +106,4 @@ export function useAuth() {
   if (!ctx) throw new Error("useAuth must be used within <AuthProvider>");
   return ctx;
 }
+
