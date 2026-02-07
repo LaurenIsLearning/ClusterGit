@@ -3,8 +3,8 @@ import { supabase } from "../services/supabaseClient";
 import { useAuth } from "../context/AuthContext";
 
 export default function SupabaseSmokeTest() {
-  const { user, role, loading: authLoading, authError } = useAuth();
-  const [state, setState] = useState({ loading: true, sessionUserId: null, data: null, error: null });
+const { role, loading } = useAuth(); if (loading) return null;
+const [state, setState] = useState({ loading: true, sessionUserId: null, data: null, error: null });
 
   useEffect(() => {
     (async () => {
@@ -46,6 +46,7 @@ export default function SupabaseSmokeTest() {
     </div>
   );
 }
+
 
 
 
