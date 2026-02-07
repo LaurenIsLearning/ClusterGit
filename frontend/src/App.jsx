@@ -23,6 +23,8 @@ const Placeholder = ({ title }) => (
 // Protected Route wrapper
 function ProtectedRoute({ children }) {
   const { user, isLoading } = useApp();
+  const { role, loading } = useAuth(); 
+  if (loading) return null;
 
   if (isLoading) {
     return (
