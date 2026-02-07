@@ -46,12 +46,12 @@ export default function DashboardLayout() {
                     <Database className="w-6 h-6 text-[--accent-primary] mr-2" />
                     <span className="font-bold text-lg">ClusterGit</span>
                     <span className="ml-2 px-2 py-0.5 rounded text-xs bg-[--bg-tertiary] text-[--text-muted] uppercase">
-                        {user.role}
+                        {role}
                     </span>
                 </div>
 
                 <nav className="flex-1 p-4 flex flex-col gap-2 overflow-y-auto">
-                    {user.role === 'student' ? (
+                    {role === 'student' ? (
                         <>
                             <NavItem to="/dashboard" icon={LayoutDashboard} label="Overview" />
                             <NavItem to="/projects" icon={FolderGit2} label="Projects" />
