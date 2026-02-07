@@ -1,39 +1,29 @@
-import SupabaseSmokeTest from "./pages/SupabaseSmokeTest";
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { useApp } from './context/AppContext';
+
 import PublicLayout from './layouts/PublicLayout';
 import DashboardLayout from './layouts/DashboardLayout';
+
 import Landing from './pages/Landing';
 import Login from './pages/Login';
+import NotFound from './pages/NotFound';
+import SupabaseSmokeTest from './pages/SupabaseSmokeTest';
+
 import StudentDashboard from './pages/Student/Dashboard';
 import StudentProjects from './pages/Student/Projects';
+import StudentSettings from './pages/Student/Settings';
+
 import AdminDashboard from './pages/Admin/Dashboard';
 import AdminNodes from './pages/Admin/Nodes';
 import AdminUsers from './pages/Admin/Users';
-import StudentSettings from './pages/Student/Settings';
-import NotFound from './pages/NotFound';
 
-const Placeholder = ({ title }) => (
-  <div className="p-8 text-center text-[--text-secondary]">
-    <h2 className="text-2xl font-bold mb-4">{title}</h2>
-    <p>This functionality is coming soon.</p>
-  </div>
-);
+import AdminGuard from './components/AdminGuard';
 
-// Protected Route wrapper
+/* ---------- Auth Guard ---------- */
 function ProtectedRoute({ children }) {
   const { user, isLoading } = useApp();
 
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[--accent-primary] mx-auto mb-4"></div>
-          <p className="text-[--text-secondary]">Loading...</p>
-        </div>
-      </div>
-    );
-  }
+  if (isLoading) return null;
 
   if (!user) {
     return <Navigate to="/login" replace />;
@@ -42,36 +32,61 @@ function ProtectedRoute({ children }) {
   return children;
 }
 
-function App() {
+/* ---------- App ---------- */
+export default function App() {
   return (
     <Routes>
-      {/* Public Routes */}
+      {/* Public */}
       <Route element={<PublicLayout />}>
         <Route path="/" element={<Landing />} />
         <Route path="/login" element={<Login />} />
         <Route path="/__supabase_test" element={<SupabaseSmokeTest />} />
       </Route>
 
-      {/* Authenticated Dashboard Routes */}
-      <Route element={
-        <ProtectedRoute>
-          <DashboardLayout />
-        </ProtectedRoute>
-      }>
+      {/* Authenticated */}
+      <Route
+        element={
+          <ProtectedRoute>
+            <DashboardLayout />
+          </ProtectedRoute>
+        }
+      >
+        {/* Student */}
         <Route path="/dashboard" element={<StudentDashboard />} />
         <Route path="/projects" element={<StudentProjects />} />
         <Route path="/settings" element={<StudentSettings />} />
 
-        <Route path="/admin" element={<AdminDashboard />} />
-        <Route path="/admin/nodes" element={<AdminNodes />} />
-        <Route path="/admin/users" element={<AdminUsers />} />
+        {/* Admin (ROLE-PROTECTED) */}
+        <Route
+          path="/admin"
+          element={
+            <AdminGuard>
+              <AdminDashboard />
+            </AdminGuard>
+          }
+        />
+        <Route
+          path="/admin/nodes"
+          element={
+            <AdminGuard>
+              <AdminNodes />
+            </AdminGuard>
+          }
+        />
+        <Route
+          path="/admin/users"
+          element={
+            <AdminGuard>
+              <AdminUsers />
+            </AdminGuard>
+          }
+        />
       </Route>
 
-      {/* Fallback - 404 Page */}
+      {/* 404 */}
       <Route path="*" element={<NotFound />} />
     </Routes>
   );
 }
 
-export default App;
 
