@@ -13,7 +13,9 @@ import {
 } from 'lucide-react';
 
 export default function DashboardLayout() {
-    const { user, logout } = useApp();
+    const { user } = useApp(); // keep for now if you want
+    const { role } = useAuth();
+    const { logout } = useApp();
     const navigate = useNavigate();
 
     const handleLogout = async () => {
