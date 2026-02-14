@@ -28,56 +28,28 @@ export default function StudentDashboard() {
                 </div>
             </div>
 
-            <div className="grid md:grid-cols-2 gap-6">
-                {/* Storage Quota Card */}
-                <div className="card p-6">
-                    <div className="flex items-center justify-between mb-6">
-                        <h2 className="text-lg font-semibold flex items-center gap-2">
-                            <Database className="w-5 h-5 text-[--accent-primary]" />
-                            Storage Quota
-                        </h2>
-                        <span className="text-sm font-medium text-[--text-muted]">{gbUsed} GB / {gbTotal} GB</span>
-                    </div>
+            {/* Storage Quota Card */}
+            <div className="card p-6">
+                <div className="flex items-center justify-between mb-6">
+                    <h2 className="text-lg font-semibold flex items-center gap-2">
+                        <Database className="w-5 h-5 text-emerald-600" />
+                        Storage Quota
+                    </h2>
+                    <span className="text-sm font-medium text-slate-600">{gbUsed} GB / {gbTotal} GB</span>
+                </div>
 
-                    <div className="mb-4">
-                        <div className="h-4 w-full bg-[--bg-tertiary] rounded-full overflow-hidden">
-                            <div
-                                className="h-full bg-[--accent-primary] transition-all duration-1000 ease-out"
-                                style={{ width: `${usedPercent}%` }}
-                            />
-                        </div>
-                    </div>
-
-                    <div className="flex justify-between text-sm text-[--text-secondary]">
-                        <span>{usedPercent.toFixed(1)}% Used</span>
-                        <span>{(100 - usedPercent).toFixed(1)}% Available</span>
+                <div className="mb-4">
+                    <div className="h-4 w-full bg-emerald-100 rounded-full overflow-hidden">
+                        <div
+                            className="h-full bg-emerald-600 transition-all duration-1000 ease-out shadow-sm"
+                            style={{ width: `${usedPercent}%` }}
+                        />
                     </div>
                 </div>
 
-                {/* System Status Card */}
-                <div className="card p-6">
-                    <div className="flex items-center justify-between mb-6">
-                        <h2 className="text-lg font-semibold flex items-center gap-2">
-                            <AlertCircle className="w-5 h-5 text-[--status-success]" />
-                            Cluster Status
-                        </h2>
-                        <span className="badge badge-success">Operational</span>
-                    </div>
-
-                    <div className="space-y-4">
-                        <div className="flex justify-between items-center py-2 border-b border-[--border-color]">
-                            <span className="text-[--text-muted]">Write Speed</span>
-                            <span className="font-mono">45 MB/s</span>
-                        </div>
-                        <div className="flex justify-between items-center py-2 border-b border-[--border-color]">
-                            <span className="text-[--text-muted]">Read Speed</span>
-                            <span className="font-mono">82 MB/s</span>
-                        </div>
-                        <div className="flex justify-between items-center pt-2">
-                            <span className="text-[--text-muted]">Replication</span>
-                            <span className="font-mono text-[--status-success]">Synced</span>
-                        </div>
-                    </div>
+                <div className="flex justify-between text-sm text-slate-500 font-medium">
+                    <span>{usedPercent.toFixed(1)}% Used</span>
+                    <span>{(100 - usedPercent).toFixed(1)}% Available</span>
                 </div>
             </div>
 
