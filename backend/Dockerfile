@@ -1,20 +1,17 @@
 # chat created Dockerfile just to see if i can make it work
-# Use lightweight Node image
+# syntax=docker/dockerfile:1
 FROM node:20-alpine
 
-# Create app directory
 WORKDIR /app
 
-# Copy package files first (better layer caching)
+# Install deps first (better caching)
 COPY package*.json ./
+RUN npm ci --omit=dev
 
-# Install production dependencies
-RUN npm install --omit=dev
-
-# Copy rest of source code
+# Copy the rest of the backend source
 COPY . .
 
-# Expose port (matches your server.js default)
+# The app will listen on PORT (we’ll set it to 80)
 EXPOSE 80
 
 # Start the server
