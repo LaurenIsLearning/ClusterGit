@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { User, Mail, Lock, AlertCircle } from "lucide-react";
 import { useToast } from "../context/ToastContext";
 import { useAuth } from "../context/AuthContext";
+import { supabase } from "../services/supabaseClient";
 
 export default function Login() {
   const { signIn, signUp, signInWithGitHub, loading } = useAuth();
@@ -31,11 +32,24 @@ export default function Login() {
       if (isRegisterMode) {
         await signUp(email, password);
         addToast("Account created successfully! Welcome to ClusterGit.", "success");
+        navigate("/dashboard");
       } else {
-        await signIn(email, password);
+        const { user } = await signIn(email, password);
+
+        const { data: profile } = await supabase
+          .from("user_profiles")
+          .select("role")
+          .eq("user_id", user?.id)
+          .maybeSingle();
+
+        if (profile?.role === "admin") {
+          navigate("/admin");
+          return;
+        }
+
         addToast("Welcome back!", "success");
+        navigate("/dashboard");
       }
-      navigate("/dashboard");
     } catch (e2) {
       setError(e2?.message ?? "Authentication failed");
     }
