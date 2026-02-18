@@ -142,3 +142,71 @@ Use for:
 - repo-vol-pvc
 - data-postgres-0
 - grafana-pvc
+
+# Deployment
+
+This project requires setting up the **backend** and **frontend** separately.  
+Complete the backend setup first, then proceed to the frontend.
+
+---
+
+## Backend Setup
+
+1. Navigate to the backend directory:
+
+   ```bash
+   cd backend
+   ```
+
+2. Install dependencies
+
+   ```bash
+   npm install
+   ```
+
+3. Ensure env file validity
+   - If you already have a ```.env``` file created in ```/backend``` and the following varaibles are defined.
+     - SUPABASE_URL=your_supabase_url
+     - SUPABASE_ANON_KEY=your_supabase_anon_key
+     - SUPABASE_SERVICE_ROLE_KEY=your_supabase_service_role_key
+     - PORT=8080
+     - REPO_BASE_PATH=./clustergit-repos
+   - If you do not have a ```.env``` file created or do not have all the above variables defined please resolve this before moving on.
+   - Values depend on your Supabase project and local environment.
+4. Start the backend
+
+   ```bash
+   npm run start
+   ```
+5. Backend should now be running
+
+## Frontend Setup
+1. Navigate to the frontend directory:
+
+   ```bash
+   cd frontend
+   ```
+
+2. Install dependencies
+
+   ```bash
+   npm install
+   ```
+
+3. Ensure env file validity
+   - If you already have a ```.env``` file created in ```/frontend``` and the following varaibles are defined.
+     - MAX_STORAGE_PER_USER_MB=storagecap
+     - REPO_MAX_AGE_DAYS=agelimit
+     - VITE_SUPABASE_URL=yourSupabaseURL
+     - PORT=8080
+     - VITE_SUPABASE_ANON_KEY=yourSupabaseAnonKey
+   - If you do not have a ```.env``` file created or do not have all the above variables defined please resolve this before moving on.
+   - Values depend on your Supabase project and local environment.
+4. Start the backend
+
+   ```bash
+   npm run dev
+   ```
+5. Frontend should now be running
+
+Your frontend and backend should now be deployed
