@@ -1,14 +1,15 @@
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import {
-  LayoutDashboard,
-  FolderGit2,
-  Settings,
-  Server,
-  Users,
-  LogOut,
-  Database
-} from "lucide-react";
+    LayoutDashboard,
+    FolderGit2,
+    UploadCloud,
+    Settings,
+    Server,
+    Users,
+    LogOut,
+    Database,
+} from 'lucide-react';
 
 export default function DashboardLayout() {
   const { role, loading, signOut } = useAuth();
@@ -19,23 +20,34 @@ export default function DashboardLayout() {
     navigate("/");
   };
 
-  if (loading) return null; // or spinner
+    const NavItem = ({ to, icon: Icon, label }) => (
+        <NavLink
+            to={to}
+            className={({ isActive }) =>
+                `flex items-center gap-3 px-4 py-3 rounded-md transition-all duration-200 ${isActive
+                    ? 'bg-emerald-600 text-white shadow-sm'
+                    : 'text-slate-600 hover:text-emerald-600 hover:bg-emerald-50'
+                }`
+            }
+        >
+            <Icon className="w-5 h-5" />
+            <span>{label}</span>
+        </NavLink>
+    );
 
-  const NavItem = ({ to, icon: Icon, label }) => (
-    <NavLink
-      to={to}
-      className={({ isActive }) =>
-        `flex items-center gap-3 px-4 py-3 rounded-md transition-colors ${
-          isActive
-            ? "bg-[--accent-primary] text-white"
-            : "text-[--text-secondary] hover:text-[--text-primary] hover:bg-[--bg-tertiary]"
-        }`
-      }
-    >
-      <Icon className="w-5 h-5" />
-      <span>{label}</span>
-    </NavLink>
-  );
+    return (
+        <div className="flex min-h-screen bg-[--bg-primary]">
+            {/* Sidebar */}
+            <aside className="fixed left-0 top-0 h-screen w-64 bg-[--bg-secondary] border-r border-[--border-color] flex flex-col">
+                <div className="h-16 flex items-center px-6 border-b border-[--border-color]">
+                    <Link to="/" className="flex items-center hover:opacity-80 transition-opacity">
+                        <Database className="w-6 h-6 text-emerald-600 mr-2" />
+                        <span className="font-bold text-lg">ClusterGit</span>
+                    </Link>
+                    <span className="ml-auto px-2 py-0.5 rounded text-xs bg-[--bg-tertiary] text-[--text-muted] uppercase">
+                        {user.role}
+                    </span>
+                </div>
 
   return (
     <div className="flex min-h-screen bg-[--bg-primary]">

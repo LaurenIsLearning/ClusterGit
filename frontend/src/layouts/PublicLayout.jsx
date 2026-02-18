@@ -1,7 +1,9 @@
 import { Link, Outlet } from 'react-router-dom';
 import { Database, Github } from 'lucide-react';
+import { useApp } from '../context/AppContext';
 
 export default function PublicLayout() {
+    const { user } = useApp();
     return (
         <div className="flex flex-col min-h-screen bg-[--bg-primary] text-[--text-primary]">
             <header className="h-16 border-b border-[--border-color] bg-[--bg-secondary]/50 backdrop-blur-md fixed top-0 w-full z-50">
@@ -11,9 +13,15 @@ export default function PublicLayout() {
                         <span>ClusterGit</span>
                     </Link>
                     <nav>
-                        <Link to="/login" className="btn btn-primary whitespace-nowrap">
-                            Log In
-                        </Link>
+                        {user ? (
+                            <Link to="/dashboard" className="btn btn-primary whitespace-nowrap">
+                                Dashboard
+                            </Link>
+                        ) : (
+                            <Link to="/login" className="btn btn-primary whitespace-nowrap">
+                                Log In
+                            </Link>
+                        )}
                     </nav>
                 </div>
             </header>
