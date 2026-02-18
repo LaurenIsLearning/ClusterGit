@@ -202,7 +202,7 @@ Complete the backend setup first, then proceed to the frontend.
      - VITE_SUPABASE_ANON_KEY=yourSupabaseAnonKey
    - If you do not have a ```.env``` file created or do not have all the above variables defined please resolve this before moving on.
    - Values depend on your Supabase project and local environment.
-4. Start the backend
+4. Start the frontend
 
    ```bash
    npm run dev
