@@ -17,3 +17,6 @@ ClusterGit-Demo-Portable/
 ClusterGit-Demo/portable/
 ClusterGit-Demo/keys/
 ClusterGit-Demo/assets/*.bin
+
+#ignore repos
+backend/clustergit-repos/
