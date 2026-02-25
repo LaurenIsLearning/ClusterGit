@@ -45,9 +45,14 @@ export default function UploadModal({ project, isOpen, onClose, onComplete }) {
                 clearInterval(uploadInterval.current);
                 setStatus('complete');
                 addToast('File uploaded successfully', 'success');
-                setTimeout(() => {
-                    onComplete(file);
-                    onClose();
+                setTimeout(async () => {
+                    try {
+                        await onComplete(file);
+                    } catch (error) {
+                        addToast(error?.message || 'Upload metadata save failed', 'error');
+                    } finally {
+                        onClose();
+                    }
                 }, 1000);
             }
             setProgress(current);

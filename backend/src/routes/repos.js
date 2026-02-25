@@ -7,7 +7,7 @@ const router = express.Router();
 
 // CREATE REPOSITORY
 router.post("/create", authMiddleware, async (req, res) => {
-    const { name, description } = req.body;
+    const { name, description, is_public = false } = req.body;
     const ownerId = req.user.id;
 
     if (!name) {
@@ -53,6 +53,7 @@ router.post("/create", authMiddleware, async (req, res) => {
             .insert({
                 name: projectData.name,
                 owner_id: ownerId,
+                is_public: Boolean(is_public),
                 git_annex_uuid: projectData.annexUuid,
             })
             .select()
@@ -64,6 +65,33 @@ router.post("/create", authMiddleware, async (req, res) => {
             return res.status(500).json({
                 error: { message: "Failed to save project metadata" }
             });
+        }
+
+        const repoId = data.id;
+
+        const { error: collaboratorError } = await supabase
+            .from("collaborators")
+            .upsert({
+                repo_id: repoId,
+                user_id: ownerId,
+                access_level: "owner"
+            }, { onConflict: "repo_id,user_id" });
+
+        if (collaboratorError) {
+            console.error("Failed to persist collaborator metadata:", collaboratorError);
+        }
+
+        const { error: activityError } = await supabase
+            .from("activity_log")
+            .insert({
+                user_id: ownerId,
+                repo_id: repoId,
+                event_type: "repository_created",
+                detail: `Created repository ${projectData.name}`
+            });
+
+        if (activityError) {
+            console.error("Failed to persist activity log metadata:", activityError);
         }
 
         return res.json({

@@ -55,6 +55,44 @@ export const projectService = {
         // This would fetch files tracked by git-annex
         return [];
     },
+
+    async recordUploadMetadata(repoId, file) {
+        if (!repoId) {
+            throw new Error('Missing repository id for metadata recording');
+        }
+
+        const headers = await getAuthHeaders();
+        const branch = 'main';
+        const nowHex = Date.now().toString(16);
+        const randomHex = Math.random().toString(16).slice(2).padEnd(32, '0');
+        const pseudoCommitHash = `${nowHex}${randomHex}`.slice(0, 40);
+        const annexKey = `SHA256E-s${file.size}--${file.name.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
+
+        const response = await fetch(`${API_BASE_URL}/commits/${repoId}`, {
+            method: 'POST',
+            headers,
+            body: JSON.stringify({
+                git_commit_hash: pseudoCommitHash,
+                message: `Upload ${file.name}`,
+                branch,
+                is_merge: false,
+                annex_key: annexKey,
+                size_bytes: file.size,
+                storage_backend: 'git-annex',
+                from_ref: `refs/heads/${branch}`,
+                to_ref: `refs/heads/${branch}`,
+                commit_count: 1,
+                hook_source: 'ui-upload-sim'
+            }),
+        });
+
+        const data = await response.json();
+        if (!response.ok) {
+            throw new Error(data.error?.message || 'Failed to record upload metadata');
+        }
+
+        return data;
+    },
 };
 
 export default projectService;
