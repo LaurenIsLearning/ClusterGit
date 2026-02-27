@@ -246,7 +246,7 @@ ClusterGit has **three environments**:
 
     - Cluster mode (writes to real storage)
         ```bash
-        rpm run cluster
+        npm run cluster
         ```
         -    Runs the frontend locally but points API requests to:
         https://clustergit.com
