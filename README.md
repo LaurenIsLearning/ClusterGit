@@ -1,5 +1,12 @@
 # Cluster State Overview
-**Last updated:** `2025-11-28`
+- [Deployment & Development Guide](#clustergit----deployment--development-guide)
+  - [Environment Overview](#environment-overview)
+  - [Development Setup](#development-setup)
+  - [Backend Setup](#backend-setup)
+  - [Frontend Setup](#frontend-setup)
+  - [Cloudflare Preview Deployments](#cloudflare-pages---preview-deployments)
+
+**Last updated:** `2025-11-28`, 2/15/36 for deployment
 
 This document describes the current state of the **ClusterGit Raspberry Pi K3s cluster**, including node roles, namespaces, storage layout, and Longhorn replica distribution.
 
@@ -143,70 +150,121 @@ Use for:
 - data-postgres-0
 - grafana-pvc
 
-# Deployment
+---
 
-This project requires setting up the **backend** and **frontend** separately.  
-Complete the backend setup first, then proceed to the frontend.
+# ClusterGit -- Deployment & Development Guide
+
+## Environment Overview
+
+ClusterGit has **three environments**:
+
+ | Environment    |                Purpose  |                 URL |
+ | ---------------|------------------------- |------------------------------------------------|
+ | **Local**            |          Safe development    |      http://localhost:5173  |
+ | **Cluster Backend**    |        Live API + storage (PVC) | https://clustergit.com  |
+ | **Cloudflare Preview**   |      Branch UI testing      |   https://`<branch>`.clustergit.pages.dev  |
 
 ---
 
+# Development Setup
+
 ## Backend Setup
 
-1. Navigate to the backend directory:
+1. Open terminal and change directory to backend:
+    ``` bash
+    cd backend
+    ```
+1. Install dependencies:
+    ``` bash
+    npm install
+    ```
+1. (If still need environment variables):
+    ``` bash
+    cp .env.example .env.local
+    ```
+    Update ".env.local" accordingly.
+    Example `backend/.env.local`:
 
-   ```bash
-   cd backend
-   ```
+    ``` env
+    PORT=8080
+    REPO_BASE_PATH=./local-repos
+    SUPABASE_URL=your_supabase_url
+    SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
+    ```
+1. Start backend:
+    ``` bash
+    npm run start
+    ```
 
-2. Install dependencies
+    Local backend runs at:
 
-   ```bash
-   npm install
-   ```
+    http://localhost:8080
 
-3. Ensure env file validity
-   - If you already have a ```.env``` file created in ```/backend``` and the following varaibles are defined.
-     - SUPABASE_URL=your_supabase_url
-     - SUPABASE_ANON_KEY=your_supabase_anon_key
-     - SUPABASE_SERVICE_ROLE_KEY=your_supabase_service_role_key
-     - PORT=8080
-     - REPO_BASE_PATH=./clustergit-repos
-   - If you do not have a ```.env``` file created or do not have all the above variables defined please resolve this before moving on.
-   - Values depend on your Supabase project and local environment.
-4. Start the backend
-
-   ```bash
-   npm run start
-   ```
-5. Backend should now be running
+---
 
 ## Frontend Setup
-1. Navigate to the frontend directory:
 
-   ```bash
-   cd frontend
-   ```
+1. Open new terminal, navigate to front end, run dependencies:
+    ``` bash
+    cd frontend
+    npm install
+    ```
+2. Create environment files if they do not exist:
+    ``` bash
+    cp .env.example .env.devlocal
+    cp .env.example .env.cluster
+    ```
+3. Edit files accordingly:
 
-2. Install dependencies
+    ```frontend/.env.devlocal```
+    ``` bash
+    VITE_API_URL=http://localhost:8080
+    VITE_SUPABASE_URL=your_supabase_url
+    VITE_SUPABASE_ANON_KEY=your_anon_key
+    ```
 
-   ```bash
-   npm install
-   ```
+    ```frontend/.env.cluster```
+    ``` bash
+    VITE_API_URL=https://clustergit.com
+    VITE_SUPABASE_URL=your_supabase_url
+    VITE_SUPABASE_ANON_KEY=your_anon_key
+    ```
 
-3. Ensure env file validity
-   - If you already have a ```.env``` file created in ```/frontend``` and the following varaibles are defined.
-     - MAX_STORAGE_PER_USER_MB=storagecap
-     - REPO_MAX_AGE_DAYS=agelimit
-     - VITE_SUPABASE_URL=yourSupabaseURL
-     - PORT=8080
-     - VITE_SUPABASE_ANON_KEY=yourSupabaseAnonKey
-   - If you do not have a ```.env``` file created or do not have all the above variables defined please resolve this before moving on.
-   - Values depend on your Supabase project and local environment.
-4. Start the frontend
+2. Run in desired mode:
 
-   ```bash
-   npm run dev
-   ```
-5. Frontend should now be running
+    - Local mode (writes to local storage))
+        ```bash
+        npm run devlocal
+        ```
+        - Frontend runs at:
 
-Your frontend and backend should now be deployed
+            http://localhost:5173
+
+        - Flow:
+
+            Browser → Local frontend → Local backend → ./local-repos
+
+    - Cluster mode (writes to real storage)
+        ```bash
+        npm run cluster
+        ```
+        -    Runs the frontend locally but points API requests to:
+        https://clustergit.com
+
+        - Flow:
+        
+            Browser → Local frontend → Cloudflare → Cluster backend → PVC (/git-repos)
+
+---
+
+# Cloudflare Pages - Preview Deployments
+
+Cloudflare automatically creates a preview deployment for each branch.
+
+### Preview URL format:
+
+    https://<branch-name>.clustergit.pages.dev
+
+Example:
+
+    https://feature-upload-ui.clustergit.pages.dev

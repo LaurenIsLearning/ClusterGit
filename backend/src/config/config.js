@@ -2,7 +2,10 @@ import path from 'path';
 import os from 'os';
 
 // Repository storage configuration
-export const REPO_BASE_PATH = process.env.REPO_BASE_PATH || path.join(os.homedir(), 'clustergit-repos');
+const rawRepoPath = process.env.REPO_BASE_PATH || path.join(os.homedir(), 'clustergit-repos');
+export const REPO_BASE_PATH = path.isAbsolute(rawRepoPath)
+    ? rawRepoPath
+    : path.resolve(process.cwd(), rawRepoPath);
 
 // Git-annex configuration
 export const GIT_ANNEX_CONFIG = {
