@@ -5,7 +5,7 @@ import DashboardLayout from "./layouts/DashboardLayout";
 import Landing from "./pages/Landing";
 import Login from "./pages/Login";
 import NotFound from "./pages/NotFound";
-import SupabaseSmokeTest from "./pages/SupabaseSmokeTest";
+import SupabaseSmokeTest from "./pages/supabaseSmokeTest";
 
 import StudentDashboard from "./pages/Student/Dashboard";
 import StudentProjects from "./pages/Student/Projects";
