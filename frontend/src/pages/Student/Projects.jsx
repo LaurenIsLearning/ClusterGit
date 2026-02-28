@@ -91,6 +91,7 @@ export default function StudentProjects() {
         <div className="flex h-[calc(100vh-8rem)] gap-6">
             <UploadModal
                 project={currentProject?.name}
+                projectId={currentProject?.id}
                 isOpen={isUploadOpen}
                 onClose={() => setIsUploadOpen(false)}
                 onComplete={handleUploadComplete}

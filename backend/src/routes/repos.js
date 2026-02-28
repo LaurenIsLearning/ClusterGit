@@ -2,8 +2,14 @@ import express from "express";
 import { supabase } from "../utils/supabase.js";
 import authMiddleware from "../middleware/authMiddleware.js";
 import gitService from "../services/gitService.js";
+import multer from "multer";
+import os from "os";
+import path from "path";
 
 const router = express.Router();
+
+// Configure multer for temporary file storage
+const upload = multer({ dest: path.join(os.tmpdir(), 'clustergit-uploads') });
 
 // CREATE REPOSITORY
 router.post("/create", authMiddleware, async (req, res) => {
@@ -121,6 +127,64 @@ router.get("/my", authMiddleware, async (req, res) => {
         console.error("Error fetching projects:", error);
         return res.status(500).json({
             error: { message: "Failed to fetch projects" }
+        });
+    }
+});
+
+// UPLOAD FILE TO REPOSITORY
+router.post("/:id/upload", authMiddleware, upload.single('file'), async (req, res) => {
+    const ownerId = req.user.id;
+    const repoId = req.params.id;
+    const file = req.file;
+
+    if (!file) {
+        return res.status(400).json({
+            error: { message: "No file uploaded" }
+        });
+    }
+
+    try {
+        // 1. Get repository info from database
+        const { data: project, error: fetchError } = await supabase
+            .from("repositories")
+            .select("name, owner_id")
+            .eq("id", repoId)
+            .single();
+
+        if (fetchError || !project) {
+            return res.status(404).json({
+                error: { message: "Project not found" }
+            });
+        }
+
+        // 2. Security check: Ensure user owns the repository
+        if (project.owner_id !== ownerId) {
+            return res.status(403).json({
+                error: { message: "You do not have permission to upload to this project" }
+            });
+        }
+
+        // 3. Add file to Git repository using git-annex
+        await gitService.addFileToProject(
+            ownerId,
+            project.name,
+            file.path,
+            file.originalname
+        );
+
+        return res.json({
+            success: true,
+            message: "File uploaded and added to repository successfully",
+            file: {
+                name: file.originalname,
+                size: file.size
+            }
+        });
+
+    } catch (error) {
+        console.error("Upload error:", error);
+        return res.status(500).json({
+            error: { message: error.message || "Failed to upload file" }
         });
     }
 });
