@@ -160,7 +160,9 @@ export async function getRepoSize(repoPath) {
  */
 export function getGitUrl(userId, projectName) {
     const repoPath = getRepoPath(userId, projectName);
-    return `file://${repoPath}`;
+    // Use the specific IP requested by the user for SSH clones
+    const host = '10.27.12.244';
+    return `git@${host}:${repoPath}`;
 }
 
 /**
