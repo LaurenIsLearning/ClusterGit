@@ -1,12 +1,12 @@
-import { useState } from "react";
+// src/pages/Login.jsx
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { User, Mail, Lock, AlertCircle } from "lucide-react";
 import { useToast } from "../context/ToastContext";
 import { useAuth } from "../context/AuthContext";
-import { supabase } from "../services/supabaseClient";
 
 export default function Login() {
-  const { signIn, signUp, signInWithGitHub, loading } = useAuth();
+  const { signIn, signUp, signInWithGitHub, user, role } = useAuth();
   const navigate = useNavigate();
   const { addToast } = useToast();
 
@@ -15,54 +15,79 @@ export default function Login() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
 
+  // Local-only submit state. This is the important fix.
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [stuck, setStuck] = useState(false);
+
+  // If you want admins to land on /admin after login, do it when role resolves.
+  useEffect(() => {
+    if (!user) return;
+    if (role === "admin") {
+      navigate("/admin", { replace: true });
+    }
+  }, [user, role, navigate]);
+
+  const validate = () => {
+    if (!email || !password) return "Please fill in all fields";
+    if (password.length < 6) return "Password must be at least 6 characters";
+    return "";
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError("");
 
-    if (!email || !password) {
-      setError("Please fill in all fields");
+    const v = validate();
+    if (v) {
+      setError(v);
       return;
     }
-    if (password.length < 6) {
-      setError("Password must be at least 6 characters");
-      return;
-    }
+
+    setIsSubmitting(true);
+    setStuck(false);
+
+    // Watchdog: if a request hangs, the UI doesn't pretend forever.
+    const watchdog = window.setTimeout(() => setStuck(true), 12000);
 
     try {
       if (isRegisterMode) {
         await signUp(email, password);
         addToast("Account created successfully! Welcome to ClusterGit.", "success");
-        navigate("/dashboard");
       } else {
-        const { user } = await signIn(email, password);
-
-        const { data: profile } = await supabase
-          .from("user_profiles")
-          .select("role")
-          .eq("user_id", user?.id)
-          .maybeSingle();
-
-        if (profile?.role === "admin") {
-          navigate("/admin");
-          return;
-        }
-
+        await signIn(email, password);
         addToast("Welcome back!", "success");
-        navigate("/dashboard");
       }
+
+      // Default route after auth. Admin redirect happens via the effect above.
+      navigate("/dashboard");
     } catch (e2) {
       setError(e2?.message ?? "Authentication failed");
+    } finally {
+      window.clearTimeout(watchdog);
+      setIsSubmitting(false);
     }
   };
 
   const handleGitHub = async () => {
+    setError("");
+    setIsSubmitting(true);
+    setStuck(false);
+
+    const watchdog = window.setTimeout(() => setStuck(true), 12000);
+
     try {
-      // For local dev this is fine. For prod you’ll use your deployed URL.
+      // For local dev this is fine. For prod use your deployed URL.
       await signInWithGitHub(`${window.location.origin}/dashboard`);
+      // With OAuth, you'll usually be redirected by Supabase. No navigate here.
     } catch (e) {
       setError(e?.message ?? "GitHub login failed");
+      setIsSubmitting(false);
+    } finally {
+      window.clearTimeout(watchdog);
     }
   };
+
+  const disableUI = isSubmitting;
 
   return (
     <div className="flex items-center justify-center min-h-[80vh] px-4">
@@ -102,7 +127,8 @@ export default function Login() {
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="student@university.edu"
                   className="w-full pl-10 pr-4 py-2.5 rounded-lg border border-[--border-color] bg-[--bg-tertiary] focus:outline-none focus:ring-2 focus:ring-[--accent-primary]"
-                  disabled={loading}
+                  disabled={disableUI}
+                  autoComplete="email"
                 />
               </div>
             </div>
@@ -117,7 +143,8 @@ export default function Login() {
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="••••••••"
                   className="w-full pl-10 pr-4 py-2.5 rounded-lg border border-[--border-color] bg-[--bg-tertiary] focus:outline-none focus:ring-2 focus:ring-[--accent-primary]"
-                  disabled={loading}
+                  disabled={disableUI}
+                  autoComplete={isRegisterMode ? "new-password" : "current-password"}
                 />
               </div>
               {isRegisterMode && (
@@ -125,30 +152,44 @@ export default function Login() {
               )}
             </div>
 
-            <button type="submit" disabled={loading} className="btn btn-primary w-full">
-              {loading ? "Processing..." : isRegisterMode ? "Create Account" : "Sign In"}
+            <button type="submit" disabled={disableUI} className="btn btn-primary w-full">
+              {isSubmitting ? "Processing..." : isRegisterMode ? "Create Account" : "Sign In"}
             </button>
 
             <button
               type="button"
               onClick={handleGitHub}
-              disabled={loading}
+              disabled={disableUI}
               className="btn w-full border border-[--border-color] bg-[--bg-tertiary] hover:bg-[--bg-secondary]"
             >
               Continue with GitHub
             </button>
+
+            {stuck && (
+              <div className="text-sm text-[--text-secondary] pt-2">
+                This is taking longer than expected. If it stays stuck, reload the page.
+                <button
+                  type="button"
+                  onClick={() => window.location.reload()}
+                  className="ml-2 text-[--accent-primary] hover:underline"
+                >
+                  Reload
+                </button>
+              </div>
+            )}
           </form>
 
           <div className="mt-6 text-center">
             <button
               onClick={() => {
+                if (disableUI) return;
                 setIsRegisterMode(!isRegisterMode);
                 setError("");
                 setEmail("");
                 setPassword("");
               }}
               className="text-sm text-[--accent-primary] hover:underline"
-              disabled={loading}
+              disabled={disableUI}
             >
               {isRegisterMode ? "Already have an account? Sign in" : "Don't have an account? Sign up"}
             </button>
@@ -158,4 +199,3 @@ export default function Login() {
     </div>
   );
 }
-
