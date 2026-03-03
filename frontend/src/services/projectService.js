@@ -57,42 +57,48 @@ export const projectService = {
         return [];
     },
 
-    async recordUploadMetadata(repoId, file) {
-        if (!repoId) {
-            throw new Error('Missing repository id for metadata recording');
+    async uploadFile(projectId, file, onProgress) {
+        const session = await authService.getSession();
+        if (!session?.access_token) {
+            throw new Error('Not authenticated');
         }
 
-        const headers = await getAuthHeaders();
-        const branch = 'main';
-        const nowHex = Date.now().toString(16);
-        const randomHex = Math.random().toString(16).slice(2).padEnd(32, '0');
-        const pseudoCommitHash = `${nowHex}${randomHex}`.slice(0, 40);
-        const annexKey = `SHA256E-s${file.size}--${file.name.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
+        const formData = new FormData();
+        formData.append('file', file);
 
-        const response = await fetch(`${API_BASE_URL}/commits/${repoId}`, {
-            method: 'POST',
-            headers,
-            body: JSON.stringify({
-                git_commit_hash: pseudoCommitHash,
-                message: `Upload ${file.name}`,
-                branch,
-                is_merge: false,
-                annex_key: annexKey,
-                size_bytes: file.size,
-                storage_backend: 'git-annex',
-                from_ref: `refs/heads/${branch}`,
-                to_ref: `refs/heads/${branch}`,
-                commit_count: 1,
-                hook_source: 'ui-upload-sim'
-            }),
+        return new Promise((resolve, reject) => {
+            const xhr = new XMLHttpRequest();
+            xhr.open('POST', `${API_BASE_URL}/repos/${projectId}/upload`);
+            xhr.setRequestHeader('Authorization', `Bearer ${session.access_token}`);
+
+            xhr.upload.onprogress = (event) => {
+                if (event.lengthComputable && onProgress) {
+                    const percentComplete = (event.loaded / event.total) * 100;
+                    onProgress(percentComplete);
+                }
+            };
+
+            xhr.onload = () => {
+                let data;
+                try {
+                    data = JSON.parse(xhr.responseText);
+                } catch (e) {
+                    data = { error: { message: 'Invalid server response' } };
+                }
+
+                if (xhr.status >= 200 && xhr.status < 300) {
+                    resolve(data);
+                } else {
+                    reject(new Error(data.error?.message || 'Upload failed'));
+                }
+            };
+
+            xhr.onerror = () => {
+                reject(new Error('Network error during upload'));
+            };
+
+            xhr.send(formData);
         });
-
-        const data = await response.json();
-        if (!response.ok) {
-            throw new Error(data.error?.message || 'Failed to record upload metadata');
-        }
-
-        return data;
     },
 };
 

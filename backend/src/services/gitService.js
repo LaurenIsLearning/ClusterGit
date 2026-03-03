@@ -2,6 +2,7 @@ import { exec } from 'child_process';
 import { promisify } from 'util';
 import fs from 'fs/promises';
 import path from 'path';
+import os from 'os';
 import { REPO_BASE_PATH, GIT_ANNEX_CONFIG } from '../config/config.js';
 
 const execAsync = promisify(exec);
@@ -172,7 +173,9 @@ export async function getRepoSize(repoPath) {
  */
 export function getGitUrl(userId, projectName) {
     const repoPath = getRepoPath(userId, projectName);
-    return `file://${repoPath}`;
+    // Use the specific IP requested by the user for SSH clones
+    const host = '10.27.12.244';
+    return `git@${host}:${repoPath}`;
 }
 
 /**
@@ -205,6 +208,55 @@ export async function createProject(userId, projectName, description = '') {
     };
 }
 
+/**
+ * Add a file to a project's repository
+ */
+export async function addFileToProject(userId, projectName, filePath, originalName) {
+    const bareRepoPath = getRepoPath(userId, projectName);
+    const tempWorkingPath = path.join(os.tmpdir(), `clustergit-upload-${Date.now()}`);
+
+    try {
+        // 1. Create temporary directory
+        await fs.mkdir(tempWorkingPath, { recursive: true });
+
+        // 2. Clone the bare repository (as a non-bare clone)
+        await execAsync(`git clone "${bareRepoPath}" .`, { cwd: tempWorkingPath });
+
+        // 3. Initialize git-annex in the temporary clone
+        // We need to do this because git-annex needs to be aware of the new location
+        await execAsync('git annex init "upload-tmp"', { cwd: tempWorkingPath });
+
+        // 4. Move the uploaded file to the clone
+        const targetPath = path.join(tempWorkingPath, originalName);
+        await fs.rename(filePath, targetPath);
+
+        // 5. Add file to git-annex
+        await execAsync(`git annex add "${originalName}"`, { cwd: tempWorkingPath });
+
+        // 6. Commit the changes
+        // Using -m "Upload file" for now. In the future, we could pass a message.
+        await execAsync(`git commit -m "Upload ${originalName}"`, { cwd: tempWorkingPath });
+
+        // 7. Push back to the bare repository
+        await execAsync('git push origin master', { cwd: tempWorkingPath });
+
+        // 8. Push git-annex metadata
+        await execAsync('git push origin git-annex', { cwd: tempWorkingPath });
+
+        return { success: true, name: originalName };
+    } catch (error) {
+        console.error('Failed to add file to repository:', error);
+        throw new Error(`Failed to add file to repository: ${error.message}`);
+    } finally {
+        // 9. Clean up temporary working directory
+        try {
+            await fs.rm(tempWorkingPath, { recursive: true, force: true });
+        } catch (cleanupError) {
+            console.error('Failed to cleanup temporary upload path:', cleanupError);
+        }
+    }
+}
+
 export default {
     validateProjectName,
     createRepository,
@@ -214,4 +266,5 @@ export default {
     getRepoPath,
     getRepoSize,
     getGitUrl,
+    addFileToProject,
 };
