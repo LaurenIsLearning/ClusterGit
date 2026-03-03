@@ -45,7 +45,13 @@ export default function StudentProjects() {
         }
     }, [selectedProject]);
 
-    const handleUploadComplete = (file) => {
+    const handleUploadComplete = async (file) => {
+        if (!selectedProject) {
+            throw new Error('No project selected for upload');
+        }
+
+        await projectService.recordUploadMetadata(selectedProject, file);
+
         // Mock adding the file to the list
         const newFile = {
             id: `new-${Date.now()}`,

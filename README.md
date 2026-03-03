@@ -1,5 +1,12 @@
 # Cluster State Overview
-**Last updated:** `2025-11-28`
+- [Deployment & Development Guide](#clustergit----deployment--development-guide)
+  - [Environment Overview](#environment-overview)
+  - [Development Setup](#development-setup)
+  - [Backend Setup](#backend-setup)
+  - [Frontend Setup](#frontend-setup)
+  - [Cloudflare Preview Deployments](#cloudflare-pages---preview-deployments)
+
+**Last updated:** `2025-11-28`, 2/15/36 for deployment
 
 This document describes the current state of the **ClusterGit Raspberry Pi K3s cluster**, including node roles, namespaces, storage layout, and Longhorn replica distribution.
 
@@ -142,3 +149,122 @@ Use for:
 - repo-vol-pvc
 - data-postgres-0
 - grafana-pvc
+
+---
+
+# ClusterGit -- Deployment & Development Guide
+
+## Environment Overview
+
+ClusterGit has **three environments**:
+
+ | Environment    |                Purpose  |                 URL |
+ | ---------------|------------------------- |------------------------------------------------|
+ | **Local**            |          Safe development    |      http://localhost:5173  |
+ | **Cluster Backend**    |        Live API + storage (PVC) | https://clustergit.com  |
+ | **Cloudflare Preview**   |      Branch UI testing      |   https://`<branch>`.clustergit.pages.dev  |
+
+---
+
+# Development Setup
+
+## Backend Setup
+
+1. Open terminal and change directory to backend:
+    ``` bash
+    cd backend
+    ```
+1. Install dependencies:
+    ``` bash
+    npm install
+    ```
+1. (If still need environment variables):
+    ``` bash
+    cp .env.example .env.local
+    ```
+    Update ".env.local" accordingly.
+    Example `backend/.env.local`:
+
+    ``` env
+    PORT=8080
+    REPO_BASE_PATH=./local-repos
+    SUPABASE_URL=your_supabase_url
+    SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
+    ```
+1. Start backend:
+    ``` bash
+    npm run start
+    ```
+
+    Local backend runs at:
+
+    http://localhost:8080
+
+---
+
+## Frontend Setup
+
+1. Open new terminal, navigate to front end, run dependencies:
+    ``` bash
+    cd frontend
+    npm install
+    ```
+2. Create environment files if they do not exist:
+    ``` bash
+    cp .env.example .env.devlocal
+    cp .env.example .env.cluster
+    ```
+3. Edit files accordingly:
+
+    ```frontend/.env.devlocal```
+    ``` bash
+    VITE_API_URL=http://localhost:8080
+    VITE_SUPABASE_URL=your_supabase_url
+    VITE_SUPABASE_ANON_KEY=your_anon_key
+    ```
+
+    ```frontend/.env.cluster```
+    ``` bash
+    VITE_API_URL=https://clustergit.com
+    VITE_SUPABASE_URL=your_supabase_url
+    VITE_SUPABASE_ANON_KEY=your_anon_key
+    ```
+
+2. Run in desired mode:
+
+    - Local mode (writes to local storage))
+        ```bash
+        npm run devlocal
+        ```
+        - Frontend runs at:
+
+            http://localhost:5173
+
+        - Flow:
+
+            Browser → Local frontend → Local backend → ./local-repos
+
+    - Cluster mode (writes to real storage)
+        ```bash
+        npm run cluster
+        ```
+        -    Runs the frontend locally but points API requests to:
+        https://clustergit.com
+
+        - Flow:
+        
+            Browser → Local frontend → Cloudflare → Cluster backend → PVC (/git-repos)
+
+---
+
+# Cloudflare Pages - Preview Deployments
+
+Cloudflare automatically creates a preview deployment for each branch.
+
+### Preview URL format:
+
+    https://<branch-name>.clustergit.pages.dev
+
+Example:
+
+    https://feature-upload-ui.clustergit.pages.dev

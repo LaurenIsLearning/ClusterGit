@@ -144,12 +144,24 @@ export async function getAnnexUuid(repoPath) {
  */
 export async function getRepoSize(repoPath) {
     try {
-        // Use -sk for macOS compatibility (returns size in KB)
-        const { stdout } = await execAsync(`du -sk "${repoPath}"`);
-        const sizeInKB = parseInt(stdout.split('\t')[0], 10);
-        // Convert KB to bytes
-        const sizeInBytes = sizeInKB * 1024;
-        return sizeInBytes;
+        const getDirectorySize = async (targetPath) => {
+            const entries = await fs.readdir(targetPath, { withFileTypes: true });
+            let total = 0;
+
+            for (const entry of entries) {
+                const entryPath = path.join(targetPath, entry.name);
+                if (entry.isDirectory()) {
+                    total += await getDirectorySize(entryPath);
+                } else if (entry.isFile()) {
+                    const stats = await fs.stat(entryPath);
+                    total += stats.size;
+                }
+            }
+
+            return total;
+        };
+
+        return await getDirectorySize(repoPath);
     } catch (error) {
         console.error('Failed to get repo size:', error);
         return 0;

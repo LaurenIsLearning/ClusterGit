@@ -3,6 +3,7 @@ import { supabase } from "./src/utils/supabase.js";
 async function testInsert() {
     const userId = '59f04fc1-9efc-4faa-b292-92065be508f5'; // User ID from logs
     const testName = 'schema-test-' + Date.now();
+    const testAnnexUuid = '00000000-0000-0000-0000-000000000000';
 
     console.log(`Testing insert for project: ${testName} with owner_id: ${userId}`);
 
@@ -10,7 +11,9 @@ async function testInsert() {
         .from('repositories')
         .insert({
             name: testName,
-            owner_id: userId
+            owner_id: userId,
+            is_public: false,
+            git_annex_uuid: testAnnexUuid
         })
         .select();
 

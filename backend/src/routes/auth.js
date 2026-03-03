@@ -4,7 +4,7 @@ const router = express.Router();
 
 // REGISTER
 router.post("/register", async (req, res) => {
-    const { email, password } = req.body;
+    const { email, password, display_name, role } = req.body;
 
     if (!email || !password) {
         return res.status(400).json({
@@ -21,6 +21,34 @@ router.post("/register", async (req, res) => {
         return res.status(400).json({
             error: { message: error.message || "Registration failed" }
         });
+    }
+
+    const userId = data?.user?.id;
+    if (userId) {
+        const fallbackDisplayName = email?.split("@")?.[0] || "user";
+        const { error: profileError } = await supabase
+            .from("user_profiles")
+            .upsert({
+                user_id: userId,
+                role: role || "student",
+                display_name: display_name || fallbackDisplayName
+            }, { onConflict: "user_id" });
+
+        if (profileError) {
+            console.error("Failed to upsert user profile metadata:", profileError);
+        }
+
+        const { error: activityError } = await supabase
+            .from("activity_log")
+            .insert({
+                user_id: userId,
+                event_type: "user_registered",
+                detail: `User registered with email ${email}`
+            });
+
+        if (activityError) {
+            console.error("Failed to log registration activity:", activityError);
+        }
     }
 
     return res.json(data);
