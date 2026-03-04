@@ -19,7 +19,7 @@ export const projectService = {
     async createProject(name, description) {
         const headers = await getAuthHeaders();
 
-        const response = await fetch(`${API_BASE_URL}/repos/create`, {
+        const response = await fetch(`${API_BASE_URL}/api/repos/create`, {
             method: 'POST',
             headers,
             body: JSON.stringify({ name, description }),
@@ -37,7 +37,7 @@ export const projectService = {
     async getMyProjects() {
         const headers = await getAuthHeaders();
 
-        const response = await fetch(`${API_BASE_URL}/repos/my`, {
+        const response = await fetch(`${API_BASE_URL}/api/repos/my`, {
             method: 'GET',
             headers,
         });
@@ -68,7 +68,7 @@ export const projectService = {
 
         return new Promise((resolve, reject) => {
             const xhr = new XMLHttpRequest();
-            xhr.open('POST', `${API_BASE_URL}/repos/${projectId}/upload`);
+            xhr.open('POST', `${API_BASE_URL}/api/repos/${projectId}/upload`);
             xhr.setRequestHeader('Authorization', `Bearer ${session.access_token}`);
 
             xhr.upload.onprogress = (event) => {
