@@ -24,6 +24,13 @@ export default function UploadModal({ project, projectId, isOpen, onClose, onCom
         }
     };
 
+    // Let the user cancel their upload if taking too long
+    const cancelUpload = () => {
+        setStatus('idle');
+        setProgress(0);
+        addToast('Upload cancelled', 'info');
+    };
+
     const startUpload = async () => {
         if (!file || !projectId) return;
         setStatus('uploading');
