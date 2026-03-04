@@ -19,7 +19,7 @@ export const projectService = {
     async createProject(name, description) {
         const headers = await getAuthHeaders();
 
-        const response = await fetch(`${API_BASE_URL}/api/repos/create`, {
+        const response = await fetch(`${API_BASE_URL}/repos/create`, {
             method: 'POST',
             headers,
             body: JSON.stringify({ name, description }),
