@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { projectService } from '../../services/projectService';
-import { FolderGit2, FileCode, Film, Database, HardDrive, Plus, MoreVertical, Github } from 'lucide-react';
+import { FolderGit2, FileCode, Film, Database, HardDrive, Plus, MoreVertical, Github, Copy, Check } from 'lucide-react';
 import UploadModal from '../../components/UploadModal';
 import NewProjectModal from '../../components/NewProjectModal';
 import { useToast } from '../../context/ToastContext';
@@ -12,6 +12,7 @@ export default function StudentProjects() {
     const [isUploadOpen, setIsUploadOpen] = useState(false);
     const [isNewProjectOpen, setIsNewProjectOpen] = useState(false);
     const [loading, setLoading] = useState(true);
+    const [copiedId, setCopiedId] = useState(null);
     const { addToast } = useToast();
 
     // Load projects on mount
@@ -44,7 +45,13 @@ export default function StudentProjects() {
         }
     }, [selectedProject]);
 
-    const handleUploadComplete = (file) => {
+    const handleUploadComplete = async (file) => {
+        if (!selectedProject) {
+            throw new Error('No project selected for upload');
+        }
+
+        await projectService.recordUploadMetadata(selectedProject, file);
+
         // Mock adding the file to the list
         const newFile = {
             id: `new-${Date.now()}`,
@@ -74,6 +81,14 @@ export default function StudentProjects() {
         addToast(`Options for ${fileName} coming soon`, 'info');
     };
 
+    const handleCopyCloneLink = (e, link, id) => {
+        if (e) e.stopPropagation();
+        navigator.clipboard.writeText(link);
+        setCopiedId(id);
+        addToast('Clone link copied to clipboard!', 'success');
+        setTimeout(() => setCopiedId(null), 2000);
+    };
+
     if (loading) return <div className="p-10 text-center">Loading projects...</div>;
 
     const currentProject = projects.find(p => p.id === selectedProject);
@@ -82,6 +97,7 @@ export default function StudentProjects() {
         <div className="flex h-[calc(100vh-8rem)] gap-6">
             <UploadModal
                 project={currentProject?.name}
+                projectId={currentProject?.id}
                 isOpen={isUploadOpen}
                 onClose={() => setIsUploadOpen(false)}
                 onComplete={handleUploadComplete}
@@ -114,9 +130,22 @@ export default function StudentProjects() {
                                 <h3 className="font-semibold">{project.name}</h3>
                                 <FolderGit2 className={`w-5 h-5 ${selectedProject === project.id ? 'text-[--accent-primary]' : 'text-[--text-muted]'}`} />
                             </div>
-                            <div className="text-sm text-[--text-secondary] flex items-center gap-2 mb-2">
-                                <Github className="w-3 h-3" />
-                                <span className="truncate">{project.repo}</span>
+                            <div className="text-sm text-[--text-secondary] flex items-center justify-between gap-2 mb-2">
+                                <div className="flex items-center gap-2 truncate">
+                                    <Github className="w-3 h-3 flex-shrink-0" />
+                                    <span className="truncate">{project.repo}</span>
+                                </div>
+                                <button
+                                    onClick={(e) => handleCopyCloneLink(e, project.repo, project.id)}
+                                    className="p-1 hover:bg-[--bg-tertiary] rounded transition-colors flex-shrink-0"
+                                    title="Copy clone link"
+                                >
+                                    {copiedId === project.id ? (
+                                        <Check className="w-3 h-3 text-emerald-500" />
+                                    ) : (
+                                        <Copy className="w-3 h-3 text-[--text-muted]" />
+                                    )}
+                                </button>
                             </div>
                             <div className="flex justify-between text-xs text-[--text-muted] mt-3">
                                 <span>{project.size}</span>
@@ -140,13 +169,22 @@ export default function StudentProjects() {
                                 </h2>
                                 <p className="text-sm text-[--text-secondary] mt-1">{files.length} large files stored</p>
                             </div>
-                            <button
-                                onClick={() => setIsUploadOpen(true)}
-                                className="btn btn-primary gap-2"
-                            >
-                                <Plus className="w-5 h-5" />
-                                Upload File
-                            </button>
+                            <div className="flex gap-3">
+                                <button
+                                    onClick={(e) => handleCopyCloneLink(e, currentProject.repo, 'header')}
+                                    className="btn btn-secondary gap-2"
+                                >
+                                    {copiedId === 'header' ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+                                    Clone
+                                </button>
+                                <button
+                                    onClick={() => setIsUploadOpen(true)}
+                                    className="btn btn-primary gap-2"
+                                >
+                                    <Plus className="w-5 h-5" />
+                                    Upload File
+                                </button>
+                            </div>
                         </div>
 
                         {/* File List */}

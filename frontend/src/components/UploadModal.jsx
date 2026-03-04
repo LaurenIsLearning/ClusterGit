@@ -1,21 +1,20 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
+import { projectService } from '../services/projectService';
 import { X, File, CheckCircle2 } from 'lucide-react';
 import { createPortal } from 'react-dom';
 import { useToast } from '../context/ToastContext';
 
-export default function UploadModal({ project, isOpen, onClose, onComplete }) {
+export default function UploadModal({ project, projectId, isOpen, onClose, onComplete }) {
     const { addToast } = useToast();
     const [file, setFile] = useState(null);
     const [progress, setProgress] = useState(0);
     const [status, setStatus] = useState('idle'); // idle, uploading, complete
-    const uploadInterval = useRef(null);
 
     useEffect(() => {
         if (!isOpen) {
             setFile(null);
             setProgress(0);
             setStatus('idle');
-            if (uploadInterval.current) clearInterval(uploadInterval.current);
         }
     }, [isOpen]);
 
@@ -25,33 +24,28 @@ export default function UploadModal({ project, isOpen, onClose, onComplete }) {
         }
     };
 
-    const cancelUpload = () => {
-        if (uploadInterval.current) clearInterval(uploadInterval.current);
-        setStatus('idle');
-        setProgress(0);
-        addToast('Upload cancelled', 'info');
-    };
-
-    const startUpload = () => {
-        if (!file) return;
+    const startUpload = async () => {
+        if (!file || !projectId) return;
         setStatus('uploading');
         addToast(`Starting upload for ${file.name}...`, 'info');
 
-        let current = 0;
-        uploadInterval.current = setInterval(() => {
-            current += Math.random() * 5 + 2; // Random increment
-            if (current >= 100) {
-                current = 100;
-                clearInterval(uploadInterval.current);
-                setStatus('complete');
-                addToast('File uploaded successfully', 'success');
-                setTimeout(() => {
-                    onComplete(file);
-                    onClose();
-                }, 1000);
-            }
-            setProgress(current);
-        }, 200);
+        try {
+            const result = await projectService.uploadFile(projectId, file, (percent) => {
+                setProgress(percent);
+            });
+
+            setStatus('complete');
+            addToast('File uploaded successfully', 'success');
+            setTimeout(() => {
+                onComplete(result.file);
+                onClose();
+            }, 1000);
+        } catch (error) {
+            console.error('Upload failed:', error);
+            setStatus('idle');
+            setProgress(0);
+            addToast(error.message || 'Upload failed', 'error');
+        }
     };
 
     if (!isOpen) return null;
