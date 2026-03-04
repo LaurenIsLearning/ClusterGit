@@ -37,6 +37,8 @@ export const projectService = {
     async getMyProjects() {
         const headers = await getAuthHeaders();
 
+        console.log("API URL:", `${API_BASE_URL}/api/repos/my`);
+        
         const response = await fetch(`${API_BASE_URL}/api/repos/my`, {
             method: 'GET',
             headers,
