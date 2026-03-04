@@ -177,6 +177,7 @@ ClusterGit has **three environments**:
 1. Install dependencies:
     ``` bash
     npm install
+    npm install multer
     ```
 1. (If still need environment variables):
     ``` bash

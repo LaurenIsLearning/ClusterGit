@@ -5,7 +5,7 @@ import DashboardLayout from "./layouts/DashboardLayout";
 import Landing from "./pages/Landing";
 import Login from "./pages/Login";
 import NotFound from "./pages/NotFound";
-import SupabaseSmokeTest from "./pages/supabaseSmokeTest";
+import SupabaseSmokeTest from "./pages/SupabaseSmokeTest";
 
 import StudentDashboard from "./pages/Student/Dashboard";
 import StudentProjects from "./pages/Student/Projects";
@@ -21,7 +21,9 @@ import AdminGuard from "./components/AdminGuard";
 function ProtectedRoute({ children }) {
   const { user, loading } = useAuth();
 
-  if (loading) return null; // or spinner
+  if (loading) {
+    return <div className="p-10 text-center">Loading session...</div>;
+  }
   if (!user) return <Navigate to="/login" replace />;
   return children;
 }

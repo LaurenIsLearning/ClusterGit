@@ -2,10 +2,16 @@ import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import { supabase } from "../services/supabaseClient";
 import { authService } from "../services/authService";
 
+
 const AuthContext = createContext(null);
 
 async function fetchRole(userId) {
-  if (!userId) return null;
+  console.log("[fetchRole] called with:", userId);
+
+  if (!userId) {
+    console.log("[fetchRole] no userId provided");
+    return null;
+  }
 
   const { data, error } = await supabase
     .from("user_profiles")
@@ -13,9 +19,20 @@ async function fetchRole(userId) {
     .eq("user_id", userId)
     .maybeSingle();
 
-  // If no row, data will be null. That’s not a crash — role becomes null/unknown.
-  if (error) return null;
-  return data?.role ?? null;
+  console.log("[fetchRole] response:", { data, error });
+
+  if (error) {
+    console.error("[fetchRole] ERROR:", error);
+    return null;
+  }
+
+  if (!data) {
+    console.warn("[fetchRole] no row found for user");
+    return null;
+  }
+
+  console.log("[fetchRole] resolved role:", data.role);
+  return data.role ?? null;
 }
 
 export function AuthProvider({ children }) {
@@ -30,37 +47,43 @@ export function AuthProvider({ children }) {
   }
 
   useEffect(() => {
-    let alive = true;
+    console.log("[AUTH] effect mounted");
+    setLoading(true);
 
-    (async () => {
-      try {
-        setLoading(true);
-        const session = await authService.getSession();
-        const sessionUser = session?.user ?? null;
+    const { data } = supabase.auth.onAuthStateChange((event, session) => {
+      console.log("[AUTH EVENT]", event);
 
-        if (!alive) return;
-        setUser(sessionUser);
-        await refreshRole(sessionUser?.id);
-      } catch (e) {
-        if (!alive) return;
-        setAuthError(e?.message ?? "Failed to load session");
-      } finally {
-        if (alive) setLoading(false);
-      }
-    })();
-
-    const { data: sub } = authService.onAuthStateChange(async (_event, session) => {
       const sessionUser = session?.user ?? null;
+
       setUser(sessionUser);
-      setAuthError(null);
-      setLoading(true);
-      await refreshRole(sessionUser?.id);
       setLoading(false);
+
+      // Clear role if signed out
+      if (!sessionUser) {
+        setRole(null);
+        return;
+      }
+
+      console.log("[AUTH] scheduling role fetch (setTimeout 0)");
+
+      setTimeout(async () => {
+        console.log("[AUTH] role fetch start (delayed)");
+        try {
+          const r = await fetchRole(sessionUser.id);
+          console.log("[AUTH] role fetch done (delayed):", r);
+          setRole(r);
+        } catch (e) {
+          console.error("[AUTH] role fetch failed (delayed):", e);
+          setRole(null);
+        }
+      }, 0);
     });
 
+    const subscription = data?.subscription;
+
     return () => {
-      alive = false;
-      sub?.subscription?.unsubscribe?.();
+      console.log("[AUTH] effect cleanup");
+      subscription?.unsubscribe();
     };
   }, []);
 
