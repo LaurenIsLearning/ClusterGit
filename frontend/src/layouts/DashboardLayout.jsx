@@ -35,6 +35,19 @@ export default function DashboardLayout() {
     </NavLink>
   );
 
+  function AuthDebug() {
+    const { user, role, loading, authError } = useAuth();
+    return (
+        <pre style={{ fontSize: 12, opacity: 0.7, padding: 8 }}>
+        {JSON.stringify(
+            { hasUser: !!user, userId: user?.id, role, loading, authError },
+            null,
+            2
+        )}
+        </pre>
+    );
+  }
+
   return (
     <div className="flex min-h-screen bg-[--bg-primary]">
       <aside className="fixed left-0 top-0 h-screen w-64 bg-[--bg-secondary] border-r border-[--border-color] flex flex-col">
@@ -78,6 +91,7 @@ export default function DashboardLayout() {
 
       <main className="flex-1 ml-64 p-8">
         <div className="max-w-6xl mx-auto">
+          <AuthDebug />
           <Outlet />
         </div>
       </main>

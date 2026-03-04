@@ -21,7 +21,9 @@ import AdminGuard from "./components/AdminGuard";
 function ProtectedRoute({ children }) {
   const { user, loading } = useAuth();
 
-  if (loading) return null; // or spinner
+  if (loading) {
+    return <div className="p-10 text-center">Loading session...</div>;
+  }
   if (!user) return <Navigate to="/login" replace />;
   return children;
 }
