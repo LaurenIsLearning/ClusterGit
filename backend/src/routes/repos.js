@@ -11,6 +11,59 @@ const router = express.Router();
 // Configure multer for temporary file storage
 const upload = multer({ dest: path.join(os.tmpdir(), 'clustergit-uploads') });
 
+async function insertPushEventWithFallback(payload) {
+    // Fallback for environments with stricter/different push_events schema.
+    const { error: fallbackError } = await supabase
+        .from("push_events")
+        .insert({
+            repo_id: payload.repo_id,
+            pusher_id: payload.pusher_id,
+            from_ref: payload.from_ref,
+            to_ref: payload.to_ref,
+            commit_count: payload.commit_count
+        });
+
+    return fallbackError || null;
+}
+
+async function insertAnnexObjectWithFallback(payload) {
+    // Prefer upsert so repeated uploads/metadata retries don't fail on duplicate keys.
+    const { error: upsertError } = await supabase
+        .from("annex_objects")
+        .upsert(payload, { onConflict: "repo_id,annex_key" });
+
+    if (!upsertError) return null;
+
+    const { error: fallbackError } = await supabase
+        .from("annex_objects")
+        .insert({
+            repo_id: payload.repo_id,
+            annex_key: payload.annex_key,
+            size_bytes: payload.size_bytes
+        });
+
+    return fallbackError || upsertError;
+}
+
+async function insertActivityLogWithFallback(payload) {
+    const attempts = [
+        payload,
+        { ...payload, event_type: "commit_recorded" },
+        { ...payload, event_type: "upload" }
+    ];
+
+    let lastError = null;
+    for (const attempt of attempts) {
+        const { error } = await supabase
+            .from("activity_log")
+            .insert(attempt);
+        if (!error) return null;
+        lastError = error;
+    }
+
+    return lastError;
+}
+
 // CREATE REPOSITORY
 router.post("/create", authMiddleware, async (req, res) => {
     const { name, description, is_public = false } = req.body;
@@ -193,12 +246,109 @@ router.post("/:id/upload", authMiddleware, upload.single('file'), async (req, re
         }
 
         // 3. Add file to Git repository using git-annex
-        await gitService.addFileToProject(
+        const uploadResult = await gitService.addFileToProject(
             ownerId,
             project.name,
             file.path,
             file.originalname
         );
+
+        const commitPayload = {
+            repo_id: repoId,
+            git_commit_hash: uploadResult.gitCommitHash,
+            author_id: ownerId,
+            message: `Upload ${file.originalname}`,
+            branch: uploadResult.branch || "main",
+            is_merge: false,
+            annex_key: uploadResult.annexKey,
+            committed_at: new Date().toISOString()
+        };
+
+        const { data: commitRow, error: commitError } = await supabase
+            .from("commits")
+            .insert(commitPayload)
+            .select()
+            .single();
+
+        if (commitError) {
+            return res.status(500).json({
+                error: { message: `Upload succeeded but commit metadata failed: ${commitError.message}` }
+            });
+        }
+
+        const { error: pushEventError } = await supabase
+            .from("push_events")
+            .insert({
+                repo_id: repoId,
+                pusher_id: ownerId,
+                pushed_at: new Date().toISOString(),
+                from_ref: uploadResult.fromRef,
+                to_ref: uploadResult.toRef || uploadResult.branch,
+                commit_count: uploadResult.commitCount || 1,
+                hook_source: "repo_upload_route"
+            });
+
+        const resolvedPushError = pushEventError
+            ? await insertPushEventWithFallback({
+                repo_id: repoId,
+                pusher_id: ownerId,
+                pushed_at: new Date().toISOString(),
+                from_ref: uploadResult.fromRef,
+                to_ref: uploadResult.toRef || uploadResult.branch,
+                commit_count: uploadResult.commitCount || 1,
+                hook_source: "repo_upload_route"
+            })
+            : null;
+
+        if (resolvedPushError) {
+            console.error("Failed to persist push event metadata:", resolvedPushError);
+        }
+
+        let annexObjectError = null;
+        if (uploadResult.annexKey) {
+            annexObjectError = await insertAnnexObjectWithFallback({
+                repo_id: repoId,
+                annex_key: uploadResult.annexKey,
+                size_bytes: uploadResult.size || file.size || 0,
+                storage_backend: "git-annex"
+            });
+
+            if (annexObjectError) {
+                console.error("Failed to persist annex object metadata:", annexObjectError);
+            }
+        }
+
+        const activityError = await insertActivityLogWithFallback({
+            user_id: ownerId,
+            repo_id: repoId,
+            event_type: "file_uploaded",
+            detail: `Uploaded ${file.originalname} (commit ${uploadResult.gitCommitHash || "unknown"})`
+        });
+
+        if (activityError) {
+            console.error("Failed to persist upload activity metadata:", activityError);
+        }
+
+        const metadataErrors = {
+            push_events: resolvedPushError?.message || null,
+            annex_objects: annexObjectError?.message || null,
+            activity_log: activityError?.message || null
+        };
+
+        const hasMetadataError = Object.values(metadataErrors).some(Boolean);
+        if (hasMetadataError) {
+            return res.status(500).json({
+                error: {
+                    message: "Upload succeeded but one or more metadata table writes failed"
+                },
+                metadata_errors: metadataErrors,
+                metadata: {
+                    commit_id: commitRow?.id,
+                    git_commit_hash: uploadResult.gitCommitHash,
+                    annex_key: uploadResult.annexKey
+                }
+            });
+        }
 
         return res.json({
             success: true,
@@ -206,7 +356,12 @@ router.post("/:id/upload", authMiddleware, upload.single('file'), async (req, re
             file: {
                 name: file.originalname,
                 size: file.size
-            }
+            },
+            metadata: {
+                commit_id: commitRow?.id,
+                git_commit_hash: uploadResult.gitCommitHash,
+                annex_key: uploadResult.annexKey
+            },
         });
 
     } catch (error) {

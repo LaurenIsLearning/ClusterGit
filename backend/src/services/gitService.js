@@ -229,21 +229,53 @@ export async function addFileToProject(userId, projectName, filePath, originalNa
         // 4. Move the uploaded file to the clone
         const targetPath = path.join(tempWorkingPath, originalName);
         await fs.rename(filePath, targetPath);
+        const fileStats = await fs.stat(targetPath);
+
+        // Resolve branch and prior ref for push metadata
+        let branch = "main";
+        try {
+            const { stdout } = await execAsync('git rev-parse --abbrev-ref HEAD', { cwd: tempWorkingPath });
+            branch = stdout.trim() || "main";
+        } catch (_) {
+            // Keep default branch fallback.
+        }
+
+        let fromRef = null;
+        try {
+            const { stdout } = await execAsync('git rev-parse HEAD', { cwd: tempWorkingPath });
+            fromRef = stdout.trim();
+        } catch (_) {
+            // Repository may not have an initial commit yet.
+        }
 
         // 5. Add file to git-annex
         await execAsync(`git annex add "${originalName}"`, { cwd: tempWorkingPath });
+        const { stdout: annexKeyStdout } = await execAsync(`git annex lookupkey "${originalName}"`, { cwd: tempWorkingPath });
+        const annexKey = annexKeyStdout.trim() || null;
 
         // 6. Commit the changes
         // Using -m "Upload file" for now. In the future, we could pass a message.
         await execAsync(`git commit -m "Upload ${originalName}"`, { cwd: tempWorkingPath });
+        const { stdout: toRefStdout } = await execAsync('git rev-parse HEAD', { cwd: tempWorkingPath });
+        const toRef = toRefStdout.trim();
 
         // 7. Push back to the bare repository
-        await execAsync('git push origin master', { cwd: tempWorkingPath });
+        await execAsync(`git push origin ${branch}`, { cwd: tempWorkingPath });
 
         // 8. Push git-annex metadata
         await execAsync('git push origin git-annex', { cwd: tempWorkingPath });
 
-        return { success: true, name: originalName };
+        return {
+            success: true,
+            name: originalName,
+            size: fileStats.size,
+            branch,
+            annexKey,
+            gitCommitHash: toRef,
+            fromRef,
+            toRef,
+            commitCount: 1
+        };
     } catch (error) {
         console.error('Failed to add file to repository:', error);
         throw new Error(`Failed to add file to repository: ${error.message}`);
