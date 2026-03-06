@@ -92,9 +92,7 @@ export const projectService = {
     async getMyProjects() {
         const headers = await getAuthHeaders();
 
-        console.log("API URL:", `${API_BASE_URL}/api/repos/my`);
-        
-        const response = await fetch(`${API_BASE_URL}/api/repos/my`, {
+        const response = await fetch(`${API_BASE_URL}/repos/my`, {
             method: 'GET',
             headers,
         });
@@ -109,9 +107,37 @@ export const projectService = {
     },
 
     async getProjectFiles(projectId) {
-        // Placeholder for future implementation
-        // This would fetch files tracked by git-annex
-        return [];
+        const headers = await getAuthHeaders();
+
+        const response = await fetch(`${API_BASE_URL}/repos/${projectId}/files`, {
+            method: 'GET',
+            headers,
+        });
+
+        const data = await safeParseJson(response);
+
+        if (!response.ok) {
+            throw new Error(data.error?.message || data._raw || 'Failed to fetch project files');
+        }
+
+        return data;
+    },
+
+    async getDashboardSummary() {
+        const headers = await getAuthHeaders();
+
+        const response = await fetch(`${API_BASE_URL}/repos/summary`, {
+            method: 'GET',
+            headers,
+        });
+
+        const data = await safeParseJson(response);
+
+        if (!response.ok) {
+            throw new Error(data.error?.message || data._raw || 'Failed to load dashboard summary');
+        }
+
+        return data;
     },
 
     async uploadFile(projectId, file, onProgress) {
@@ -123,39 +149,7 @@ export const projectService = {
         const formData = new FormData();
         formData.append('file', file);
 
-        return new Promise((resolve, reject) => {
-            const xhr = new XMLHttpRequest();
-            xhr.open('POST', `${API_BASE_URL}/api/repos/${projectId}/upload`);
-            xhr.setRequestHeader('Authorization', `Bearer ${session.access_token}`);
-
-            xhr.upload.onprogress = (event) => {
-                if (event.lengthComputable && onProgress) {
-                    const percentComplete = (event.loaded / event.total) * 100;
-                    onProgress(percentComplete);
-                }
-            };
-
-            xhr.onload = () => {
-                let data;
-                try {
-                    data = JSON.parse(xhr.responseText);
-                } catch (e) {
-                    data = { error: { message: 'Invalid server response' } };
-                }
-
-                if (xhr.status >= 200 && xhr.status < 300) {
-                    resolve(data);
-                } else {
-                    reject(new Error(data.error?.message || 'Upload failed'));
-                }
-            };
-
-            xhr.onerror = () => {
-                reject(new Error('Network error during upload'));
-            };
-
-            xhr.send(formData);
-        });
+        return uploadWithXhr(`${API_BASE_URL}/repos/${projectId}/upload`, session.access_token, formData, onProgress);
     },
 };
 

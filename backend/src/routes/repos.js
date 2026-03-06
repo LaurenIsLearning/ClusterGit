@@ -185,8 +185,8 @@ router.get("/my", authMiddleware, async (req, res) => {
 
         // Enrich projects with metadata not stored in DB
         const enrichedProjects = await Promise.all((data || []).map(async (project) => {
-            const repoPath = gitService.getRepoPath(ownerId, project.name);
-            const gitUrl = gitService.getGitUrl(ownerId, project.name);
+            const repoPath = await gitService.resolveExistingRepoPath(ownerId, project.name);
+            const gitUrl = `git@10.27.12.244:${repoPath}`;
             const size = await gitService.getRepoSize(repoPath);
 
             // Format for frontend expectations
@@ -208,6 +208,182 @@ router.get("/my", authMiddleware, async (req, res) => {
         console.error("Error fetching projects:", error);
         return res.status(500).json({
             error: { message: "Failed to fetch projects" }
+        });
+    }
+});
+
+// USER DASHBOARD SUMMARY (quota + recent activity)
+router.get("/summary", authMiddleware, async (req, res) => {
+    const ownerId = req.user.id;
+
+    try {
+        const maxStorageMb = Number(process.env.MAX_STORAGE_PER_USER_MB || 20480);
+        const totalBytes = Math.max(0, maxStorageMb) * 1024 * 1024;
+
+        const { data: repos, error: reposError } = await supabase
+            .from("repositories")
+            .select("id, name")
+            .eq("owner_id", ownerId);
+
+        if (reposError) {
+            return res.status(500).json({
+                error: { message: reposError.message || "Failed to load repositories" }
+            });
+        }
+
+        const repoIds = (repos || []).map((repo) => repo.id);
+        const repoNameById = new Map((repos || []).map((repo) => [repo.id, repo.name]));
+
+        let usedBytes = 0;
+        if (repoIds.length > 0) {
+            const { data: annexObjects, error: annexError } = await supabase
+                .from("annex_objects")
+                .select("size_bytes")
+                .in("repo_id", repoIds);
+
+            if (annexError) {
+                return res.status(500).json({
+                    error: { message: annexError.message || "Failed to load storage usage" }
+                });
+            }
+
+            usedBytes = (annexObjects || []).reduce((sum, row) => {
+                return sum + (Number(row.size_bytes) || 0);
+            }, 0);
+        }
+
+        const { data: activityRows, error: activityError } = await supabase
+            .from("activity_log")
+            .select("id, repo_id, event_type, detail, created_at")
+            .eq("user_id", ownerId)
+            .order("created_at", { ascending: false })
+            .limit(10);
+
+        if (activityError) {
+            return res.status(500).json({
+                error: { message: activityError.message || "Failed to load activity" }
+            });
+        }
+
+        const recentActivity = (activityRows || []).map((row) => ({
+            id: row.id,
+            event_type: row.event_type || "activity",
+            detail: row.detail || "Activity recorded",
+            project: row.repo_id ? (repoNameById.get(row.repo_id) || "Unknown project") : "Account",
+            created_at: row.created_at || null
+        }));
+
+        return res.json({
+            quota: {
+                used: usedBytes,
+                total: totalBytes
+            },
+            recent_activity: recentActivity
+        });
+    } catch (error) {
+        console.error("Error loading dashboard summary:", error);
+        return res.status(500).json({
+            error: { message: error.message || "Failed to load dashboard summary" }
+        });
+    }
+});
+
+// LIST FILES FOR A REPOSITORY (derived from upload commits + annex metadata)
+router.get("/:id/files", authMiddleware, async (req, res) => {
+    const ownerId = req.user.id;
+    const repoId = req.params.id;
+
+    try {
+        const { data: project, error: fetchError } = await supabase
+            .from("repositories")
+            .select("id, owner_id")
+            .eq("id", repoId)
+            .single();
+
+        if (fetchError || !project) {
+            console.error("Failed to fetch repository for files endpoint:", fetchError);
+            return res.status(404).json({
+                error: { message: fetchError?.message || "Project not found" }
+            });
+        }
+
+        if (project.owner_id !== ownerId) {
+            return res.status(403).json({
+                error: { message: "You do not have permission to view this project" }
+            });
+        }
+
+        let { data: commits, error: commitError } = await supabase
+            .from("commits")
+            .select("id, message, annex_key, git_commit_hash, branch, committed_at")
+            .eq("repo_id", repoId)
+            .order("committed_at", { ascending: false });
+
+        if (commitError && String(commitError.message || '').toLowerCase().includes('committed_at')) {
+            const fallback = await supabase
+                .from("commits")
+                .select("id, message, annex_key, git_commit_hash, branch, created_at")
+                .eq("repo_id", repoId)
+                .order("created_at", { ascending: false });
+            commits = fallback.data;
+            commitError = fallback.error;
+        }
+
+        if (commitError) {
+            console.error("Failed to fetch commits for files endpoint:", commitError);
+            return res.status(500).json({
+                error: { message: commitError.message || "Failed to load project commits" }
+            });
+        }
+
+        const { data: annexObjects, error: annexError } = await supabase
+            .from("annex_objects")
+            .select("annex_key, size_bytes")
+            .eq("repo_id", repoId);
+
+        if (annexError) {
+            console.error("Failed to fetch annex metadata for files endpoint:", annexError);
+            return res.status(500).json({
+                error: { message: annexError.message || "Failed to load annex metadata" }
+            });
+        }
+
+        const sizeByAnnexKey = new Map(
+            (annexObjects || []).map((obj) => [obj.annex_key, Number(obj.size_bytes) || 0])
+        );
+
+        const inferType = (fileName) => {
+            const lower = String(fileName || "").toLowerCase();
+            if (/\.(mp4|mov|avi|mkv|webm)$/.test(lower)) return "video";
+            if (/\.(zip|rar|7z|tar|gz)$/.test(lower)) return "archive";
+            if (/\.(onnx|pt|pth|h5|ckpt|bin|safetensors)$/.test(lower)) return "model";
+            return "unknown";
+        };
+
+        const files = (commits || [])
+            .filter((commit) => typeof commit.message === "string" && commit.message.startsWith("Upload "))
+            .map((commit) => {
+                const name = commit.message.replace(/^Upload\s+/, "").trim() || "unknown-file";
+                const sizeBytes = commit.annex_key ? (sizeByAnnexKey.get(commit.annex_key) || 0) : 0;
+
+                return {
+                    id: commit.id,
+                    name,
+                    size_bytes: sizeBytes,
+                    annex_key: commit.annex_key || null,
+                    git_commit_hash: commit.git_commit_hash || null,
+                    branch: commit.branch || "main",
+                    type: inferType(name),
+                    status: "synced",
+                    uploaded_at: commit.committed_at || commit.created_at || null
+                };
+            });
+
+        return res.json(files);
+    } catch (error) {
+        console.error("Error listing repository files:", error);
+        return res.status(500).json({
+            error: { message: error.message || "Failed to fetch repository files" }
         });
     }
 });

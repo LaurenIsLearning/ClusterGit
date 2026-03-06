@@ -3,6 +3,7 @@ import { promisify } from 'util';
 import fs from 'fs/promises';
 import path from 'path';
 import os from 'os';
+import { pathToFileURL } from 'url';
 import { REPO_BASE_PATH, GIT_ANNEX_CONFIG } from '../config/config.js';
 
 const execAsync = promisify(exec);
@@ -40,6 +41,36 @@ export function validateProjectName(name) {
  */
 export function getRepoPath(userId, projectName) {
     return path.join(REPO_BASE_PATH, userId, `${projectName}.git`);
+}
+
+async function pathExists(targetPath) {
+    try {
+        await fs.access(targetPath);
+        return true;
+    } catch {
+        return false;
+    }
+}
+
+export async function resolveExistingRepoPath(userId, projectName) {
+    const repoDirName = `${projectName}.git`;
+    const configured = getRepoPath(userId, projectName);
+
+    const candidates = [
+        configured,
+        path.resolve(process.cwd(), 'local-repos', userId, repoDirName),
+        path.resolve(process.cwd(), 'clustergit-repos', userId, repoDirName),
+        path.resolve(process.cwd(), 'backend', 'local-repos', userId, repoDirName),
+        path.resolve(process.cwd(), 'backend', 'clustergit-repos', userId, repoDirName),
+    ];
+
+    for (const candidate of candidates) {
+        if (await pathExists(candidate)) {
+            return candidate;
+        }
+    }
+
+    return configured;
 }
 
 /**
@@ -212,7 +243,7 @@ export async function createProject(userId, projectName, description = '') {
  * Add a file to a project's repository
  */
 export async function addFileToProject(userId, projectName, filePath, originalName) {
-    const bareRepoPath = getRepoPath(userId, projectName);
+    const bareRepoPath = await resolveExistingRepoPath(userId, projectName);
     const tempWorkingPath = path.join(os.tmpdir(), `clustergit-upload-${Date.now()}`);
 
     try {
@@ -220,7 +251,8 @@ export async function addFileToProject(userId, projectName, filePath, originalNa
         await fs.mkdir(tempWorkingPath, { recursive: true });
 
         // 2. Clone the bare repository (as a non-bare clone)
-        await execAsync(`git clone "${bareRepoPath}" .`, { cwd: tempWorkingPath });
+        const cloneSource = pathToFileURL(bareRepoPath).href;
+        await execAsync(`git clone "${cloneSource}" .`, { cwd: tempWorkingPath });
 
         // 3. Initialize git-annex in the temporary clone
         // We need to do this because git-annex needs to be aware of the new location
@@ -231,6 +263,10 @@ export async function addFileToProject(userId, projectName, filePath, originalNa
         await fs.rename(filePath, targetPath);
         const fileStats = await fs.stat(targetPath);
 
+        // Ensure commit identity exists in temp clones regardless of host git config.
+        await execAsync('git config user.name "ClusterGit Upload Bot"', { cwd: tempWorkingPath });
+        await execAsync('git config user.email "upload-bot@clustergit.local"', { cwd: tempWorkingPath });
+
         // Resolve branch and prior ref for push metadata
         let branch = "main";
         try {
@@ -239,6 +275,10 @@ export async function addFileToProject(userId, projectName, filePath, originalNa
         } catch (_) {
             // Keep default branch fallback.
         }
+
+        // git-annex can move HEAD to adjusted/<branch>(unlocked). Pushes must target canonical branch names.
+        const adjustedMatch = /^adjusted\/(.+)\(unlocked\)$/.exec(branch);
+        const pushBranch = adjustedMatch ? adjustedMatch[1] : branch;
 
         let fromRef = null;
         try {
@@ -253,14 +293,50 @@ export async function addFileToProject(userId, projectName, filePath, originalNa
         const { stdout: annexKeyStdout } = await execAsync(`git annex lookupkey "${originalName}"`, { cwd: tempWorkingPath });
         const annexKey = annexKeyStdout.trim() || null;
 
-        // 6. Commit the changes
-        // Using -m "Upload file" for now. In the future, we could pass a message.
-        await execAsync(`git commit -m "Upload ${originalName}"`, { cwd: tempWorkingPath });
-        const { stdout: toRefStdout } = await execAsync('git rev-parse HEAD', { cwd: tempWorkingPath });
-        const toRef = toRefStdout.trim();
+        // 6. Commit changes if there is anything staged/modified.
+        // Re-uploads of identical content can legitimately produce no-op state.
+        const { stdout: statusStdout } = await execAsync('git status --porcelain', { cwd: tempWorkingPath });
+        const hasChanges = Boolean(statusStdout.trim());
 
-        // 7. Push back to the bare repository
-        await execAsync(`git push origin ${branch}`, { cwd: tempWorkingPath });
+        let toRef = fromRef;
+        let commitCount = 0;
+        if (hasChanges) {
+            try {
+                await execAsync(`git commit -m "Upload ${originalName}"`, { cwd: tempWorkingPath });
+            } catch (commitError) {
+                const details = [
+                    commitError.message || '',
+                    commitError.stderr || '',
+                    commitError.stdout || ''
+                ].filter(Boolean).join('\n').trim();
+                throw new Error(`git commit failed: ${details}`);
+            }
+            const { stdout: toRefStdout } = await execAsync('git rev-parse HEAD', { cwd: tempWorkingPath });
+            toRef = toRefStdout.trim();
+            commitCount = 1;
+        }
+
+        // 7. Reconcile with remote branch (if it exists) and push canonical branch
+        await execAsync('git fetch origin', { cwd: tempWorkingPath });
+        const { stdout: remoteHeadRef } = await execAsync(`git ls-remote --heads origin "${pushBranch}"`, {
+            cwd: tempWorkingPath
+        });
+        if (remoteHeadRef.trim()) {
+            try {
+                await execAsync(`git rebase origin/${pushBranch}`, { cwd: tempWorkingPath });
+            } catch (rebaseError) {
+                // Ensure the temp clone is left in a clean state before failing.
+                try {
+                    await execAsync('git rebase --abort', { cwd: tempWorkingPath });
+                } catch (_) {
+                    // Ignore if there is nothing to abort.
+                }
+                throw rebaseError;
+            }
+        }
+        if (hasChanges) {
+            await execAsync(`git push origin HEAD:${pushBranch}`, { cwd: tempWorkingPath });
+        }
 
         // 8. Push git-annex metadata
         await execAsync('git push origin git-annex', { cwd: tempWorkingPath });
@@ -269,16 +345,21 @@ export async function addFileToProject(userId, projectName, filePath, originalNa
             success: true,
             name: originalName,
             size: fileStats.size,
-            branch,
+            branch: pushBranch,
             annexKey,
             gitCommitHash: toRef,
             fromRef,
             toRef,
-            commitCount: 1
+            commitCount
         };
     } catch (error) {
         console.error('Failed to add file to repository:', error);
-        throw new Error(`Failed to add file to repository: ${error.message}`);
+        const details = [
+            error.message || '',
+            error.stderr || '',
+            error.stdout || ''
+        ].filter(Boolean).join('\n').trim();
+        throw new Error(`Failed to add file to repository: ${details}`);
     } finally {
         // 9. Clean up temporary working directory
         try {
@@ -295,6 +376,7 @@ export default {
     initGitAnnex,
     getAnnexUuid,
     createProject,
+    resolveExistingRepoPath,
     getRepoPath,
     getRepoSize,
     getGitUrl,

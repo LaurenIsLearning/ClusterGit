@@ -20,6 +20,11 @@ export default function StudentProjects() {
         loadProjects();
     }, []);
 
+    const formatSize = (sizeBytes) => {
+        const bytes = Number(sizeBytes) || 0;
+        return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+    };
+
     const loadProjects = async () => {
         try {
             setLoading(true);
@@ -30,7 +35,7 @@ export default function StudentProjects() {
             }
         } catch (error) {
             console.error('Failed to load projects:', error);
-            addToast('Failed to load projects', 'error');
+            addToast(error.message || 'Failed to load projects', 'error');
         } finally {
             setLoading(false);
         }
@@ -38,24 +43,49 @@ export default function StudentProjects() {
 
     // Load files when project changes
     useEffect(() => {
-        if (selectedProject) {
-            // For now, files are not implemented
-            // In the future, this would fetch git-annex tracked files
-            setFiles([]);
-        }
-    }, [selectedProject]);
+        const loadFiles = async () => {
+            if (!selectedProject) {
+                setFiles([]);
+                return;
+            }
 
-    const handleUploadComplete = (file) => {
-        // Mock adding the file to the list until real getProjectFiles() endpoint
-        // exists in the backend; TEMPORARY UX BRIDGE
-        const newFile = {
-            id: `new-${Date.now()}`,
-            name: file.name,
-            size: `${(file.size / (1024 * 1024)).toFixed(1)} MB`,
-            type: 'unknown',
-            status: 'synced'
+            try {
+                const data = await projectService.getProjectFiles(selectedProject);
+                const normalized = (data || []).map((file) => ({
+                    id: file.id,
+                    name: file.name,
+                    size: formatSize(file.size_bytes),
+                    type: file.type || 'unknown',
+                    status: file.status || 'synced',
+                }));
+                setFiles(normalized);
+            } catch (error) {
+                console.error('Failed to load files:', error);
+                addToast(error.message || 'Failed to load project files', 'error');
+                setFiles([]);
+            }
         };
-        setFiles(prev => [newFile, ...prev]);
+
+        loadFiles();
+    }, [selectedProject, addToast]);
+
+    const handleUploadComplete = async () => {
+        if (!selectedProject) return;
+
+        try {
+            const data = await projectService.getProjectFiles(selectedProject);
+            const normalized = (data || []).map((item) => ({
+                id: item.id,
+                name: item.name,
+                size: formatSize(item.size_bytes),
+                type: item.type || 'unknown',
+                status: item.status || 'synced',
+            }));
+            setFiles(normalized);
+        } catch (error) {
+            console.error('Failed to refresh files after upload:', error);
+            addToast(error.message || 'Upload succeeded, but file list refresh failed', 'error');
+        }
     };
 
     const handleNewProject = () => {
