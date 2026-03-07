@@ -52,6 +52,8 @@ jobs:
         run: |
           BRANCH=${{ steps.vars.outputs.tag }}
 
+          export KUBECONFIG=/tmp/kubeconfig
+
           kubectl config set-cluster k3s --server=${{ secrets.KUBE_SERVER }} --insecure-skip-tls-verify=true
           kubectl config set-credentials deployer --token=${{ secrets.KUBE_TOKEN }}
           kubectl config set-context default --cluster=k3s --user=deployer
