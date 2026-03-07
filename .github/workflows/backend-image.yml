@@ -20,7 +20,6 @@ jobs:
       - name: Checkout repo
         uses: actions/checkout@v4
 
-      # Convert branch name to a safe Kubernetes tag
       - name: Set branch tag
         id: vars
         run: |
@@ -58,67 +57,67 @@ jobs:
           kubectl config set-context default --cluster=k3s --user=deployer
           kubectl config use-context default
 
-          kubectl apply -f - <<EOF
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: clustergit-backend-$BRANCH
-  namespace: storage
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: clustergit-backend-$BRANCH
-  template:
-    metadata:
-      labels:
-        app: clustergit-backend-$BRANCH
-    spec:
-      containers:
-      - name: backend
-        image: ghcr.io/${{ steps.owner.outputs.name }}/clustergit-backend:$BRANCH
-        imagePullPolicy: Always
-        ports:
-        - containerPort: 80
-        envFrom:
-        - secretRef:
-            name: clustergit-backend-env
-        volumeMounts:
-        - mountPath: /git-repos
-          name: repo-volume
-      volumes:
-      - name: repo-volume
-        persistentVolumeClaim:
-          claimName: repo-vol-rwo-pvc
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: clustergit-backend-$BRANCH
-  namespace: storage
-spec:
-  selector:
-    app: clustergit-backend-$BRANCH
-  ports:
-  - port: 80
-    targetPort: 80
----
-apiVersion: networking.k8s.io/v1
-kind: Ingress
-metadata:
-  name: clustergit-backend-$BRANCH
-  namespace: storage
-spec:
-  ingressClassName: traefik
-  rules:
-  - host: $BRANCH.api.clustergit.com
-    http:
-      paths:
-      - path: /
-        pathType: Prefix
-        backend:
-          service:
+          cat <<EOF | kubectl apply -f -
+          apiVersion: apps/v1
+          kind: Deployment
+          metadata:
             name: clustergit-backend-$BRANCH
-            port:
-              number: 80
-EOF
+            namespace: storage
+          spec:
+            replicas: 1
+            selector:
+              matchLabels:
+                app: clustergit-backend-$BRANCH
+            template:
+              metadata:
+                labels:
+                  app: clustergit-backend-$BRANCH
+              spec:
+                containers:
+                - name: backend
+                  image: ghcr.io/${{ steps.owner.outputs.name }}/clustergit-backend:$BRANCH
+                  imagePullPolicy: Always
+                  ports:
+                  - containerPort: 80
+                  envFrom:
+                  - secretRef:
+                      name: clustergit-backend-env
+                  volumeMounts:
+                  - mountPath: /git-repos
+                    name: repo-volume
+                volumes:
+                - name: repo-volume
+                  persistentVolumeClaim:
+                    claimName: repo-vol-rwo-pvc
+          ---
+          apiVersion: v1
+          kind: Service
+          metadata:
+            name: clustergit-backend-$BRANCH
+            namespace: storage
+          spec:
+            selector:
+              app: clustergit-backend-$BRANCH
+            ports:
+            - port: 80
+              targetPort: 80
+          ---
+          apiVersion: networking.k8s.io/v1
+          kind: Ingress
+          metadata:
+            name: clustergit-backend-$BRANCH
+            namespace: storage
+          spec:
+            ingressClassName: traefik
+            rules:
+            - host: $BRANCH.api.clustergit.com
+              http:
+                paths:
+                - path: /
+                  pathType: Prefix
+                  backend:
+                    service:
+                      name: clustergit-backend-$BRANCH
+                      port:
+                        number: 80
+          EOF
