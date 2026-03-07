@@ -119,3 +119,5 @@ spec:
             port:
               number: 80
 EOF
+
+console.log("trigger backend deploy");
