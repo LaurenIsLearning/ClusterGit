@@ -35,14 +35,14 @@ jobs:
         run: |
           echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
 
-      - name: Build image
-        run: |
-          docker build \
-          -t ghcr.io/${{ steps.owner.outputs.name }}/clustergit-backend:${{ steps.vars.outputs.tag }} \
-          -t ghcr.io/${{ steps.owner.outputs.name }}/clustergit-backend:latest \
-          ./backend
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
 
-      - name: Push image
+      - name: Build and push multi-arch image
         run: |
-          docker push ghcr.io/${{ steps.owner.outputs.name }}/clustergit-backend:${{ steps.vars.outputs.tag }}
-          docker push ghcr.io/${{ steps.owner.outputs.name }}/clustergit-backend:latest
+          docker buildx build \
+          --platform linux/amd64,linux/arm64 \
+          -t ghcr.io/${{ steps.owner.outputs.name }}/clustergit-backend:${{ steps.vars.outputs.tag }} \
+            -t ghcr.io/${{ steps.owner.outputs.name }}/clustergit-backend:latest \
+          --push \
+          ./backend
