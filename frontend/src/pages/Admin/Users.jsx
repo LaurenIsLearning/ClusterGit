@@ -1,20 +1,42 @@
-import { useState } from 'react';
-import { Users, Search, Database, AlertTriangle, HelpCircle } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import { Users, Search, HelpCircle } from 'lucide-react';
 import ConfirmationModal from '../../components/ConfirmationModal';
 import { useToast } from '../../context/ToastContext';
+import { adminService } from '../../services/adminService';
 
 export default function AdminUsers() {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [selectedUser, setSelectedUser] = useState(null);
+    const [users, setUsers] = useState([]);
+    const [query, setQuery] = useState('');
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState('');
     const { addToast } = useToast();
 
-    // Mock User Data
-    const users = [
-        { id: 1, name: 'Alice Smith', email: 'alice@univ.edu', used: 12.4, quota: 20, lastActive: '2 mins ago' },
-        { id: 2, name: 'Bob Jones', email: 'bob@univ.edu', used: 4.1, quota: 20, lastActive: '1 day ago' },
-        { id: 3, name: 'Charlie Day', email: 'charlie@univ.edu', used: 18.9, quota: 20, lastActive: '5 hours ago' },
-        { id: 4, name: 'Dana White', email: 'dana@univ.edu', used: 0.5, quota: 50, lastActive: '1 week ago' },
-    ];
+    useEffect(() => {
+        const load = async () => {
+            setLoading(true);
+            setError('');
+            try {
+                const data = await adminService.getUsers();
+                setUsers(data);
+            } catch (err) {
+                setError(err.message || 'Failed to load users');
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        load();
+    }, []);
+
+    const filteredUsers = useMemo(() => {
+        const value = query.trim().toLowerCase();
+        if (!value) return users;
+        return users.filter((user) =>
+            user.name.toLowerCase().includes(value) || user.email.toLowerCase().includes(value)
+        );
+    }, [users, query]);
 
     const handleResetQuotaClick = (user) => {
         setSelectedUser(user);
@@ -26,6 +48,9 @@ export default function AdminUsers() {
         setIsModalOpen(false);
         // User data update logic would go here
     };
+
+    if (loading) return <div className="p-10 text-center">Loading users...</div>;
+    if (error) return <div className="p-10 text-center text-red-500">{error}</div>;
 
     return (
         <div className="space-y-6">
@@ -42,12 +67,14 @@ export default function AdminUsers() {
                         <input
                             type="text"
                             placeholder="Search students..."
+                            value={query}
+                            onChange={(e) => setQuery(e.target.value)}
                             className="pl-9 pr-4 py-2 rounded-md bg-[--bg-primary] border border-[--border-color] text-sm focus:outline-none focus:border-[--accent-primary]"
                         />
                     </div>
                     <div className="flex gap-2">
                         <span className="text-sm text-[--text-secondary] flex items-center gap-1" title="Total active students">
-                            <Users className="w-4 h-4" /> {users.length} Total Users
+                            <Users className="w-4 h-4" /> {filteredUsers.length} Total Users
                         </span>
                     </div>
                 </div>
@@ -66,7 +93,7 @@ export default function AdminUsers() {
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-[--border-color]">
-                        {users.map(user => (
+                        {filteredUsers.map(user => (
                             <tr key={user.id} className="hover:bg-[--bg-tertiary]/20">
                                 <td className="px-6 py-4">
                                     <div className="flex items-center gap-3">
@@ -82,13 +109,13 @@ export default function AdminUsers() {
                                 <td className="px-6 py-4">
                                     <div className="w-48">
                                         <div className="flex justify-between text-xs mb-1">
-                                            <span>{user.used} GB</span>
-                                            <span className="text-[--text-muted]">of {user.quota} GB</span>
+                                            <span>{user.used.toFixed(2)} GB</span>
+                                            <span className="text-[--text-muted]">of {user.quota.toFixed(2)} GB</span>
                                         </div>
                                         <div className="h-1.5 w-full bg-[--bg-primary] rounded-full overflow-hidden">
                                             <div
-                                                className={`h-full rounded-full ${user.used / user.quota > 0.9 ? 'bg-[--status-error]' : 'bg-[--accent-primary]'}`}
-                                                style={{ width: `${(user.used / user.quota) * 100}%` }}
+                                                className={`h-full rounded-full ${user.quota > 0 && (user.used / user.quota) > 0.9 ? 'bg-[--status-error]' : 'bg-[--accent-primary]'}`}
+                                                style={{ width: `${user.quota > 0 ? Math.min(100, (user.used / user.quota) * 100) : 0}%` }}
                                             ></div>
                                         </div>
                                     </div>
@@ -106,6 +133,13 @@ export default function AdminUsers() {
                                 </td>
                             </tr>
                         ))}
+                        {filteredUsers.length === 0 && (
+                            <tr>
+                                <td colSpan="4" className="px-6 py-8 text-center text-[--text-muted]">
+                                    No users found.
+                                </td>
+                            </tr>
+                        )}
                     </tbody>
                 </table>
             </div>
