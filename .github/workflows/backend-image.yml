@@ -46,3 +46,12 @@ jobs:
             -t ghcr.io/${{ steps.owner.outputs.name }}/clustergit-backend:latest \
           --push \
           ./backend
+
+      - name: Deploy to Kubernetes
+        run: |
+          kubectl config set-cluster k3s --server=${{ secrets.KUBE_SERVER }} --insecure-skip-tls-verify=true
+          kubectl config set-credentials deployer --token=${{ secrets.KUBE_TOKEN }}
+          kubectl config set-context default --cluster=k3s --user=deployer --namespace=${{ secrets.KUBE_NAMESPACE }}
+          kubectl config use-context default
+          
+          kubectl rollout restart deployment clustergit-backend
