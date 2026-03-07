@@ -34,6 +34,10 @@ app.use(cors({
 
 app.use(express.json());
 
+app.get("/", (req, res) => {
+  res.send("ClusterGit backend is alive");
+});
+
 // Register your API routes
 app.use("/api/auth", authRoutes);
 app.use("/api/repos", repoRoutes);
