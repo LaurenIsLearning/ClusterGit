@@ -3,10 +3,10 @@ name: Build Backend Image
 on:
   push:
     branches:
-        - "**"
+      - "**"
     paths:
-        - 'backend/**'
-        - '.github/workflows/backend-image.yml'
+      - "backend/**"
+      - ".github/workflows/backend-image.yml"
 
 jobs:
   build:
@@ -20,11 +20,13 @@ jobs:
       - name: Checkout repo
         uses: actions/checkout@v4
 
+      # Convert branch name to a safe Kubernetes tag
       - name: Set branch tag
-        id : vars
+        id: vars
         run: |
           BRANCH=${GITHUB_REF#refs/heads/}
-          echo "tag=$BRANCH" >> $GITHUB_OUTPUT
+          SAFE_BRANCH=$(echo "$BRANCH" | tr '[:upper:]' '[:lower:]' | tr '/' '-')
+          echo "tag=$SAFE_BRANCH" >> $GITHUB_OUTPUT
 
       - name: Set lowercase owner
         id: owner
@@ -41,17 +43,79 @@ jobs:
       - name: Build and push multi-arch image
         run: |
           docker buildx build \
-          --platform linux/amd64,linux/arm64 \
-          -t ghcr.io/${{ steps.owner.outputs.name }}/clustergit-backend:${{ steps.vars.outputs.tag }} \
+            --platform linux/amd64,linux/arm64 \
+            -t ghcr.io/${{ steps.owner.outputs.name }}/clustergit-backend:${{ steps.vars.outputs.tag }} \
             -t ghcr.io/${{ steps.owner.outputs.name }}/clustergit-backend:latest \
-          --push \
-          ./backend
+            --push \
+            ./backend
 
-      - name: Deploy to Kubernetes
+      - name: Deploy branch backend to Kubernetes
         run: |
+          BRANCH=${{ steps.vars.outputs.tag }}
+
           kubectl config set-cluster k3s --server=${{ secrets.KUBE_SERVER }} --insecure-skip-tls-verify=true
           kubectl config set-credentials deployer --token=${{ secrets.KUBE_TOKEN }}
-          kubectl config set-context default --cluster=k3s --user=deployer --namespace=${{ secrets.KUBE_NAMESPACE }}
+          kubectl config set-context default --cluster=k3s --user=deployer
           kubectl config use-context default
-          
-          kubectl rollout restart deployment clustergit-backend
+
+          kubectl -n storage apply -f - <<EOF
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: clustergit-backend-$BRANCH
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: clustergit-backend-$BRANCH
+  template:
+    metadata:
+      labels:
+        app: clustergit-backend-$BRANCH
+    spec:
+      containers:
+      - name: backend
+        image: ghcr.io/${{ steps.owner.outputs.name }}/clustergit-backend:$BRANCH
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 80
+        envFrom:
+        - secretRef:
+            name: clustergit-backend-env
+        volumeMounts:
+        - mountPath: /git-repos
+          name: repo-volume
+      volumes:
+      - name: repo-volume
+        persistentVolumeClaim:
+          claimName: repo-vol-rwo-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: clustergit-backend-$BRANCH
+spec:
+  selector:
+    app: clustergit-backend-$BRANCH
+  ports:
+  - port: 80
+    targetPort: 80
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: clustergit-backend-$BRANCH
+spec:
+  ingressClassName: traefik
+  rules:
+  - host: $BRANCH.api.clustergit.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: clustergit-backend-$BRANCH
+            port:
+              number: 80
+EOF
