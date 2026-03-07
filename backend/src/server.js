@@ -8,7 +8,6 @@ import repoRoutes from "./routes/repos.js";
 import commitRoutes from "./routes/commits.js";
 
 const app = express();
-const PORT = process.env.PORT || 8080; //guarantees backend always starts
 
 app.use(cors({
   origin: function (origin, callback) {
@@ -46,6 +45,8 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: "Internal server error" });
 });
 
-app.listen(process.env.PORT, () => {
-    console.log(`ClusterGit API running on port ${PORT}`);
+const PORT = process.env.PORT || 8080; //guarantees backend always starts
+
+app.listen(PORT, () => {
+  console.log(`ClusterGit API running on port ${PORT}`);
 });
