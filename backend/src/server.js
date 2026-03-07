@@ -8,6 +8,7 @@ import repoRoutes from "./routes/repos.js";
 import commitRoutes from "./routes/commits.js";
 
 const app = express();
+const PORT = process.env.PORT || 8080; //guarantees backend always starts
 
 app.use(cors({
   origin: function (origin, callback) {
@@ -39,6 +40,12 @@ app.use("/api/auth", authRoutes);
 app.use("/api/repos", repoRoutes);
 app.use("/api/commits", commitRoutes);
 
+// Error handler (helps with white screen)
+app.use((err, req, res, next) => {
+  console.error("API error:", err);
+  res.status(500).json({ error: "Internal server error" });
+});
+
 app.listen(process.env.PORT, () => {
-    console.log(`ClusterGit API running on port ${process.env.PORT}`);
+    console.log(`ClusterGit API running on port ${PORT}`);
 });
