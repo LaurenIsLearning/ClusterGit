@@ -74,6 +74,7 @@ export default function DashboardLayout() {
               <NavItem to="/admin" icon={LayoutDashboard} label="Cluster Health" />
               <NavItem to="/admin/nodes" icon={Server} label="Nodes" />
               <NavItem to="/admin/users" icon={Users} label="User Allocations" />
+              <NavItem to="/admin/settings" icon={Settings} label="Settings" />
             </>
           ) : null}
         </nav>
