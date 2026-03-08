@@ -42,6 +42,16 @@ export function getRepoPath(userId, projectName) {
     return path.join(REPO_BASE_PATH, userId, `${projectName}.git`);
 }
 
+
+/**
+ * Get Git clone URL
+ */
+export function getGitUrl(userId, projectName) {
+    const repoPath = getRepoPath(userId, projectName);
+    const host = '10.27.12.244'; // adjust if needed
+    return `git@${host}:${repoPath}`;
+}
+
 /**
  * Get git-annex UUID for a repository
  */
@@ -49,8 +59,7 @@ export async function getAnnexUuid(repoPath) {
     try {
         const { stdout } = await execAsync(
             "/usr/bin/git",
-            ["config", "--get", "annex.uuid"],
-            { cwd: repoPath }
+            ["--git-dir", repoPath, "config", "--get", "annex.uuid"]
         );
         return stdout.trim() || null;
     } catch (error) {
@@ -132,34 +141,17 @@ export async function createRepository(userId, projectName, description = '') {
     }
 }
 
-
 /**
- * Initialize git-annex in a repository
+ * Initialize git-annex in a repository (if needed later)
  */
 export async function initGitAnnex(repoPath) {
     try {
-        // Initialize git-annex
         console.log("Running initGitAnnex in:", repoPath);
         await execAsync("/usr/bin/git", ["annex", "init"], { cwd: repoPath });
+        await execAsync("/usr/bin/git", ["config", "annex.backends", GIT_ANNEX_CONFIG.backend], { cwd: repoPath });
+        await execAsync("/usr/bin/git", ["annex", "numcopies", GIT_ANNEX_CONFIG.numCopies], { cwd: repoPath });
+        await execAsync("/usr/bin/git", ["config", "annex.largefiles", `largerthan=${GIT_ANNEX_CONFIG.largeFileThreshold}b`], { cwd: repoPath });
         console.log("initGitAnnex complete");
-
-        // Configure git-annex backend
-        await execAsync("/usr/bin/git", ["config", "annex.backends", GIT_ANNEX_CONFIG.backend], {
-            cwd: repoPath
-        });
-
-        // Set number of copies
-        await execAsync("/usr/bin/git", ["annex", "numcopies", GIT_ANNEX_CONFIG.numCopies], {
-            cwd: repoPath
-        });
-
-        // Configure large file threshold
-        await execAsync("/usr/bin/git", [
-            "config",
-            "annex.largefiles",
-            `largerthan=${GIT_ANNEX_CONFIG.largeFileThreshold}b`
-        ], { cwd: repoPath });
-
         return { success: true };
     } catch (error) {
         throw new Error(`Failed to initialize git-annex: ${error.message}`);
