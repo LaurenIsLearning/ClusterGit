@@ -44,7 +44,7 @@ jobs:
           TAG=${{ steps.vars.outputs.tag }}
 
           docker buildx build \
-            --platform linux/amd64,linux/arm64 \
+            --platform linux/amd64 \
             -t ghcr.io/${{ steps.owner.outputs.name }}/clustergit-backend:$TAG \
             $(if [ "$TAG" = "main" ]; then echo "-t ghcr.io/${{ steps.owner.outputs.name }}/clustergit-backend:latest"; fi) \
             --push \
