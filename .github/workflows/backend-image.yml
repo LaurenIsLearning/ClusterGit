@@ -41,12 +41,14 @@ jobs:
 
       - name: Build and push backend image
         run: |
+          TAG=${{ steps.vars.outputs.tag }}
+
           docker buildx build \
-                  --platform linux/amd64,linux/arm64 \
-                  -t ghcr.io/${{ steps.owner.outputs.name }}/clustergit-backend:$TAG \
-                  $(if [ "$TAG" = "main" ]; then echo "-t ghcr.io/${{ steps.owner.outputs.name }}/clustergit-backend:latest"; fi) \
-                  --push \
-                  ./backend
+            --platform linux/amd64,linux/arm64 \
+            -t ghcr.io/${{ steps.owner.outputs.name }}/clustergit-backend:$TAG \
+            $(if [ "$TAG" = "main" ]; then echo "-t ghcr.io/${{ steps.owner.outputs.name }}/clustergit-backend:latest"; fi) \
+            --push \
+            ./backend
 
       - name: Print pushed image
         run:
