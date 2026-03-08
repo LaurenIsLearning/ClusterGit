@@ -1,6 +1,8 @@
-FROM node:20-alpine
+FROM node:20
 
-RUN apk add --no-cache git git-annex
+RUN apt-get update && \
+    apt-get install -y git git-annex && \
+    rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
