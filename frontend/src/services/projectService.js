@@ -2,7 +2,7 @@ import { authService } from './authService';
 import { getApiBaseUrl } from "../utils/api";
 
 //ensure that final base always ends with /api
-const rawApiUrl = rawApiUrl = getApiBaseUrl();
+const rawApiUrl = getApiBaseUrl();
 const normalizedApiUrl = rawApiUrl.replace(/\/+$/, '');
 const API_BASE_URL = normalizedApiUrl.endsWith('/api')
     ? normalizedApiUrl
