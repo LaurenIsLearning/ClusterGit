@@ -69,7 +69,9 @@ export async function createRepository(userId, projectName, description = '') {
 
     try {
         // Initialize bare Git repository
+        console.log("Running git init in:", repoPath);
         await execAsync("/usr/bin/git", ["init", "--bare"], { cwd: repoPath }); // Use absolute path to git used by backend container to avoid PATH issues
+        console.log("Git init complete");
 
         // Set repository description
         if (description) {
@@ -95,7 +97,9 @@ export async function createRepository(userId, projectName, description = '') {
 export async function initGitAnnex(repoPath) {
     try {
         // Initialize git-annex
+        console.log("Running initGitAnnex in:", repoPath);
         await execAsync("/usr/bin/git", ["annex", "init"], { cwd: repoPath });
+        console.log("initGitAnnex complete");
 
         // Configure git-annex backend
         await execAsync("/usr/bin/git", ["config", "annex.backends", GIT_ANNEX_CONFIG.backend], {
