@@ -230,7 +230,14 @@ export async function addFileToProject(userId, projectName, filePath, originalNa
         await execAsync("/usr/bin/git", ["clone", bareRepoPath, "."], { cwd: tempWorkingPath });
 
         // ensure main branch exists
-        await execAsync("/usr/bin/git", ["checkout", "-b", "main"], { cwd: tempWorkingPath });
+        try {
+            await execAsync("/usr/bin/git", ["checkout", "main"], { cwd: tempWorkingPath });
+        } catch {
+            await execAsync("/usr/bin/git", ["checkout", "-b", "main"], { cwd: tempWorkingPath });
+        }
+
+        //keeps main up to date
+        await execAsync("/usr/bin/git", ["pull", "origin", "main"], { cwd: tempWorkingPath }).catch(()=>{});
 
         // Configure git identity for commits
         await execAsync("/usr/bin/git", ["config", "user.name", "ClusterGit"], { cwd: tempWorkingPath });
