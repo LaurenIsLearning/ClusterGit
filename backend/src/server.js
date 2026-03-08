@@ -9,6 +9,15 @@ import commitRoutes from "./routes/commits.js";
 
 const app = express();
 
+//logging to watch Node
+process.on("uncaughtException", err => {
+  console.error("Uncaught Exception:", err);
+});
+
+process.on("unhandledRejection", err => {
+  console.error("Unhandled Rejection:", err);
+});
+
 app.use(cors({
   origin: function (origin, callback) {
     // Allow non-browser requests (curl, Postman, etc.)
