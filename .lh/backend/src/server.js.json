@@ -1,0 +1,18 @@
+{
+    "sourceFile": "backend/src/server.js",
+    "activeCommit": 0,
+    "commits": [
+        {
+            "activePatchIndex": 0,
+            "patches": [
+                {
+                    "date": 1772950285298,
+                    "content": "Index: \n===================================================================\n--- \n+++ \n"
+                }
+            ],
+            "date": 1772950285298,
+            "name": "Commit-0",
+            "content": "import express from \"express\";\r\nimport cors from \"cors\";\r\nimport dotenv from \"dotenv\";\r\ndotenv.config();\r\n\r\nimport authRoutes from \"./routes/auth.js\";\r\nimport repoRoutes from \"./routes/repos.js\";\r\nimport commitRoutes from \"./routes/commits.js\";\r\n\r\nconst app = express();\r\n\r\napp.use(cors({\r\n  origin: function (origin, callback) {\r\n    // Allow non-browser requests (curl, Postman, etc.)\r\n    if (!origin) return callback(null, true);\r\n\r\n    const allowedOrigins = [\r\n      \"https://clustergit.com\",\r\n      \"http://localhost:5173\"\r\n    ];\r\n\r\n    // Allow all Cloudflare preview deployments\r\n    if (\r\n      allowedOrigins.includes(origin) ||\r\n      origin.endsWith(\".clustergit.pages.dev\")\r\n    ) {\r\n      return callback(null, true);\r\n    }\r\n\r\n    return callback(new Error(\"Not allowed by CORS\"));\r\n  },\r\n  credentials: true\r\n}));\r\n\r\napp.use(express.json());\r\n\r\napp.get(\"/\", (req, res) => {\r\n  res.send(\"ClusterGit backend is alive\");\r\n});\r\n\r\n// Register your API routes\r\napp.use(\"/api/auth\", authRoutes);\r\napp.use(\"/api/repos\", repoRoutes);\r\napp.use(\"/api/commits\", commitRoutes);\r\n\r\n// Error handler (helps with white screen)\r\napp.use((err, req, res, next) => {\r\n  console.error(\"API error:\", err);\r\n  res.status(500).json({ error: \"Internal server error\" });\r\n});\r\n\r\nconst PORT = process.env.PORT || 8080; //guarantees backend always starts\r\n\r\napp.listen(PORT, () => {\r\n  console.log(`ClusterGit API running on port ${PORT}`);\r\n});\r\n\r\n// trigger deploy 11"
+        }
+    ]
+}
