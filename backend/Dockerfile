@@ -1,8 +1,4 @@
-FROM node:20
-
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends git git-annex && \
-    rm -rf /var/lib/apt/lists/*
+FROM ghcr.io/laurenislearning/clustergit-backend-base:latest
 
 WORKDIR /app
 

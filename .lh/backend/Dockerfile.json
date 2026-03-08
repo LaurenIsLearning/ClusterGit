@@ -3,7 +3,7 @@
     "activeCommit": 0,
     "commits": [
         {
-            "activePatchIndex": 7,
+            "activePatchIndex": 9,
             "patches": [
                 {
                     "date": 1772951818101,
@@ -36,6 +36,14 @@
                 {
                     "date": 1772953086555,
                     "content": "Index: \n===================================================================\n--- \n+++ \n@@ -0,0 +1,16 @@\n+FROM node:20\r\n+\r\n+RUN apt-get update && \\\r\n+    apt-get install -y --no-install-recommends git git-annex && \\\r\n+    rm -rf /var/lib/apt/lists/*\r\n+\r\n+WORKDIR /app\r\n+\r\n+COPY package*.json ./\r\n+RUN npm install\r\n+\r\n+COPY . .\r\n+\r\n+EXPOSE 80\r\n+\r\n+CMD [\"node\", \"src/server.js\"]\n\\ No newline at end of file\n"
+                },
+                {
+                    "date": 1772955777487,
+                    "content": "Index: \n===================================================================\n--- \n+++ \n@@ -1,5 +1,5 @@\n-FROM node:20\r\n+FROM ghcr.io/laurenislearning/clustergit-backend-base:latest\r\n \r\n RUN apt-get update && \\\r\n     apt-get install -y --no-install-recommends git git-annex && \\\r\n     rm -rf /var/lib/apt/lists/*\r\n@@ -12,24 +12,5 @@\n COPY . .\r\n \r\n EXPOSE 80\r\n \r\n-CMD [\"node\", \"src/server.js\"]\n-RUN apt-get update && \\\r\n-    apt-get install -y --no-install-recommends git git-annex && \\\r\n-    rm -rf /var/lib/apt/lists/*\n-FROM node:20\r\n-\r\n-RUN apt-get update && \\\r\n-    apt-get install -y git git-annex && \\\r\n-    rm -rf /var/lib/apt/lists/*\r\n-\r\n-WORKDIR /app\r\n-\r\n-COPY package*.json ./\r\n-RUN npm install\r\n-\r\n-COPY . .\r\n-\r\n-EXPOSE 80\r\n-\r\n CMD [\"node\", \"src/server.js\"]\n\\ No newline at end of file\n"
+                },
+                {
+                    "date": 1772955785653,
+                    "content": "Index: \n===================================================================\n--- \n+++ \n@@ -0,0 +1,12 @@\n+FROM ghcr.io/laurenislearning/clustergit-backend-base:latest\r\n+\r\n+WORKDIR /app\r\n+\r\n+COPY package*.json ./\r\n+RUN npm install\r\n+\r\n+COPY . .\r\n+\r\n+EXPOSE 80\r\n+\r\n+CMD [\"node\", \"src/server.js\"]\n\\ No newline at end of file\n"
                 }
             ],
             "date": 1772951818101,

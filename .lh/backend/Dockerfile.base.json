@@ -1,0 +1,22 @@
+{
+    "sourceFile": "backend/Dockerfile.base",
+    "activeCommit": 0,
+    "commits": [
+        {
+            "activePatchIndex": 1,
+            "patches": [
+                {
+                    "date": 1772955740654,
+                    "content": "Index: \n===================================================================\n--- \n+++ \n"
+                },
+                {
+                    "date": 1772955753508,
+                    "content": "Index: \n===================================================================\n--- \n+++ \n@@ -1,7 +1,7 @@\n FROM node:20\r\n \r\n RUN apt-get update && \\\r\n-    apt-get install -y --no-install-recommends git git-annex && \\\r\n+    apt-get install -y git git-annex && \\\r\n     rm -rf /var/lib/apt/lists/*\r\n \r\n WORKDIR /app\n\\ No newline at end of file\n"
+                }
+            ],
+            "date": 1772955740654,
+            "name": "Commit-0",
+            "content": "FROM node:20\r\n\r\nRUN apt-get update && \\\r\n    apt-get install -y --no-install-recommends git git-annex && \\\r\n    rm -rf /var/lib/apt/lists/*\r\n\r\nWORKDIR /app"
+        }
+    ]
+}

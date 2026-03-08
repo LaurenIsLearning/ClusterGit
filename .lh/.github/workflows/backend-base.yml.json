@@ -1,0 +1,18 @@
+{
+    "sourceFile": ".github/workflows/backend-base.yml",
+    "activeCommit": 0,
+    "commits": [
+        {
+            "activePatchIndex": 0,
+            "patches": [
+                {
+                    "date": 1772955831086,
+                    "content": "Index: \n===================================================================\n--- \n+++ \n"
+                }
+            ],
+            "date": 1772955831086,
+            "name": "Commit-0",
+            "content": "name: Build Backend Base Image\r\n\r\non:\r\n  push:\r\n    paths:\r\n      - \"backend/Dockerfile.base\"\r\n\r\njobs:\r\n  build:\r\n    runs-on: self-hosted\r\n\r\n    steps:\r\n      - uses: actions/checkout@v4\r\n\r\n      - name: Login to GHCR\r\n        run: |\r\n          echo \"${{ secrets.GITHUB_TOKEN }}\" | docker login ghcr.io -u ${{ github.actor }} --password-stdin\r\n\r\n      - name: Build base image\r\n        run: |\r\n          docker buildx build \\\r\n            -t ghcr.io/${{ github.repository_owner }}/clustergit-backend-base:latest \\\r\n            -f backend/Dockerfile.base \\\r\n            --push \\\r\n            ."
+        }
+    ]
+}
