@@ -9,13 +9,10 @@ jobs:
     runs-on: self-hosted
 
     steps:
-      - name: Compute branch name
-        id: branch
+      - name: Set branch name
         run: |
           BRANCH=$(echo "${{ github.event.ref }}" | tr '/' '-' | tr '[:upper:]' '[:lower:]')
-          echo "branch=$BRANCH" >> $GITHUB_OUTPUT
-
-      - name: Delete preview namespace
-        run: |
-          echo "Deleting preview namespace preview-${{ steps.branch.outputs.branch }}"
-          kubectl delete namespace preview-${{ steps.branch.outputs.branch }} --ignore-not-found
+          echo "Branch: $BRANCH"
+          echo "Deleting preview-$BRANCH"
+          
+          kubectl delete namespace preview-$BRANCH --ignore-not-found
