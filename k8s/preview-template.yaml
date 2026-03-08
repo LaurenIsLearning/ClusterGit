@@ -35,7 +35,7 @@ spec:
     spec:
       containers:
         - name: backend
-          image: ghcr.io/laurenislearning/clustergit-backend:latest
+          image: ghcr.io/laurenislearning/clustergit-backend:{{BRANCH}}
           ports:
             - containerPort: 80
           envFrom:
