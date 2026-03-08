@@ -3,7 +3,7 @@
     "activeCommit": 0,
     "commits": [
         {
-            "activePatchIndex": 11,
+            "activePatchIndex": 15,
             "patches": [
                 {
                     "date": 1772951818101,
@@ -52,6 +52,22 @@
                 {
                     "date": 1772963677400,
                     "content": "Index: \n===================================================================\n--- \n+++ \n@@ -1,10 +1,10 @@\n-\r\n+#trigger\r\n FROM ghcr.io/laurenislearning/clustergit-backend-base:latest\r\n \r\n WORKDIR /app\r\n \r\n-COPY package*.json ./\r\n+COPY backend/package*.json ./\r\n RUN npm install\r\n \r\n COPY . .\r\n \r\n"
+                },
+                {
+                    "date": 1772963972040,
+                    "content": "Index: \n===================================================================\n--- \n+++ \n@@ -2,10 +2,9 @@\n FROM ghcr.io/laurenislearning/clustergit-backend-base:latest\r\n \r\n WORKDIR /app\r\n \r\n-COPY backend/package*.json ./\r\n-RUN npm install\r\n+COPY package*.json ./\r\n \r\n COPY . .\r\n \r\n EXPOSE 80\r\n"
+                },
+                {
+                    "date": 1772963977948,
+                    "content": "Index: \n===================================================================\n--- \n+++ \n@@ -0,0 +1,13 @@\n+#trigger\r\n+FROM ghcr.io/laurenislearning/clustergit-backend-base:latest\r\n+\r\n+WORKDIR /app\r\n+\r\n+COPY backend/package*.json ./\r\n+RUN npm install\r\n+\r\n+COPY . .\r\n+\r\n+EXPOSE 80\r\n+\r\n+CMD [\"node\", \"src/server.js\"]\n\\ No newline at end of file\n"
+                },
+                {
+                    "date": 1772963985381,
+                    "content": "Index: \n===================================================================\n--- \n+++ \n@@ -0,0 +1,13 @@\n+#trigger\r\n+FROM ghcr.io/laurenislearning/clustergit-backend-base:latest\r\n+\r\n+WORKDIR /app\r\n+\r\n+COPY package*.json ./s\r\n+RUN npm install\r\n+\r\n+COPY . .\r\n+\r\n+EXPOSE 80\r\n+\r\n+CMD [\"node\", \"src/server.js\"]\n\\ No newline at end of file\n"
+                },
+                {
+                    "date": 1772964077129,
+                    "content": "Index: \n===================================================================\n--- \n+++ \n@@ -2,37 +2,12 @@\n FROM ghcr.io/laurenislearning/clustergit-backend-base:latest\r\n \r\n WORKDIR /app\r\n \r\n-COPY package*.json ./s\r\n+COPY package*.json ./\r\n RUN npm install\r\n \r\n COPY . .\r\n \r\n EXPOSE 80\r\n \r\n-CMD [\"node\", \"src/server.js\"]\n-#trigger\r\n-FROM ghcr.io/laurenislearning/clustergit-backend-base:latest\r\n-\r\n-WORKDIR /app\r\n-\r\n-COPY backend/package*.json ./\r\n-RUN npm install\r\n-\r\n-COPY . .\r\n-\r\n-EXPOSE 80\r\n-\r\n-CMD [\"node\", \"src/server.js\"]\n-#trigger\r\n-FROM ghcr.io/laurenislearning/clustergit-backend-base:latest\r\n-\r\n-WORKDIR /app\r\n-\r\n-COPY package*.json ./\r\n-\r\n-COPY . .\r\n-\r\n-EXPOSE 80\r\n-\r\n\\ No newline at end of file\n-CMD [\"node\", \"src/server.js\"]\n+CMD [\"node\", \"server.js\"]\n\\ No newline at end of file\n"
                 }
             ],
             "date": 1772951818101,
