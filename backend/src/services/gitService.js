@@ -227,6 +227,9 @@ export async function addFileToProject(userId, projectName, filePath, originalNa
         // 2. Clone the bare repository (as a non-bare clone)
         await execAsync("/usr/bin/git", ["clone", bareRepoPath, "."], { cwd: tempWorkingPath });
 
+        // ensure main branch exists
+        await execAsync("/usr/bin/git", ["checkout", "-b", "main"], { cwd: tempWorkingPath });
+
         // Configure git identity for commits
         await execAsync("/usr/bin/git", ["config", "user.name", "ClusterGit"], { cwd: tempWorkingPath });
         await execAsync("/usr/bin/git", ["config", "user.email", "system@clustergit.local"], { cwd: tempWorkingPath });
