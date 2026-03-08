@@ -73,6 +73,8 @@ export async function createRepository(userId, projectName, description = '') {
         await execAsync("/usr/bin/git", ["init", "--bare"], { cwd: repoPath }); // Use absolute path to git used by backend container to avoid PATH issues
         console.log("Git init complete");
 
+        await execAsync("/usr/bin/git", ["symbolic-ref", "HEAD", "refs/heads/main"], { cwd: repoPath });
+
         // Set repository description
         if (description) {
             const descPath = path.join(repoPath, 'description');
@@ -285,7 +287,7 @@ export async function addFileToProject(userId, projectName, filePath, originalNa
         const toRef = toRefStdout.trim();
 
         // 7. Push back to the bare repository
-        await execAsync("/usr/bin/git", ["push", "origin", branch], { cwd: tempWorkingPath });
+        await execAsync("/usr/bin/git", ["push", "origin", "HEAD:main"], { cwd: tempWorkingPath });
 
         // 8. Push git-annex metadata
         await execAsync("/usr/bin/git", ["push", "origin", "git-annex"], { cwd: tempWorkingPath });
