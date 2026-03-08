@@ -24,8 +24,7 @@ jobs:
       - name: Build base image
         run: |
           docker buildx build \
-           --platform linux/arm64 \
-           -t ghcr.io/laurenislearning/clustergit-backend-base:latest \
-           -f backend/Dockerfile.base \
-           --push \
-           .
+            --platform linux/arm64 \
+            -t ghcr.io/laurenislearning/clustergit-backend:${{ github.ref_name }} \
+            --push \
+            .
