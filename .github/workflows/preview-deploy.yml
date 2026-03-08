@@ -9,11 +9,11 @@ jobs:
   deploy-preview:
     runs-on: self-hosted
 
-steps:
-  - name: Checkout repository
-    uses: actions/checkout@v4
-
-  - name: Deploy preview environment
-    run: |
-      chmod +x scripts/deploy-preview.sh
-      ./scripts/deploy-preview.sh "${{ github.ref_name }}"
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+    
+      - name: Deploy preview environment
+        run: |
+          chmod +x scripts/deploy-preview.sh
+          ./scripts/deploy-preview.sh "${{ github.ref_name }}"
