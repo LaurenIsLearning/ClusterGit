@@ -25,6 +25,7 @@ jobs:
         run: |
           docker buildx build \
             --platform linux/arm64 \
+            -f backend/Dockerfile \
             -t ghcr.io/laurenislearning/clustergit-backend:${{ github.ref_name }} \
             --push \
             .
