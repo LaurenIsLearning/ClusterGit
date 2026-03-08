@@ -19,7 +19,7 @@ jobs:
       - name: Build base image
         run: |
           docker buildx build \
-            -t ghcr.io/${{ github.repository_owner }}/clustergit-backend-base:latest \
+            -t ghcr.io/laurenislearning/clustergit-backend-base:latest \
             -f backend/Dockerfile.base \
             --push \
             .
