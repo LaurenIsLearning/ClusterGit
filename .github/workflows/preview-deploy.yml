@@ -1,19 +1,21 @@
-name: Preview Deploy
+name: Preview Cleanup
 
 on:
-  push:
-    branches:
-      - "**"
+  delete:
 
 jobs:
-  deploy-preview:
+  cleanup-preview:
+    if: github.event.ref_type == 'branch'
     runs-on: self-hosted
 
     steps:
-      - name: Checkout repo
-        uses: actions/checkout@v4
-
-      - name: Deploy preview to cluster
+      - name: Compute branch name
+        id: branch
         run: |
-          chmod +x scripts/deploy-preview.sh
-          ./scripts/deploy-preview.sh "${{ github.ref_name }}"
+          BRANCH=$(echo "${{ github.event.ref }}" | tr '/' '-' | tr '[:upper:]' '[:lower:]')
+          echo "branch=$BRANCH" >> $GITHUB_OUTPUT
+
+      - name: Delete preview namespace
+        run: |
+          echo "Deleting preview namespace preview-${{ steps.branch.outputs.branch }}"
+          kubectl delete namespace preview-${{ steps.branch.outputs.branch }} --ignore-not-found
