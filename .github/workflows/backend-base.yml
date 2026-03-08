@@ -9,7 +9,7 @@ on:
     paths:
       - "backend/Dockerfile.base"
       - ".github/workflows/backend-base.yml"
-
+#rebuild
 jobs:
   build:
     runs-on: self-hosted

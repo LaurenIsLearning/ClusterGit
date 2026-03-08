@@ -7,7 +7,7 @@ on:
     paths:
       - "backend/**"
       - ".github/workflows/backend-image.yml"
-
+#rebuild
 jobs:
   build:
     runs-on: self-hosted
