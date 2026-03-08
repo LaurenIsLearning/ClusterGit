@@ -36,6 +36,7 @@ spec:
       containers:
         - name: backend
           image: ghcr.io/laurenislearning/clustergit-backend:{{BRANCH}}
+          imagePullPolicy: Always
           ports:
             - containerPort: 80
           envFrom:
