@@ -228,6 +228,7 @@ export async function addFileToProject(userId, projectName, filePath, originalNa
 
         // 2. Clone the bare repository (as a non-bare clone)
         await execAsync("/usr/bin/git", ["clone", bareRepoPath, "."], { cwd: tempWorkingPath });
+        console.log("Cloning repo:", bareRepoPath);
 
         // ensure main branch exists
         try {
@@ -294,7 +295,9 @@ export async function addFileToProject(userId, projectName, filePath, originalNa
         const toRef = toRefStdout.trim();
 
         // 7. Push back to the bare repository
-        await execAsync("/usr/bin/git", ["push", "origin", "HEAD:main"], { cwd: tempWorkingPath });
+        console.log("Pushing to repo:", bareRepoPath);
+        console.log("Temp repo contents:", await fs.readdir(tempWorkingPath));
+        await execAsync("/usr/bin/git", ["push", "--force-with-lease", "origin", "HEAD:main"], { cwd: tempWorkingPath });
 
         // 8. Push git-annex metadata
         await execAsync("/usr/bin/git", ["push", "origin", "git-annex"], { cwd: tempWorkingPath });
