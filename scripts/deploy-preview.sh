@@ -12,6 +12,7 @@ OUTPUT="/tmp/generated-preview.yaml"
 sed "s/{{BRANCH}}/$BRANCH/g" $TEMPLATE > $OUTPUT
 
 kubectl apply -f $OUTPUT
+kubectl rollout restart deployment clustergit-backend -n preview-$BRANCH || true
 
 echo ""
 echo "Preview deployed:"
