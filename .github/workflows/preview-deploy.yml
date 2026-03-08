@@ -1,0 +1,19 @@
+name: Preview Deploy
+
+on:
+  push:
+    branches:
+      - "**"
+
+jobs:
+  deploy-preview:
+    runs-on: self-hosted
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Deploy preview to cluster
+        run: |
+          cd /home/admin-lauren/ClusterGit
+          ./scripts/deploy-preview.sh "${{ github.ref_name }}"
