@@ -3,7 +3,7 @@
     "activeCommit": 0,
     "commits": [
         {
-            "activePatchIndex": 9,
+            "activePatchIndex": 10,
             "patches": [
                 {
                     "date": 1772951818101,
@@ -44,6 +44,10 @@
                 {
                     "date": 1772955785653,
                     "content": "Index: \n===================================================================\n--- \n+++ \n@@ -0,0 +1,12 @@\n+FROM ghcr.io/laurenislearning/clustergit-backend-base:latest\r\n+\r\n+WORKDIR /app\r\n+\r\n+COPY package*.json ./\r\n+RUN npm install\r\n+\r\n+COPY . .\r\n+\r\n+EXPOSE 80\r\n+\r\n+CMD [\"node\", \"src/server.js\"]\n\\ No newline at end of file\n"
+                },
+                {
+                    "date": 1772958039752,
+                    "content": "Index: \n===================================================================\n--- \n+++ \n@@ -1,22 +1,7 @@\n-FROM ghcr.io/laurenislearning/clustergit-backend-base:latest\r\n \r\n-WORKDIR /app\r\n-\r\n-COPY package*.json ./\r\n-RUN npm install\r\n-\r\n-COPY . .\r\n-\r\n-EXPOSE 80\r\n-\r\n-CMD [\"node\", \"src/server.js\"]\n FROM ghcr.io/laurenislearning/clustergit-backend-base:latest\r\n \r\n-RUN apt-get update && \\\r\n-    apt-get install -y --no-install-recommends git git-annex && \\\r\n-    rm -rf /var/lib/apt/lists/*\r\n-\r\n WORKDIR /app\r\n \r\n COPY package*.json ./\r\n RUN npm install\r\n"
                 }
             ],
             "date": 1772951818101,

@@ -1,3 +1,4 @@
+#trigger
 FROM ghcr.io/laurenislearning/clustergit-backend-base:latest
 
 WORKDIR /app
