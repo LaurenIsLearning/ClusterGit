@@ -22,7 +22,8 @@ app.use(cors({
     // Allow all Cloudflare preview deployments
     if (
       allowedOrigins.includes(origin) ||
-      origin.endsWith(".clustergit.pages.dev")
+      origin.endsWith(".clustergit.pages.dev") ||
+      origin.endsWith(".clustergit.com")  
     ) {
       return callback(null, true);
     }
