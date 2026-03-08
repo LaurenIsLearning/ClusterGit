@@ -272,7 +272,7 @@ export async function addFileToProject(userId, projectName, filePath, originalNa
 
         // 3. Initialize git-annex in the temporary clone
         // We need to do this because git-annex needs to be aware of the new location
-        await execAsync("/usr/bin/git", ["annex", "init", "upload-tmp"], { cwd: tempWorkingPath });
+        //await execAsync("/usr/bin/git", ["annex", "init", "upload-tmp"], { cwd: tempWorkingPath });
 
         // 4. Move the uploaded file to the clone
         const targetPath = path.join(tempWorkingPath, originalName);
