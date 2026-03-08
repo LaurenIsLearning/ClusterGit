@@ -14,11 +14,10 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Deploy preview environment
-        env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
-          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
-          REPO_BASE_PATH: ${{ vars.REPO_BASE_PATH }}
         run: |
           chmod +x scripts/deploy-preview.sh
           ./scripts/deploy-preview.sh "${{ github.ref_name }}"
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          REPO_BASE_PATH: ${{ vars.REPO_BASE_PATH }}
