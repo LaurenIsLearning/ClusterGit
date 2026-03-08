@@ -227,6 +227,10 @@ export async function addFileToProject(userId, projectName, filePath, originalNa
         // 2. Clone the bare repository (as a non-bare clone)
         await execAsync("/usr/bin/git", ["clone", bareRepoPath, "."], { cwd: tempWorkingPath });
 
+        // Configure git identity for commits
+        await execAsync("/usr/bin/git", ["config", "user.name", "ClusterGit"], { cwd: tempWorkingPath });
+        await execAsync("/usr/bin/git", ["config", "user.email", "system@clustergit.local"], { cwd: tempWorkingPath });
+
         // 3. Initialize git-annex in the temporary clone
         // We need to do this because git-annex needs to be aware of the new location
         await execAsync("/usr/bin/git", ["annex", "init", "upload-tmp"], { cwd: tempWorkingPath });
