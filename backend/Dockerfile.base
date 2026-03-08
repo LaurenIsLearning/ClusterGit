@@ -1,4 +1,4 @@
-#rebuild trigger
+#rebuild trigge
 FROM node:20
 
 RUN apt-get update && \
