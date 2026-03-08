@@ -1,11 +1,11 @@
-import { exec } from 'child_process';
+import { execFile } from 'child_process';
 import { promisify } from 'util';
 import fs from 'fs/promises';
 import path from 'path';
 import os from 'os';
 import { REPO_BASE_PATH, GIT_ANNEX_CONFIG } from '../config/config.js';
 
-const execAsync = promisify(exec);
+const execAsync = promisify(execFile);
 
 /**
  * Validate project name
@@ -63,12 +63,13 @@ export async function createRepository(userId, projectName, description = '') {
         }
     }
 
-    // Create directory structure
-    await fs.mkdir(repoPath, { recursive: true });
+    // Create directory structure (first check if /repos/<userid> exists)
+    await fs.mkdir(path.dirname(repoPath), { recursive: true });
+    await fs.mkdir(repoPath);
 
     try {
         // Initialize bare Git repository
-        await execAsync('git init --bare', { cwd: repoPath });
+        await execAsync("/usr/bin/git", ["init", "--bare"], { cwd: repoPath }); // Use absolute path to git used by backend container to avoid PATH issues
 
         // Set repository description
         if (description) {
@@ -94,23 +95,24 @@ export async function createRepository(userId, projectName, description = '') {
 export async function initGitAnnex(repoPath) {
     try {
         // Initialize git-annex
-        await execAsync('git annex init', { cwd: repoPath });
+        await execAsync("/usr/bin/git", ["annex", "init"], { cwd: repoPath });
 
         // Configure git-annex backend
-        await execAsync(`git config annex.backends ${GIT_ANNEX_CONFIG.backend}`, {
+        await execAsync("/usr/bin/git", ["config", "annex.backends", GIT_ANNEX_CONFIG.backend], {
             cwd: repoPath
         });
 
         // Set number of copies
-        await execAsync(`git annex numcopies ${GIT_ANNEX_CONFIG.numCopies}`, {
+        await execAsync("/usr/bin/git", ["annex", "numcopies", GIT_ANNEX_CONFIG.numCopies], {
             cwd: repoPath
         });
 
         // Configure large file threshold
-        await execAsync(
-            `git config annex.largefiles "largerthan=${GIT_ANNEX_CONFIG.largeFileThreshold}b"`,
-            { cwd: repoPath }
-        );
+        await execAsync("/usr/bin/git", [
+            "config",
+            "annex.largefiles",
+            `largerthan=${GIT_ANNEX_CONFIG.largeFileThreshold}b`
+        ], { cwd: repoPath });
 
         return { success: true };
     } catch (error) {
@@ -123,7 +125,7 @@ export async function initGitAnnex(repoPath) {
  */
 export async function getAnnexUuid(repoPath) {
     try {
-        const { stdout } = await execAsync('git annex info --json', { cwd: repoPath });
+        const { stdout } = await execAsync("/usr/bin/git", ["annex", "info", "--json"], { cwd: repoPath });
         const info = JSON.parse(stdout);
         // Find the UUID of the current ("here") repository
         const hereRepos = [
@@ -220,11 +222,11 @@ export async function addFileToProject(userId, projectName, filePath, originalNa
         await fs.mkdir(tempWorkingPath, { recursive: true });
 
         // 2. Clone the bare repository (as a non-bare clone)
-        await execAsync(`git clone "${bareRepoPath}" .`, { cwd: tempWorkingPath });
+        await execAsync("/usr/bin/git", ["clone", bareRepoPath, "."], { cwd: tempWorkingPath });
 
         // 3. Initialize git-annex in the temporary clone
         // We need to do this because git-annex needs to be aware of the new location
-        await execAsync('git annex init "upload-tmp"', { cwd: tempWorkingPath });
+        await execAsync("/usr/bin/git", ["annex", "init", "upload-tmp"], { cwd: tempWorkingPath });
 
         // 4. Move the uploaded file to the clone
         const targetPath = path.join(tempWorkingPath, originalName);
@@ -234,7 +236,7 @@ export async function addFileToProject(userId, projectName, filePath, originalNa
         // Resolve branch and prior ref for push metadata
         let branch = "main";
         try {
-            const { stdout } = await execAsync('git rev-parse --abbrev-ref HEAD', { cwd: tempWorkingPath });
+            const { stdout } = await execAsync("/usr/bin/git", ["rev-parse", "--abbrev-ref", "HEAD"], { cwd: tempWorkingPath });
             branch = stdout.trim() || "main";
         } catch (_) {
             // Keep default branch fallback.
@@ -242,28 +244,41 @@ export async function addFileToProject(userId, projectName, filePath, originalNa
 
         let fromRef = null;
         try {
-            const { stdout } = await execAsync('git rev-parse HEAD', { cwd: tempWorkingPath });
+            const { stdout } = await execAsync("/usr/bin/git", ["rev-parse", "HEAD"], { cwd: tempWorkingPath });
             fromRef = stdout.trim();
         } catch (_) {
             // Repository may not have an initial commit yet.
         }
 
         // 5. Add file to git-annex
-        await execAsync(`git annex add "${originalName}"`, { cwd: tempWorkingPath });
-        const { stdout: annexKeyStdout } = await execAsync(`git annex lookupkey "${originalName}"`, { cwd: tempWorkingPath });
+        await execAsync("/usr/bin/git", ["annex", "add", originalName], {
+            cwd: tempWorkingPath
+        });
+
+        // Get annex key for the file
+        const { stdout: annexKeyStdout } = await execAsync(
+            "/usr/bin/git",
+            ["annex", "lookupkey", originalName],
+            { cwd: tempWorkingPath }
+        );
+
         const annexKey = annexKeyStdout.trim() || null;
 
         // 6. Commit the changes
         // Using -m "Upload file" for now. In the future, we could pass a message.
-        await execAsync(`git commit -m "Upload ${originalName}"`, { cwd: tempWorkingPath });
-        const { stdout: toRefStdout } = await execAsync('git rev-parse HEAD', { cwd: tempWorkingPath });
+        await execAsync("/usr/bin/git", ["commit", "-m", `Upload ${originalName}`], { cwd: tempWorkingPath });
+        const { stdout: toRefStdout } = await execAsync(
+            "/usr/bin/git",
+            ["rev-parse", "HEAD"],
+            { cwd: tempWorkingPath }
+        );
         const toRef = toRefStdout.trim();
 
         // 7. Push back to the bare repository
-        await execAsync(`git push origin ${branch}`, { cwd: tempWorkingPath });
+        await execAsync("/usr/bin/git", ["push", "origin", branch], { cwd: tempWorkingPath });
 
         // 8. Push git-annex metadata
-        await execAsync('git push origin git-annex', { cwd: tempWorkingPath });
+        await execAsync("/usr/bin/git", ["push", "origin", "git-annex"], { cwd: tempWorkingPath });
 
         return {
             success: true,
