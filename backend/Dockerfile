@@ -10,4 +10,4 @@ COPY . .
 
 EXPOSE 80
 
-CMD ["node", "src/server.js"]
+CMD ["node", "start"]
