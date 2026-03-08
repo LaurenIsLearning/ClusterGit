@@ -3,7 +3,7 @@
     "activeCommit": 0,
     "commits": [
         {
-            "activePatchIndex": 5,
+            "activePatchIndex": 7,
             "patches": [
                 {
                     "date": 1772951818101,
@@ -28,6 +28,14 @@
                 {
                     "date": 1772952882342,
                     "content": "Index: \n===================================================================\n--- \n+++ \n@@ -1,7 +1,9 @@\n-FROM node:20-alpine\r\n+FROM node:20\r\n \r\n-RUN apk add --no-cache git git-annex\r\n+RUN apt-get update && \\\r\n+    apt-get install -y git git-annex && \\\r\n+    rm -rf /var/lib/apt/lists/*\r\n \r\n WORKDIR /app\r\n \r\n COPY package*.json ./\r\n@@ -10,20 +12,5 @@\n COPY . .\r\n \r\n EXPOSE 80\r\n \r\n-CMD [\"node\", \"src/server.js\"]\n-FROM node:20-alpine\r\n-\r\n-# install git so backend can create repos\r\n-RUN apk add --no-cache git\r\n-\r\n-WORKDIR /app\r\n-\r\n-COPY package*.json ./\r\n-RUN npm install\r\n-\r\n-COPY . .\r\n-\r\n-EXPOSE 80\r\n-\r\n CMD [\"node\", \"src/server.js\"]\n\\ No newline at end of file\n"
+                },
+                {
+                    "date": 1772953079150,
+                    "content": "Index: \n===================================================================\n--- \n+++ \n@@ -0,0 +1,3 @@\n+RUN apt-get update && \\\r\n+    apt-get install -y --no-install-recommends git git-annex && \\\r\n+    rm -rf /var/lib/apt/lists/*\n\\ No newline at end of file\n"
+                },
+                {
+                    "date": 1772953086555,
+                    "content": "Index: \n===================================================================\n--- \n+++ \n@@ -0,0 +1,16 @@\n+FROM node:20\r\n+\r\n+RUN apt-get update && \\\r\n+    apt-get install -y --no-install-recommends git git-annex && \\\r\n+    rm -rf /var/lib/apt/lists/*\r\n+\r\n+WORKDIR /app\r\n+\r\n+COPY package*.json ./\r\n+RUN npm install\r\n+\r\n+COPY . .\r\n+\r\n+EXPOSE 80\r\n+\r\n+CMD [\"node\", \"src/server.js\"]\n\\ No newline at end of file\n"
                 }
             ],
             "date": 1772951818101,

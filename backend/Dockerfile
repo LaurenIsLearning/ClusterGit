@@ -1,7 +1,7 @@
 FROM node:20
 
 RUN apt-get update && \
-    apt-get install -y git git-annex && \
+    apt-get install -y --no-install-recommends git git-annex && \
     rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
