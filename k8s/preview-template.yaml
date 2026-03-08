@@ -1,0 +1,85 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: preview-{{BRANCH}}
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: repo-vol-{{BRANCH}}
+  namespace: preview-{{BRANCH}}
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: longhorn
+  resources:
+    requests:
+      storage: 5Gi
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: clustergit-backend
+  namespace: preview-{{BRANCH}}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: clustergit-backend
+  template:
+    metadata:
+      labels:
+        app: clustergit-backend
+    spec:
+      containers:
+        - name: backend
+          image: ghcr.io/laurenislearning/clustergit-backend:latest
+          ports:
+            - containerPort: 80
+          envFrom:
+            - secretRef:
+                name: clustergit-backend-env
+          volumeMounts:
+            - mountPath: /git-repos
+              name: repo-volume
+      volumes:
+        - name: repo-volume
+          persistentVolumeClaim:
+            claimName: repo-vol-{{BRANCH}}
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: clustergit-backend
+  namespace: preview-{{BRANCH}}
+spec:
+  selector:
+    app: clustergit-backend
+  ports:
+    - port: 80
+      targetPort: 80
+
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: clustergit-preview
+  namespace: preview-{{BRANCH}}
+  annotations:
+    kubernetes.io/ingress.class: traefik
+spec:
+  ingressClassName: traefik
+  rules:
+    - host: {{BRANCH}}.clustergit.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: clustergit-backend
+                port:
+                  number: 80
