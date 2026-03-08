@@ -190,12 +190,17 @@ router.get("/my", authMiddleware, async (req, res) => {
 
         // Enrich projects with metadata not stored in DB
         const enrichedProjects = await Promise.all((data || []).map(async (project) => {
-            const repoPath = gitService.getRepoPath(ownerId, project.name);
-            const gitUrl = gitService.getGitUrl(ownerId, project.name);
-            const size = await gitService.getRepoSize(repoPath);
+        const repoPath = gitService.getRepoPath(ownerId, project.name);
+        const gitUrl = gitService.getGitUrl(ownerId, project.name);
 
             // Format for frontend expectations
             // Frontend expects: repo, size, updated
+            let size = 0;
+            try {
+                size = await gitService.getRepoSize(repoPath);
+            } catch (err) {
+                console.warn("Repo path missing:", repoPath);
+            }
             return {
                 ...project,
                 repo: gitUrl,
