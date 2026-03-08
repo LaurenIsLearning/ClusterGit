@@ -53,27 +53,53 @@ export async function createRepository(userId, projectName, description = '') {
 
     const repoPath = getRepoPath(userId, projectName);
 
-    // Check if repository already exists
     try {
         await fs.access(repoPath);
         throw new Error('A project with this name already exists');
     } catch (err) {
-        if (err.code !== 'ENOENT') {
-            throw err;
-        }
+        if (err.code !== 'ENOENT') throw err;
     }
 
-    // Create directory structure (first check if /repos/<userid> exists)
     await fs.mkdir(path.dirname(repoPath), { recursive: true });
     await fs.mkdir(repoPath);
 
     try {
-        // Initialize bare Git repository
         console.log("Running git init in:", repoPath);
-        await execAsync("/usr/bin/git", ["init", "--bare"], { cwd: repoPath }); // Use absolute path to git used by backend container to avoid PATH issues
-        console.log("Git init complete");
+
+        // create bare repo
+        await execAsync("/usr/bin/git", ["init", "--bare"], { cwd: repoPath });
 
         await execAsync("/usr/bin/git", ["symbolic-ref", "HEAD", "refs/heads/main"], { cwd: repoPath });
+
+        console.log("Bare repo created");
+
+        // create temporary working clone
+        const tempInit = path.join(os.tmpdir(), `clustergit-init-${Date.now()}`);
+        await fs.mkdir(tempInit);
+
+        await execAsync("/usr/bin/git", ["clone", repoPath, "."], { cwd: tempInit });
+
+        // ensure main branch
+        await execAsync("/usr/bin/git", ["checkout", "-B", "main"], { cwd: tempInit });
+
+        // configure commit identity
+        await execAsync("/usr/bin/git", ["config", "user.name", "ClusterGit"], { cwd: tempInit });
+        await execAsync("/usr/bin/git", ["config", "user.email", "system@clustergit.local"], { cwd: tempInit });
+
+        // create README so repo isn't empty
+        await fs.writeFile(path.join(tempInit, "README.md"), "# ClusterGit Repository\n");
+
+        // commit
+        await execAsync("/usr/bin/git", ["add", "."], { cwd: tempInit });
+        await execAsync("/usr/bin/git", ["commit", "-m", "Initial commit"], { cwd: tempInit });
+
+        // push back to bare repo
+        await execAsync("/usr/bin/git", ["push", "origin", "main"], { cwd: tempInit });
+
+        // cleanup temp repo
+        await fs.rm(tempInit, { recursive: true, force: true });
+
+        console.log("Initial commit pushed");
 
         // Set repository description
         if (description) {
@@ -86,8 +112,8 @@ export async function createRepository(userId, projectName, description = '') {
             projectName,
             userId,
         };
+
     } catch (error) {
-        // Clean up on failure
         await fs.rm(repoPath, { recursive: true, force: true });
         throw new Error(`Failed to create repository: ${error.message}`);
     }
