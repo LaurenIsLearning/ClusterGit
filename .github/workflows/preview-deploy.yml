@@ -15,4 +15,5 @@ jobs:
 
       - name: Deploy preview to cluster
         run: |
-          /home/admin-lauren/scripts/deploy-preview.sh "${{ github.ref_name }}"
+          chmod +x scripts/deploy-preview.sh
+          ./scripts/deploy-preview.sh "${{ github.ref_name }}"
