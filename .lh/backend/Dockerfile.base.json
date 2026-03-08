@@ -3,7 +3,7 @@
     "activeCommit": 0,
     "commits": [
         {
-            "activePatchIndex": 1,
+            "activePatchIndex": 3,
             "patches": [
                 {
                     "date": 1772955740654,
@@ -12,6 +12,14 @@
                 {
                     "date": 1772955753508,
                     "content": "Index: \n===================================================================\n--- \n+++ \n@@ -1,7 +1,7 @@\n FROM node:20\r\n \r\n RUN apt-get update && \\\r\n-    apt-get install -y --no-install-recommends git git-annex && \\\r\n+    apt-get install -y git git-annex && \\\r\n     rm -rf /var/lib/apt/lists/*\r\n \r\n WORKDIR /app\n\\ No newline at end of file\n"
+                },
+                {
+                    "date": 1772956511242,
+                    "content": "Index: \n===================================================================\n--- \n+++ \n@@ -1,4 +1,5 @@\n+\r\n FROM node:20\r\n \r\n RUN apt-get update && \\\r\n     apt-get install -y git git-annex && \\\r\n"
+                },
+                {
+                    "date": 1772956519408,
+                    "content": "Index: \n===================================================================\n--- \n+++ \n@@ -1,5 +1,5 @@\n-\r\n+#rebuild trigger\r\n FROM node:20\r\n \r\n RUN apt-get update && \\\r\n     apt-get install -y git git-annex && \\\r\n"
                 }
             ],
             "date": 1772955740654,
