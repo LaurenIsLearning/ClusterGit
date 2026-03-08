@@ -89,12 +89,27 @@ export async function createRepository(userId, projectName, description = '') {
         // create README so repo isn't empty
         await fs.writeFile(path.join(tempInit, "README.md"), "# ClusterGit Repository\n");
 
-        // commit
+        // commit initial README
         await execAsync("/usr/bin/git", ["add", "."], { cwd: tempInit });
         await execAsync("/usr/bin/git", ["commit", "-m", "Initial commit"], { cwd: tempInit });
+        
+        // initialize git-annex in the working clone
+        await execAsync("/usr/bin/git", ["annex", "init"], { cwd: tempInit });
 
-        // push back to bare repo
+        // CREATE A DUMMY FILE TO ANCHOR ANNEX
+        const annexPlaceholder = path.join(tempInit, ".annex-placeholder");
+        await fs.writeFile(annexPlaceholder, "This file anchors the git-annex branch");
+
+        // add, commit, and push the dummy file
+        await execAsync("/usr/bin/git", ["add", "."], { cwd: tempInit });
+        await execAsync("/usr/bin/git", ["commit", "-m", "Initialize git-annex with placeholder"], { cwd: tempInit });
+
+        // push main branch and annex branch back to bare repo
         await execAsync("/usr/bin/git", ["push", "origin", "main"], { cwd: tempInit });
+        await execAsync("/usr/bin/git", ["push", "origin", "git-annex"], { cwd: tempInit });
+
+        const annexUuid = await getAnnexUuid(repoPath);
+        console.log("Annex UUID:", annexUuid);
 
         // cleanup temp repo
         await fs.rm(tempInit, { recursive: true, force: true });
@@ -217,9 +232,6 @@ export function getGitUrl(userId, projectName) {
 export async function createProject(userId, projectName, description = '') {
     // Create the Git repository
     const { repoPath } = await createRepository(userId, projectName, description);
-
-    // Initialize git-annex
-    await initGitAnnex(repoPath);
 
     // Get initial size
     const size = await getRepoSize(repoPath);
