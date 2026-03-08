@@ -8,7 +8,7 @@ export function getApiBaseUrl() {
 
   // Preview deployments
   if (host.endsWith(".clustergit.pages.dev")) {
-    const branch = host.split(".")[0];
+    const branch = host.split(".")[0].replace(/[^a-z0-9-]/gi, '').toLowerCase();
     return `https://${branch}.clustergit.com`;
   }
 

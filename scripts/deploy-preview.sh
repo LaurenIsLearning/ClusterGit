@@ -4,8 +4,7 @@ set -e
 
 # fail early if required env vars are missing
 : "${SUPABASE_URL:?SUPABASE_URL is required}"
-: "${SUPABASE_ANON_KEY:?SUPABASE_ANON_KEY is required}"
-: "${SUPABASE_SERVICE_KEY:?SUPABASE_SERVICE_KEY is required}"
+: "${SUPABASE_SERVICE_ROLE_KEY:?SUPABASE_SERVICE_ROLE_KEY is required}"
 : "${REPO_BASE_PATH:?REPO_BASE_PATH is required}"
 
 #lowercases path bc linux
@@ -22,15 +21,14 @@ sed "s/{{BRANCH}}/$BRANCH/g" $TEMPLATE > $OUTPUT
 kubectl create namespace preview-$BRANCH --dry-run=client -o yaml | kubectl apply -f -
 
 # Create/update backend env secret from github
-kubectl create secret generic clustergit-backend-env \
+kubectl create secret generic clustergit-backend-env-$BRANCH \
   --from-literal=PORT=80 \
   --from-literal=REPO_BASE_PATH="$REPO_BASE_PATH" \
   --from-literal=SUPABASE_URL="$SUPABASE_URL" \
-  --from-literal=SUPABASE_ANON_KEY="$SUPABASE_ANON_KEY" \
-  --from-literal=SUPABASE_SERVICE_KEY="$SUPABASE_SERVICE_KEY" \
+  --from-literal=SUPABASE_SERVICE_ROLE_KEY="$SUPABASE_SERVICE_ROLE_KEY" \
   -n preview-$BRANCH \
   --dry-run=client -o yaml | kubectl apply -f -
-
+  
 kubectl apply -f $OUTPUT
 
 kubectl rollout restart deployment clustergit-backend -n preview-$BRANCH || true

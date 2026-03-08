@@ -41,7 +41,7 @@ spec:
             - containerPort: 80
           envFrom:
             - secretRef:
-                name: clustergit-backend-env
+                name: clustergit-backend-env-{{BRANCH}}
           volumeMounts:
             - mountPath: /repos
               name: repo-volume
