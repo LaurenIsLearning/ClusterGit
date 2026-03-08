@@ -1,9 +1,14 @@
 name: Build Backend Base Image
 
+permissions:
+  contents: read
+  packages: write
+
 on:
   push:
     paths:
       - "backend/Dockerfile.base"
+      - ".github/workflows/backend-base.yml"
 
 jobs:
   build:

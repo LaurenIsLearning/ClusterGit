@@ -3,7 +3,7 @@
     "activeCommit": 0,
     "commits": [
         {
-            "activePatchIndex": 1,
+            "activePatchIndex": 9,
             "patches": [
                 {
                     "date": 1772955831086,
@@ -12,6 +12,38 @@
                 {
                     "date": 1772956106008,
                     "content": "Index: \n===================================================================\n--- \n+++ \n@@ -18,8 +18,8 @@\n \r\n       - name: Build base image\r\n         run: |\r\n           docker buildx build \\\r\n-            -t ghcr.io/${{ github.repository_owner }}/clustergit-backend-base:latest \\\r\n+            -t ghcr.io/laurenislearning/clustergit-backend-base:latest \\\r\n             -f backend/Dockerfile.base \\\r\n             --push \\\r\n             .\n\\ No newline at end of file\n"
+                },
+                {
+                    "date": 1772956787860,
+                    "content": "Index: \n===================================================================\n--- \n+++ \n@@ -1,6 +1,8 @@\n name: Build Backend Base Image\r\n \r\n+\r\n+\r\n on:\r\n   push:\r\n     paths:\r\n       - \"backend/Dockerfile.base\"\r\n"
+                },
+                {
+                    "date": 1772956809484,
+                    "content": "Index: \n===================================================================\n--- \n+++ \n@@ -1,8 +1,10 @@\n name: Build Backend Base Image\r\n \r\n+permissions:\r\n+  contents: read\r\n+  packages: writ\r\n \r\n-\r\n on:\r\n   push:\r\n     paths:\r\n       - \"backend/Dockerfile.base\"\r\n"
+                },
+                {
+                    "date": 1772956825896,
+                    "content": "Index: \n===================================================================\n--- \n+++ \n@@ -7,8 +7,9 @@\n on:\r\n   push:\r\n     paths:\r\n       - \"backend/Dockerfile.base\"\r\n+      \r\n \r\n jobs:\r\n   build:\r\n     runs-on: self-hosted\r\n"
+                },
+                {
+                    "date": 1772956835574,
+                    "content": "Index: \n===================================================================\n--- \n+++ \n@@ -0,0 +1,30 @@\n+name: Build Backend Base Image\r\n+\r\n+permissions:\r\n+  contents: read\r\n+  packages: write\r\n+\r\n+on:\r\n+  push:\r\n+    paths:\r\n+      - \"backend/Dockerfile.base\"\r\n+  workflow \r\n+\r\n+jobs:\r\n+  build:\r\n+    runs-on: self-hosted\r\n+\r\n+    steps:\r\n+      - uses: actions/checkout@v4\r\n+\r\n+      - name: Login to GHCR\r\n+        run: |\r\n+          echo \"${{ secrets.GITHUB_TOKEN }}\" | docker login ghcr.io -u ${{ github.actor }} --password-stdin\r\n+\r\n+      - name: Build base image\r\n+        run: |\r\n+          docker buildx build \\\r\n+            -t ghcr.io/laurenislearning/clustergit-backend-base:latest \\\r\n+            -f backend/Dockerfile.base \\\r\n+            --push \\\r\n+            .\n\\ No newline at end of file\n"
+                },
+                {
+                    "date": 1772956842890,
+                    "content": "Index: \n===================================================================\n--- \n+++ \n@@ -0,0 +1,30 @@\n+name: Build Backend Base Image\r\n+\r\n+permissions:\r\n+  contents: read\r\n+  packages: write\r\n+\r\n+on:\r\n+  push:\r\n+    paths:\r\n+      - \"backend/Dockerfile.base\"\r\n+  workflow-dispatch\r\n+\r\n+jobs:\r\n+  build:\r\n+    runs-on: self-hosted\r\n+\r\n+    steps:\r\n+      - uses: actions/checkout@v4\r\n+\r\n+      - name: Login to GHCR\r\n+        run: |\r\n+          echo \"${{ secrets.GITHUB_TOKEN }}\" | docker login ghcr.io -u ${{ github.actor }} --password-stdin\r\n+\r\n+      - name: Build base image\r\n+        run: |\r\n+          docker buildx build \\\r\n+            -t ghcr.io/laurenislearning/clustergit-backend-base:latest \\\r\n+            -f backend/Dockerfile.base \\\r\n+            --push \\\r\n+            .\n\\ No newline at end of file\n"
+                },
+                {
+                    "date": 1772956857019,
+                    "content": "Index: \n===================================================================\n--- \n+++ \n@@ -0,0 +1,30 @@\n+name: Build Backend Base Image\r\n+\r\n+permissions:\r\n+  contents: read\r\n+  packages: write\r\n+\r\n+on:\r\n+  push:\r\n+    paths:\r\n+      - \"backend/Dockerfile.base\"\r\n+  workflow-dispatch\r\n+\r\n+jobs:\r\n+  build:\r\n+    runs-on: self-hosted\r\n+\r\n+    steps:\r\n+      - uses: actions/checkout@v4\r\n+\r\n+      - name: Login to GHCR\r\n+        run: |\r\n+          echo \"${{ secrets.GITHUB_TOKEN }}\" | docker login ghcr.io -u ${{ github.actor }} --password-stdin\r\n+\r\n+      - name: Build base image\r\n+        run: |\r\n+          docker buildx build \\\r\n+            -t ghcr.io/laurenislearning/clustergit-backend-base:latest \\\r\n+            -f backend/Dockerfile.base \\\r\n+            --push \\\r\n+            .\n\\ No newline at end of file\n"
+                },
+                {
+                    "date": 1772956865103,
+                    "content": "Index: \n===================================================================\n--- \n+++ \n@@ -9,8 +9,10 @@\n     paths:\r\n       - \"backend/Dockerfile.base\"\r\n   workflow-dispatch:\r\n \r\n+\r\n+    \r\n jobs:\r\n   build:\r\n     runs-on: self-hosted\r\n \r\n"
+                },
+                {
+                    "date": 1772956877415,
+                    "content": "Index: \n===================================================================\n--- \n+++ \n@@ -0,0 +1,32 @@\n+name: Build Backend Base Image\r\n+\r\n+permissions:\r\n+  contents: read\r\n+  packages: write\r\n+\r\n+on:\r\n+  push:\r\n+    paths:\r\n+      - \"backend/Dockerfile.base\"\r\n+  workflow-dispatch:\r\n+\r\n+    \r\n+\r\n+jobs:\r\n+  build:\r\n+    runs-on: self-hosted\r\n+\r\n+    steps:\r\n+      - uses: actions/checkout@v4\r\n+\r\n+      - name: Login to GHCR\r\n+        run: |\r\n+          echo \"${{ secrets.GITHUB_TOKEN }}\" | docker login ghcr.io -u ${{ github.actor }} --password-stdin\r\n+\r\n+      - name: Build base image\r\n+        run: |\r\n+          docker buildx build \\\r\n+            -t ghcr.io/laurenislearning/clustergit-backend-base:latest \\\r\n+            -f backend/Dockerfile.base \\\r\n+            --push \\\r\n+            .\n\\ No newline at end of file\n"
                 }
             ],
             "date": 1772955831086,
