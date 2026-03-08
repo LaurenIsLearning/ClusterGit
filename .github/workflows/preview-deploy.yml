@@ -1,13 +1,13 @@
 name: Preview Deploy
 
 on:
-push:
-branches:
-- "**"
+  push:
+    branches:
+    - "**"
 
 jobs:
-deploy-preview:
-runs-on: self-hosted
+  deploy-preview:
+    runs-on: self-hosted
 
 steps:
   - name: Checkout repository
