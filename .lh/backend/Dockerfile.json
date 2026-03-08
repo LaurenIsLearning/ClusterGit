@@ -1,0 +1,22 @@
+{
+    "sourceFile": "backend/Dockerfile",
+    "activeCommit": 0,
+    "commits": [
+        {
+            "activePatchIndex": 1,
+            "patches": [
+                {
+                    "date": 1772951818101,
+                    "content": "Index: \n===================================================================\n--- \n+++ \n"
+                },
+                {
+                    "date": 1772951824231,
+                    "content": "Index: \n===================================================================\n--- \n+++ \n@@ -0,0 +1,14 @@\n+FROM node:20-alpine\r\n+\r\n+\r\n+\r\n+WORKDIR /app\r\n+\r\n+COPY package*.json ./\r\n+RUN npm install\r\n+\r\n+COPY . .\r\n+\r\n+EXPOSE 80\r\n+\r\n+CMD [\"node\", \"src/server.js\"]\n\\ No newline at end of file\n"
+                }
+            ],
+            "date": 1772951818101,
+            "name": "Commit-0",
+            "content": "FROM node:20-alpine\r\n\r\n\r\n\r\nWORKDIR /app\r\n\r\nCOPY package*.json ./\r\nRUN npm install\r\n\r\nCOPY . .\r\n\r\nEXPOSE 80\r\n\r\nCMD [\"node\", \"src/server.js\"]"
+        }
+    ]
+}

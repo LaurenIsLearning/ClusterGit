@@ -74,7 +74,7 @@ metadata:
 spec:
   ingressClassName: traefik
   rules:
-    - host: {{BRANCH}}.clustergit.com
+    - host: "{{BRANCH}}.clustergit.com"
       http:
         paths:
           - path: /
