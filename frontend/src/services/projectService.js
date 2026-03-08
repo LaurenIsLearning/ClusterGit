@@ -92,9 +92,9 @@ export const projectService = {
     async getMyProjects() {
         const headers = await getAuthHeaders();
 
-        console.log("API URL:", `${API_BASE_URL}/api/repos/my`);
+        console.log("API URL:", `${API_BASE_URL}/repos/my`);
         
-        const response = await fetch(`${API_BASE_URL}/api/repos/my`, {
+        const response = await fetch(`${API_BASE_URL}/repos/my`, {
             method: 'GET',
             headers,
         });
@@ -125,7 +125,7 @@ export const projectService = {
 
         return new Promise((resolve, reject) => {
             const xhr = new XMLHttpRequest();
-            xhr.open('POST', `${API_BASE_URL}/api/repos/${projectId}/upload`);
+            xhr.open('POST', `${API_BASE_URL}/repos/${projectId}/upload`);
             xhr.setRequestHeader('Authorization', `Bearer ${session.access_token}`);
 
             xhr.upload.onprogress = (event) => {
