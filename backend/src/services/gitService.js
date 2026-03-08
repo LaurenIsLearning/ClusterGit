@@ -66,42 +66,46 @@ export async function createRepository(userId, projectName, description = '') {
     try {
         console.log("Running git init in:", repoPath);
 
-        // create bare repo
+          // 1. create bare repo
         await execAsync("/usr/bin/git", ["init", "--bare"], { cwd: repoPath });
-
         await execAsync("/usr/bin/git", ["symbolic-ref", "HEAD", "refs/heads/main"], { cwd: repoPath });
 
-        console.log("Bare repo created");
-
-        // create temporary working clone
+        // 2. temp clone for initial commit + annex
         const tempInit = path.join(os.tmpdir(), `clustergit-init-${Date.now()}`);
         await fs.mkdir(tempInit);
-
         await execAsync("/usr/bin/git", ["clone", repoPath, "."], { cwd: tempInit });
-
-        // ensure main branch
         await execAsync("/usr/bin/git", ["checkout", "-B", "main"], { cwd: tempInit });
 
-        // configure commit identity
+        // 3. configure Git identity
         await execAsync("/usr/bin/git", ["config", "user.name", "ClusterGit"], { cwd: tempInit });
         await execAsync("/usr/bin/git", ["config", "user.email", "system@clustergit.local"], { cwd: tempInit });
 
-        // create README so repo isn't empty
+        // 4. initial README commit
         await fs.writeFile(path.join(tempInit, "README.md"), "# ClusterGit Repository\n");
-
-        // commit
         await execAsync("/usr/bin/git", ["add", "."], { cwd: tempInit });
         await execAsync("/usr/bin/git", ["commit", "-m", "Initial commit"], { cwd: tempInit });
 
-        // push back to bare repo
-        await execAsync("/usr/bin/git", ["push", "origin", "main"], { cwd: tempInit });
+        // 5. initialize git-annex
+        await execAsync("/usr/bin/git", ["annex", "init"], { cwd: tempInit });
 
-        // cleanup temp repo
+        // 6. dummy file to anchor annex branch
+        const annexPlaceholder = path.join(tempInit, ".annex-placeholder");
+        await fs.writeFile(annexPlaceholder, "This file anchors the git-annex branch");
+        await execAsync("/usr/bin/git", ["add", "."], { cwd: tempInit });
+        await execAsync("/usr/bin/git", ["commit", "-m", "Initialize git-annex with placeholder"], { cwd: tempInit });
+
+        // 7. push main + git-annex
+        await execAsync("/usr/bin/git", ["push", "origin", "main"], { cwd: tempInit });
+        await execAsync("/usr/bin/git", ["push", "origin", "git-annex"], { cwd: tempInit });
+
+        // 8. verify UUID
+        const annexUuid = await getAnnexUuid(repoPath);
+        console.log("Annex UUID:", annexUuid);
+
+        // 9. cleanup
         await fs.rm(tempInit, { recursive: true, force: true });
 
-        console.log("Initial commit pushed");
-
-        // Set repository description
+        // 10. set description if provided
         if (description) {
             const descPath = path.join(repoPath, 'description');
             await fs.writeFile(descPath, description);
@@ -218,9 +222,6 @@ export async function createProject(userId, projectName, description = '') {
     // Create the Git repository
     const { repoPath } = await createRepository(userId, projectName, description);
 
-    // Initialize git-annex
-    await initGitAnnex(repoPath);
-
     // Get initial size
     const size = await getRepoSize(repoPath);
 
@@ -248,107 +249,42 @@ export async function addFileToProject(userId, projectName, filePath, originalNa
     const bareRepoPath = getRepoPath(userId, projectName);
     const tempWorkingPath = path.join(os.tmpdir(), `clustergit-upload-${Date.now()}`);
 
-    try {
-        // 1. Create temporary directory
+       try {
         await fs.mkdir(tempWorkingPath, { recursive: true });
-
-        // 2. Clone the bare repository (as a non-bare clone)
         await execAsync("/usr/bin/git", ["clone", bareRepoPath, "."], { cwd: tempWorkingPath });
-        console.log("Cloning repo:", bareRepoPath);
 
-        // ensure main branch exists
+        // ensure main branch
         try {
             await execAsync("/usr/bin/git", ["checkout", "main"], { cwd: tempWorkingPath });
         } catch {
             await execAsync("/usr/bin/git", ["checkout", "-b", "main"], { cwd: tempWorkingPath });
         }
 
-        //keeps main up to date
-        await execAsync("/usr/bin/git", ["pull", "origin", "main"], { cwd: tempWorkingPath }).catch(()=>{});
-
-        // Configure git identity for commits
+        // configure Git identity
         await execAsync("/usr/bin/git", ["config", "user.name", "ClusterGit"], { cwd: tempWorkingPath });
         await execAsync("/usr/bin/git", ["config", "user.email", "system@clustergit.local"], { cwd: tempWorkingPath });
 
-        // 3. Initialize git-annex in the temporary clone
-        // We need to do this because git-annex needs to be aware of the new location
-        //await execAsync("/usr/bin/git", ["annex", "init", "upload-tmp"], { cwd: tempWorkingPath });
-
-        // 4. Move the uploaded file to the clone
+        // move uploaded file
         const targetPath = path.join(tempWorkingPath, originalName);
         await fs.rename(filePath, targetPath);
-        const fileStats = await fs.stat(targetPath);
 
-        // Resolve branch and prior ref for push metadata
-        let branch = "main";
-        try {
-            const { stdout } = await execAsync("/usr/bin/git", ["rev-parse", "--abbrev-ref", "HEAD"], { cwd: tempWorkingPath });
-            branch = stdout.trim() || "main";
-        } catch (_) {
-            // Keep default branch fallback.
-        }
+        // add to git-annex
+        await execAsync("/usr/bin/git", ["annex", "add", originalName], { cwd: tempWorkingPath });
 
-        let fromRef = null;
-        try {
-            const { stdout } = await execAsync("/usr/bin/git", ["rev-parse", "HEAD"], { cwd: tempWorkingPath });
-            fromRef = stdout.trim();
-        } catch (_) {
-            // Repository may not have an initial commit yet.
-        }
-
-        // 5. Add file to git-annex
-        await execAsync("/usr/bin/git", ["annex", "add", originalName], {
-            cwd: tempWorkingPath
-        });
-
-        // Get annex key for the file
-        const { stdout: annexKeyStdout } = await execAsync(
-            "/usr/bin/git",
-            ["annex", "lookupkey", originalName],
-            { cwd: tempWorkingPath }
-        );
-
-        const annexKey = annexKeyStdout.trim() || null;
-
-        // 6. Commit the changes
-        // Using -m "Upload file" for now. In the future, we could pass a message.
+        // commit
         await execAsync("/usr/bin/git", ["commit", "-m", `Upload ${originalName}`], { cwd: tempWorkingPath });
-        const { stdout: toRefStdout } = await execAsync(
-            "/usr/bin/git",
-            ["rev-parse", "HEAD"],
-            { cwd: tempWorkingPath }
-        );
-        const toRef = toRefStdout.trim();
 
-        // 7. Push back to the bare repository
-        console.log("Pushing to repo:", bareRepoPath);
-        console.log("Temp repo contents:", await fs.readdir(tempWorkingPath));
-        await execAsync("/usr/bin/git", ["push", "--force-with-lease", "origin", "HEAD:main"], { cwd: tempWorkingPath });
-
-        // 8. Push git-annex metadata
+        // push main + annex
+        await execAsync("/usr/bin/git", ["push", "origin", "HEAD:main"], { cwd: tempWorkingPath });
         await execAsync("/usr/bin/git", ["push", "origin", "git-annex"], { cwd: tempWorkingPath });
 
-        return {
-            success: true,
-            name: originalName,
-            size: fileStats.size,
-            branch,
-            annexKey,
-            gitCommitHash: toRef,
-            fromRef,
-            toRef,
-            commitCount: 1
-        };
+        return { success: true, name: originalName };
+
     } catch (error) {
-        console.error('Failed to add file to repository:', error);
-        throw new Error(`Failed to add file to repository: ${error.message}`);
+        console.error("Upload failed:", error);
+        throw new Error(`Failed to add file: ${error.message}`);
     } finally {
-        // 9. Clean up temporary working directory
-        try {
-            await fs.rm(tempWorkingPath, { recursive: true, force: true });
-        } catch (cleanupError) {
-            console.error('Failed to cleanup temporary upload path:', cleanupError);
-        }
+        try { await fs.rm(tempWorkingPath, { recursive: true, force: true }); } catch {}
     }
 }
 
