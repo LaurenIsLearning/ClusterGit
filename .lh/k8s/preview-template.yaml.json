@@ -3,11 +3,23 @@
     "activeCommit": 0,
     "commits": [
         {
-            "activePatchIndex": 0,
+            "activePatchIndex": 3,
             "patches": [
                 {
                     "date": 1772950850409,
                     "content": "Index: \n===================================================================\n--- \n+++ \n"
+                },
+                {
+                    "date": 1772955383914,
+                    "content": "Index: \n===================================================================\n--- \n+++ \n@@ -73,14 +73,16 @@\n     kubernetes.io/ingress.class: traefik\r\n spec:\r\n   ingressClassName: traefik\r\n   rules:\r\n-    - host: \"{{BRANCH}}.clustergit.com\r\n+    - host: \"{{BRANCH}}.clustergit.com\"\r\n       http:\r\n         paths:\r\n           - path: /\r\n             pathType: Prefix\r\n             backend:\r\n               service:\r\n                 name: clustergit-backend\r\n                 port:\r\n\\ No newline at end of file\n-                  number: 80\n+                  number: 80\r\n+\r\n+                  \n\\ No newline at end of file\n"
+                },
+                {
+                    "date": 1772955390056,
+                    "content": "Index: \n===================================================================\n--- \n+++ \n@@ -82,7 +82,5 @@\n             backend:\r\n               service:\r\n                 name: clustergit-backend\r\n                 port:\r\n-                  number: 80\r\n-\r\n-                  \n\\ No newline at end of file\n+                  number: 80\n\\ No newline at end of file\n"
+                },
+                {
+                    "date": 1772955454491,
+                    "content": "Index: \n===================================================================\n--- \n+++ \n@@ -42,9 +42,9 @@\n           envFrom:\r\n             - secretRef:\r\n                 name: clustergit-backend-env\r\n           volumeMounts:\r\n-            - mountPath: /git-repos\r\n+            - mountPath: /gitrepos\r\n               name: repo-volume\r\n       volumes:\r\n         - name: repo-volume\r\n           persistentVolumeClaim:\r\n"
                 }
             ],
             "date": 1772950850409,

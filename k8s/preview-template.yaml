@@ -43,7 +43,7 @@ spec:
             - secretRef:
                 name: clustergit-backend-env
           volumeMounts:
-            - mountPath: /git-repos
+            - mountPath: /repos
               name: repo-volume
       volumes:
         - name: repo-volume
