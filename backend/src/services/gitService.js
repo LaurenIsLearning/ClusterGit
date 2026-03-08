@@ -122,21 +122,20 @@ export async function initGitAnnex(repoPath) {
 
 /**
  * Get git-annex UUID for a repository
+ * (fixed bc if annexUuid = null broke it, mainly for new repos)
  */
 export async function getAnnexUuid(repoPath) {
     try {
-        const { stdout } = await execAsync("/usr/bin/git", ["annex", "info", "--json"], { cwd: repoPath });
-        const info = JSON.parse(stdout);
-        // Find the UUID of the current ("here") repository
-        const hereRepos = [
-            ...(info['semitrusted repositories'] || []),
-            ...(info['trusted repositories'] || []),
-            ...(info['untrusted repositories'] || [])
-        ];
-        const localRepo = hereRepos.find(repo => repo.here === true);
-        return localRepo ? localRepo.uuid : null;
+        const { stdout } = await execAsync(
+            "/usr/bin/git",
+            ["config", "--get", "annex.uuid"],
+            { cwd: repoPath }
+        );
+
+        return stdout.trim() || null;
+
     } catch (error) {
-        console.error('Failed to get git-annex UUID:', error);
+        console.error("Failed to get git-annex UUID:", error);
         return null;
     }
 }

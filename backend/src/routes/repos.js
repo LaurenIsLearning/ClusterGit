@@ -105,6 +105,11 @@ router.post("/create", authMiddleware, async (req, res) => {
             description || ''
         );
 
+        // Safety check
+        if (!projectData.annexUuid) {
+            throw new Error("git-annex UUID could not be determined");
+        }
+
         // Store repository metadata in database
         // git_annex_uuid is a mandatory column in the repositories table
         const { data, error } = await supabase
