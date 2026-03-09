@@ -105,6 +105,11 @@ router.post("/create", authMiddleware, async (req, res) => {
             description || ''
         );
 
+        // Safety check
+        if (!projectData.annexUuid) {
+            throw new Error("git-annex UUID could not be determined");
+        }
+
         // Store repository metadata in database
         // git_annex_uuid is a mandatory column in the repositories table
         const { data, error } = await supabase
@@ -185,12 +190,17 @@ router.get("/my", authMiddleware, async (req, res) => {
 
         // Enrich projects with metadata not stored in DB
         const enrichedProjects = await Promise.all((data || []).map(async (project) => {
-            const repoPath = await gitService.resolveExistingRepoPath(ownerId, project.name);
-            const gitUrl = `git@10.27.12.244:${repoPath}`;
-            const size = await gitService.getRepoSize(repoPath);
+        const repoPath = gitService.getRepoPath(ownerId, project.name);
+        const gitUrl = gitService.getGitUrl(ownerId, project.name);
 
             // Format for frontend expectations
             // Frontend expects: repo, size, updated
+            let size = 0;
+            try {
+                size = await gitService.getRepoSize(repoPath);
+            } catch (err) {
+                console.warn("Repo path missing:", repoPath);
+            }
             return {
                 ...project,
                 repo: gitUrl,

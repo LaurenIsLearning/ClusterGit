@@ -2,7 +2,7 @@ import path from 'path';
 import os from 'os';
 
 // Repository storage configuration
-const rawRepoPath = process.env.REPO_BASE_PATH || path.join(os.homedir(), 'clustergit-repos');
+const rawRepoPath = process.env.REPO_BASE_PATH || "/repos"; // path.join(os.homedir(), 'clustergit-repos');    This gets seen as root/clustergit-repos in docker
 export const REPO_BASE_PATH = path.isAbsolute(rawRepoPath)
     ? rawRepoPath
     : path.resolve(process.cwd(), rawRepoPath);

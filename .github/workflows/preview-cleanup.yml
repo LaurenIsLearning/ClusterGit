@@ -1,0 +1,18 @@
+name: Preview Cleanup
+
+on:
+  delete:
+
+jobs:
+  cleanup-preview:
+    if: github.event.ref_type == 'branch'
+    runs-on: self-hosted
+
+    steps:
+      - name: Set branch name
+        run: |
+          BRANCH=$(echo "${{ github.event.ref }}" | tr '/' '-' | tr '[:upper:]' '[:lower:]')
+          echo "Branch: $BRANCH"
+          echo "Deleting preview-$BRANCH"
+          
+          kubectl delete namespace preview-$BRANCH --ignore-not-found

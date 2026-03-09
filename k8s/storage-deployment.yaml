@@ -1,0 +1,31 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: clustergit-backend
+  namespace: storage
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: clustergit-backend
+  template:
+    metadata:
+      labels:
+        app: clustergit-backend
+    spec:
+      containers:
+        - name: backend
+          image: ghcr.io/laurenislearning/clustergit-backend:develop
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 80
+          envFrom:
+            - secretRef:
+                name: clustergit-backend-env
+          volumeMounts:
+            - mountPath: /repos
+              name: repo-volume
+      volumes:
+        - name: repo-volume
+          persistentVolumeClaim:
+            claimName: repo-vol-rwo-pvc

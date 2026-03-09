@@ -23,3 +23,11 @@ ClusterGit-Demo/assets/*.bin
 
 #ignore local test repos
 backend/clustergit-repos/
+
+*.history
+*.patch
+*.localhistory
+*.js.json
+
+# VS Code Local History
+.lh

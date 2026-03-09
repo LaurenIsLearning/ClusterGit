@@ -1,7 +1,8 @@
 import { authService } from './authService';
+import { getApiBaseUrl } from "../utils/api";
 
 //ensure that final base always ends with /api
-const rawApiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8080';
+const rawApiUrl = getApiBaseUrl();
 const normalizedApiUrl = rawApiUrl.replace(/\/+$/, '');
 const API_BASE_URL = normalizedApiUrl.endsWith('/api')
     ? normalizedApiUrl
@@ -114,6 +115,8 @@ export const projectService = {
     async getMyProjects() {
         const headers = await getAuthHeaders();
 
+        console.log("API URL:", `${API_BASE_URL}/repos/my`);
+        
         const response = await fetch(`${API_BASE_URL}/repos/my`, {
             method: 'GET',
             headers,
@@ -209,7 +212,39 @@ export const projectService = {
         const formData = new FormData();
         formData.append('file', file);
 
-        return uploadWithXhr(`${API_BASE_URL}/repos/${projectId}/upload`, session.access_token, formData, onProgress);
+        return new Promise((resolve, reject) => {
+            const xhr = new XMLHttpRequest();
+            xhr.open('POST', `${API_BASE_URL}/repos/${projectId}/upload`);
+            xhr.setRequestHeader('Authorization', `Bearer ${session.access_token}`);
+
+            xhr.upload.onprogress = (event) => {
+                if (event.lengthComputable && onProgress) {
+                    const percentComplete = (event.loaded / event.total) * 100;
+                    onProgress(percentComplete);
+                }
+            };
+
+            xhr.onload = () => {
+                let data;
+                try {
+                    data = JSON.parse(xhr.responseText);
+                } catch (e) {
+                    data = { error: { message: 'Invalid server response' } };
+                }
+
+                if (xhr.status >= 200 && xhr.status < 300) {
+                    resolve(data);
+                } else {
+                    reject(new Error(data.error?.message || 'Upload failed'));
+                }
+            };
+
+            xhr.onerror = () => {
+                reject(new Error('Network error during upload'));
+            };
+
+            xhr.send(formData);
+        });
     },
 };
 
