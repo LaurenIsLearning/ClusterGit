@@ -1,7 +1,8 @@
 import { authService } from './authService';
 import { mockService } from './mockData';
+import { getApiBaseUrl } from '../utils/api';
 
-const rawApiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8080';
+const rawApiUrl = getApiBaseUrl();
 const normalizedApiUrl = rawApiUrl.replace(/\/+$/, '');
 const API_BASE_URL = normalizedApiUrl.endsWith('/api')
     ? normalizedApiUrl
@@ -53,6 +54,10 @@ export const adminService = {
         const response = await fetch(`${API_BASE_URL}/admin/summary`, { method: 'GET', headers });
         const data = await safeParseJson(response);
 
+        if (!response.ok && isMissingRoute(response, data)) {
+            throw new Error('Admin API not deployed for this environment (/api/admin/summary missing)');
+        }
+
         if (!response.ok) {
             throw new Error(data.error?.message || data._raw || 'Failed to fetch admin summary');
         }
@@ -64,6 +69,10 @@ export const adminService = {
         const headers = await getAuthHeaders();
         const response = await fetch(`${API_BASE_URL}/admin/users`, { method: 'GET', headers });
         const data = await safeParseJson(response);
+
+        if (!response.ok && isMissingRoute(response, data)) {
+            throw new Error('Admin API not deployed for this environment (/api/admin/users missing)');
+        }
 
         if (!response.ok) {
             throw new Error(data.error?.message || data._raw || 'Failed to fetch admin users');
