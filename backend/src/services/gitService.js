@@ -57,9 +57,14 @@ export function getGitUrl(userId, projectName) {
  */
 export async function getAnnexUuid(repoPath) {
     try {
+        // Detect if it's a working copy (has .git subdir) or bare repo
+        const gitDir = (await fs.stat(path.join(repoPath, '.git')).catch(() => null))
+            ? path.join(repoPath, '.git')
+            : repoPath;
+
         const { stdout } = await execAsync(
             "/usr/bin/git",
-            ["--git-dir", repoPath, "config", "--get", "annex.uuid"]
+            ["--git-dir", gitDir, "config", "--get", "annex.uuid"]
         );
         return stdout.trim() || null;
     } catch (error) {
