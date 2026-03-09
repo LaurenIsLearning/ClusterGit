@@ -1,6 +1,7 @@
 import { supabase } from "./supabaseClient";
+import { getApiBaseUrl } from "../utils/api";
 
-const rawApiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8080';
+const rawApiUrl = getApiBaseUrl();
 const normalizedApiUrl = rawApiUrl.replace(/\/+$/, '');
 const API_BASE_URL = normalizedApiUrl.endsWith('/api')
   ? normalizedApiUrl

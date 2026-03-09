@@ -188,25 +188,44 @@ router.get("/my", authMiddleware, async (req, res) => {
             });
         }
 
+        const repoIds = (data || []).map((project) => project.id);
+        let sizeByRepoId = new Map();
+
+        if (repoIds.length > 0) {
+            const { data: annexRows, error: annexError } = await supabase
+                .from("annex_objects")
+                .select("repo_id, size_bytes")
+                .in("repo_id", repoIds);
+
+            if (!annexError) {
+                sizeByRepoId = (annexRows || []).reduce((acc, row) => {
+                    const current = acc.get(row.repo_id) || 0;
+                    acc.set(row.repo_id, current + (Number(row.size_bytes) || 0));
+                    return acc;
+                }, new Map());
+            }
+        }
+
         // Enrich projects with metadata not stored in DB
         const enrichedProjects = await Promise.all((data || []).map(async (project) => {
-        const repoPath = gitService.getRepoPath(ownerId, project.name);
-        const gitUrl = gitService.getGitUrl(ownerId, project.name);
+            const repoPath = gitService.getRepoPath(ownerId, project.name);
+            const gitUrl = gitService.getGitUrl(ownerId, project.name);
 
-            // Format for frontend expectations
-            // Frontend expects: repo, size, updated
-            let size = 0;
-            try {
-                size = await gitService.getRepoSize(repoPath);
-            } catch (err) {
-                console.warn("Repo path missing:", repoPath);
+            // Prefer authoritative metadata size from Supabase; fallback to filesystem if missing.
+            let size = sizeByRepoId.get(project.id) || 0;
+            if (!size) {
+                try {
+                    size = await gitService.getRepoSize(repoPath);
+                } catch (err) {
+                    console.warn("Repo path missing:", repoPath);
+                }
             }
+
             return {
                 ...project,
                 repo: gitUrl,
                 size: (size / (1024 * 1024)).toFixed(1) + ' MB',
                 updated: new Date(project.created_at).toLocaleDateString(),
-                // Also provide original values just in case
                 repo_path: repoPath,
                 git_url: gitUrl,
                 size_bytes: size
