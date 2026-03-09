@@ -28,4 +28,6 @@ backend/clustergit-repos/
 *.patch
 *.localhistory
 *.js.json
-.lh/
+
+# VS Code Local History
+.lh
