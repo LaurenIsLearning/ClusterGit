@@ -3,6 +3,7 @@ import { promisify } from 'util';
 import fs from 'fs/promises';
 import path from 'path';
 import os from 'os';
+import { pathToFileURL } from 'url';
 import { REPO_BASE_PATH, GIT_ANNEX_CONFIG } from '../config/config.js';
 
 const execAsync = promisify(execFile);
@@ -171,7 +172,7 @@ export async function createProject(userId, projectName, description = '') {
  * Add file to a project using git-annex
  */
 export async function addFileToProject(userId, projectName, filePath, originalName) {
-    const bareRepoPath = getRepoPath(userId, projectName);
+    const bareRepoPath = await resolveExistingRepoPath(userId, projectName);
     const tempWorkingPath = path.join(os.tmpdir(), `clustergit-upload-${Date.now()}`);
 
     try {
@@ -260,6 +261,7 @@ export default {
     initGitAnnex,
     getAnnexUuid,
     createProject,
+    resolveExistingRepoPath,
     getRepoPath,
     getRepoSize,
     getGitUrl,
