@@ -133,7 +133,7 @@ export async function createRepository(userId, projectName, description = '') {
             await fs.writeFile(descPath, description);
         }
 
-        return { repoPath, projectName, userId };
+        return { repoPath, userId, annexUuid };
 
     } catch (error) {
         await fs.rm(repoPath, { recursive: true, force: true });
