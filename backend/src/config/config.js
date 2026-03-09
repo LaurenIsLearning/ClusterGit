@@ -16,7 +16,7 @@ export const GIT_ANNEX_CONFIG = {
 
 // Server configuration
 export const SERVER_HOST = process.env.SERVER_HOST || 'localhost';
-export const SERVER_PORT = process.env.PORT || 8080;
+export const SERVER_PORT = process.env.PORT || 3000;
 
 export default {
     REPO_BASE_PATH,
