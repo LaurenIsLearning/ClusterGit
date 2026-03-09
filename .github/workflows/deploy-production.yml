@@ -10,7 +10,10 @@ jobs:
   deploy:
     runs-on: self-hosted
     steps:
-      - name: Restart storage deployment
+      - name: Update and restart storage deployment
         run: |
-          kubectl rollout restart deployment clustergit-backend -n storage
-          kubectl rollout status deployment clustergit-backend -n storage
+          BRANCH=$(echo "${{ github.ref_name }}" | tr '[:upper:]' '[:lower:]')
+          kubectl set image deployment/clustergit-backend \
+            backend=ghcr.io/laurenislearning/clustergit-backend:$BRANCH \
+            -n storage
+          kubectl rollout status deployment/clustergit-backend -n storage

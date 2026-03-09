@@ -15,7 +15,7 @@ spec:
     spec:
       containers:
         - name: backend
-          image: ghcr.io/laurenislearning/clustergit-backend:main
+          image: ghcr.io/laurenislearning/clustergit-backend:develop
           imagePullPolicy: Always
           ports:
             - containerPort: 80
