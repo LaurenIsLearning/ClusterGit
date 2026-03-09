@@ -185,6 +185,11 @@ export async function addFileToProject(userId, projectName, filePath, originalNa
         const targetPath = path.join(tempWorkingPath, originalName);
         await fs.rename(filePath, targetPath);
 
+        // unlock file if it already exists in annex (allows overwrite)
+        try {
+            await execAsync("/usr/bin/git", ["annex", "unlock", originalName], { cwd: tempWorkingPath });
+        } catch {}
+
         await execAsync("/usr/bin/git", ["annex", "add", originalName], { cwd: tempWorkingPath });
 
         const { stdout: annexKeyStdout } = await execAsync(
@@ -194,7 +199,14 @@ export async function addFileToProject(userId, projectName, filePath, originalNa
         );
         const annexKey = annexKeyStdout.trim() || null;
 
-        await execAsync("/usr/bin/git", ["commit", "-m", `Upload ${originalName}`], { cwd: tempWorkingPath });
+        // commit only if something changed
+        const { stdout: statusOut } = await execAsync("/usr/bin/git", ["status", "--porcelain"], { cwd: tempWorkingPath });
+        if (statusOut.trim()) {
+            await execAsync("/usr/bin/git", ["commit", "-m", `Upload ${originalName}`], { cwd: tempWorkingPath });
+        } else {
+            // force a new commit even if content is identical, so metadata stays consistent
+            await execAsync("/usr/bin/git", ["commit", "--allow-empty", "-m", `Re-upload ${originalName}`], { cwd: tempWorkingPath });
+        }
         const { stdout: toRefStdout } = await execAsync("/usr/bin/git", ["rev-parse", "HEAD"], { cwd: tempWorkingPath });
         const toRef = toRefStdout.trim();
 
