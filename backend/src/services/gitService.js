@@ -179,8 +179,13 @@ export async function addFileToProject(userId, projectName, filePath, originalNa
         await execAsync("/usr/bin/git", ["clone", bareRepoPath, "."], { cwd: tempWorkingPath });
         await execAsync("/usr/bin/git", ["checkout", "-B", "main"], { cwd: tempWorkingPath });
 
+        //set identity for git
         await execAsync("/usr/bin/git", ["config", "user.name", "ClusterGit"], { cwd: tempWorkingPath });
         await execAsync("/usr/bin/git", ["config", "user.email", "system@clustergit.local"], { cwd: tempWorkingPath });
+
+        // also set identity on bare repo for git-annex copy operations
+        await execAsync("/usr/bin/git", ["--git-dir", bareRepoPath, "config", "user.name", "ClusterGit"]);
+        await execAsync("/usr/bin/git", ["--git-dir", bareRepoPath, "config", "user.email", "system@clustergit.local"]);
 
         const targetPath = path.join(tempWorkingPath, originalName);
         await fs.rename(filePath, targetPath);
