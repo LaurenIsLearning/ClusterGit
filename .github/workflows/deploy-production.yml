@@ -1,0 +1,16 @@
+name: Deploy Production
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+
+jobs:
+  deploy:
+    runs-on: self-hosted
+    steps:
+      - name: Restart storage deployment
+        run: |
+          kubectl rollout restart deployment clustergit-backend -n storage
+          kubectl rollout status deployment clustergit-backend -n storage
