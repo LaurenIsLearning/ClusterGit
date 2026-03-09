@@ -1,0 +1,57 @@
+name: Build Backend Image
+
+on:
+  push:
+    branches:
+      - "**"
+    paths:
+      - "backend/**"
+      - ".github/workflows/backend-image.yml"
+#rebuild
+jobs:
+  build:
+    runs-on: self-hosted
+
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Compute branch tag
+        id: vars
+        run: |
+          BRANCH=${GITHUB_REF_NAME}
+          SAFE_BRANCH=$(echo "$BRANCH" | tr '[:upper:]' '[:lower:]' | tr '/' '-')
+          echo "tag=$SAFE_BRANCH" >> $GITHUB_OUTPUT
+
+      - name: Set lowercase owner
+        id: owner
+        run: |
+          echo "name=$(echo ${{ github.repository_owner }} | tr '[:upper:]' '[:lower:]')" >> $GITHUB_OUTPUT
+
+      - name: Login to GitHub Container Registry
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push backend image
+        run: |
+          TAG=${{ steps.vars.outputs.tag }}
+
+          docker buildx build \
+             --platform linux/arm64 \
+             -f backend/Dockerfile \
+             -t ghcr.io/${{ steps.owner.outputs.name }}/clustergit-backend:$TAG \
+             $(if [ "$TAG" = "main" ]; then echo "-t ghcr.io/${{ steps.owner.outputs.name }}/clustergit-backend:latest"; fi) \
+             --push \
+             backend
+
+      - name: Print pushed image
+        run:
+          echo "Image pushed:"
+          echo "ghcr.io/${{ steps.owner.outputs.name }}/clustergit-backend:${{ steps.vars.outputs.tag }}"

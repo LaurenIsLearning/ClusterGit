@@ -1,0 +1,19 @@
+name: Deploy Production
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+
+jobs:
+  deploy:
+    runs-on: self-hosted
+    steps:
+      - name: Update and restart storage deployment
+        run: |
+          BRANCH=$(echo "${{ github.ref_name }}" | tr '[:upper:]' '[:lower:]')
+          kubectl set image deployment/clustergit-backend \
+            backend=ghcr.io/laurenislearning/clustergit-backend:$BRANCH \
+            -n storage
+          kubectl rollout status deployment/clustergit-backend -n storage
