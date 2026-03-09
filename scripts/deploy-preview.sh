@@ -10,6 +10,12 @@ set -e
 #lowercases path bc linux
 BRANCH=$(echo "$1" | tr '/' '-' | tr '[:upper:]' '[:lower:]')
 
+# At the top after BRANCH= line, add:
+if [[ "$BRANCH" == "main" || "$BRANCH" == "develop" ]]; then
+  echo "Skipping preview deploy for protected branch: $BRANCH"
+  exit 0
+fi
+
 echo "Deploying preview for branch: $BRANCH"
 
 TEMPLATE="k8s/preview-template.yaml"
