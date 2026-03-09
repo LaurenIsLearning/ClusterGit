@@ -72,71 +72,54 @@ export async function getAnnexUuid(repoPath) {
  * Create a bare Git repository
  */
 export async function createRepository(userId, projectName, description = '') {
-    const validation = validateProjectName(projectName);
-    if (!validation.valid) throw new Error(validation.error);
+  const repoPath = getRepoPath(userId, projectName);
+  await fs.mkdir(path.dirname(repoPath), { recursive: true });
+  await fs.mkdir(repoPath);
 
-    const repoPath = getRepoPath(userId, projectName);
+  const tempInit = path.join(os.tmpdir(), `clustergit-init-${Date.now()}`);
+  await fs.mkdir(tempInit);
 
-    try {
-        await fs.access(repoPath);
-        throw new Error('A project with this name already exists');
-    } catch (err) {
-        if (err.code !== 'ENOENT') throw err;
-    }
+  // 1. init bare
+  await execAsync("/usr/bin/git", ["init", "--bare"], { cwd: repoPath });
+  await execAsync("/usr/bin/git", ["symbolic-ref", "HEAD", "refs/heads/main"], { cwd: repoPath });
 
-    await fs.mkdir(path.dirname(repoPath), { recursive: true });
-    await fs.mkdir(repoPath);
+  // 2. clone to temp working copy
+  await execAsync("/usr/bin/git", ["clone", repoPath, "."], { cwd: tempInit });
+  await execAsync("/usr/bin/git", ["checkout", "-B", "main"], { cwd: tempInit });
 
-    try {
-        console.log("Creating bare repo:", repoPath);
+  // 3. identity
+  await execAsync("/usr/bin/git", ["config", "user.name", "ClusterGit"], { cwd: tempInit });
+  await execAsync("/usr/bin/git", ["config", "user.email", "system@clustergit.local"], { cwd: tempInit });
 
-        // Bare repo
-        await execAsync("/usr/bin/git", ["init", "--bare"], { cwd: repoPath });
-        await execAsync("/usr/bin/git", ["symbolic-ref", "HEAD", "refs/heads/main"], { cwd: repoPath });
+  // 4. README commit
+  await fs.writeFile(path.join(tempInit, "README.md"), "# ClusterGit Repository\n");
+  await execAsync("/usr/bin/git", ["add", "."], { cwd: tempInit });
+  await execAsync("/usr/bin/git", ["commit", "-m", "Initial commit"], { cwd: tempInit });
 
-        //initialize git annex
-        await execAsync("/usr/bin/git", ["annex", "init"], { cwd: repoPath });
-        await execAsync("/usr/bin/git", ["config", "annex.backends", GIT_ANNEX_CONFIG.backend], { cwd: repoPath });
-        await execAsync("/usr/bin/git", ["annex", "numcopies", GIT_ANNEX_CONFIG.numCopies], { cwd: repoPath });
-        await execAsync("/usr/bin/git", ["config", "annex.largefiles", `largerthan=${GIT_ANNEX_CONFIG.largeFileThreshold}b`], { cwd: repoPath });
+  // 5. git-annex init + placeholder
+  await execAsync("/usr/bin/git", ["annex", "init"], { cwd: tempInit });
+  const annexPlaceholder = path.join(tempInit, ".annex-placeholder");
+  await fs.writeFile(annexPlaceholder, "This file anchors the git-annex branch");
+  await execAsync("/usr/bin/git", ["add", "."], { cwd: tempInit });
+  await execAsync("/usr/bin/git", ["commit", "-m", "Initialize git-annex with placeholder"], { cwd: tempInit });
 
-        // Temp clone to add readme and placeholder
-        const tempInit = path.join(os.tmpdir(), `clustergit-init-${Date.now()}`);
-        await fs.mkdir(tempInit);
-        await execAsync("/usr/bin/git", ["clone", repoPath, "."], { cwd: tempInit });
-        await execAsync("/usr/bin/git", ["checkout", "-B", "main"], { cwd: tempInit });
+  // 6. push branches back to bare
+  await execAsync("/usr/bin/git", ["push", "origin", "main"], { cwd: tempInit });
+  await execAsync("/usr/bin/git", ["push", "origin", "git-annex"], { cwd: tempInit });
 
-        // git identity
-        await execAsync("/usr/bin/git", ["config", "user.name", "ClusterGit"], { cwd: tempInit });
-        await execAsync("/usr/bin/git", ["config", "user.email", "system@clustergit.local"], { cwd: tempInit });
+  // 7. get annex UUID from working clone (not bare)
+  const annexUuid = await getAnnexUuid(tempInit);
 
-        await fs.writeFile(path.join(tempInit, "README.md"), "# ClusterGit Repository\n");
-        const placeholder = path.join(tempInit, ".annex-placeholder");
-        await fs.writeFile(placeholder, "This file anchors the git-annex branch");
+  // 8. cleanup
+  await fs.rm(tempInit, { recursive: true, force: true });
 
-        await execAsync("/usr/bin/git", ["add", "."], { cwd: tempInit });
-        await execAsync("/usr/bin/git", ["commit", "-m", "Initial commit with git-annex placeholder"], { cwd: tempInit });
+  if (description) {
+    await fs.writeFile(path.join(repoPath, 'description'), description);
+  }
 
-        await execAsync("/usr/bin/git", ["push", "origin", "main"], { cwd: tempInit });
-        await execAsync("/usr/bin/git", ["push", "origin", "git-annex"], { cwd: tempInit });
-
-
-        //get annex UUID from bare repo
-        const annexUuid = await getAnnexUuid(repoPath);
-        console.log("Annex UUID:", annexUuid);
-
-        //  Cleanup tmp
-        await fs.rm(tempInit, { recursive: true, force: true });
-
-        if (description) await fs.writeFile(path.join(repoPath, 'description'), description);
-
-        return { repoPath, userId, annexUuid };
-
-    } catch (error) {
-        await fs.rm(repoPath, { recursive: true, force: true });
-        throw new Error(`Failed to create repository: ${error.message}`);
-    }
+  return { repoPath, userId, annexUuid };
 }
+
 
 /**
  * Initialize git-annex in a repository (if needed later)
