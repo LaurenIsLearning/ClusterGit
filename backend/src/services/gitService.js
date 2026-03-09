@@ -201,6 +201,10 @@ export async function addFileToProject(userId, projectName, filePath, originalNa
         await execAsync("/usr/bin/git", ["push", "origin", "main"], { cwd: tempWorkingPath });
         await execAsync("/usr/bin/git", ["push", "origin", "git-annex"], { cwd: tempWorkingPath });
 
+        // copy actual annex content to bare repo
+        await execAsync("/usr/bin/git", ["annex", "copy", "--to", "origin", originalName], { cwd: tempWorkingPath });
+
+
         return {
             success: true,
             name: originalName,
