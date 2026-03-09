@@ -121,7 +121,7 @@ export async function createRepository(userId, projectName, description = '') {
         await execAsync("/usr/bin/git", ["push", "origin", "main"], { cwd: tempInit });
         await execAsync("/usr/bin/git", ["push", "origin", "git-annex"], { cwd: tempInit });
 
-        // 7. Verify annex UUID
+        // 7. Verify annex UUID from clone
         const annexUuid = await getAnnexUuid(repoPath);
         console.log("Annex UUID:", annexUuid);
 
@@ -162,12 +162,24 @@ export async function initGitAnnex(repoPath) {
  * Create a project (wrapper)
  */
 export async function createProject(userId, projectName, description = '') {
-    const { repoPath } = await createRepository(userId, projectName, description);
+    // createRepository now returns annexUuid from the working clone
+    const { repoPath, annexUuid } = await createRepository(userId, projectName, description);
+
+    // get repo size
     const size = await getRepoSize(repoPath);
-    const annexUuid = await getAnnexUuid(repoPath);
+
+    // get git clone URL
     const gitUrl = getGitUrl(userId, projectName);
 
-    return { name: projectName, description, repoPath, gitUrl, size, annexUuid, ownerId: userId };
+    return {
+        name: projectName,
+        description,
+        repoPath,
+        gitUrl,
+        size,
+        annexUuid, // comes from createRepository
+        ownerId: userId
+    };
 }
 
 /**
