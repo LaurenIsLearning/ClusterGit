@@ -31,18 +31,18 @@ router.use(authMiddleware, requireAdmin);
 
 router.get("/summary", async (_req, res) => {
     try {
-        const maxStorageMb = Number(process.env.MAX_STORAGE_PER_USER_MB || 20480);
-
         const { data: profiles, error: profilesError } = await supabase
             .from("user_profiles")
-            .select("user_id, role");
+            .select("user_id, role, storage_quota_bytes");
         if (profilesError) {
             return res.status(500).json({ error: { message: profilesError.message || "Failed to load profiles" } });
         }
 
         const studentProfiles = (profiles || []).filter((p) => p.role === "student");
         const totalUsers = studentProfiles.length;
-        const totalStorageBytes = totalUsers * maxStorageMb * 1024 * 1024;
+        const totalStorageBytes = studentProfiles.reduce((sum, profile) => {
+            return sum + (Number(profile.storage_quota_bytes) || 0);
+        }, 0);
 
         const { data: annexRows, error: annexError } = await supabase
             .from("annex_objects")
@@ -67,7 +67,7 @@ router.get("/summary", async (_req, res) => {
 
         const { data: repos, error: reposError } = await supabase
             .from("repositories")
-            .select("id, name, created_at");
+            .select("id, name, created_at, last_activity_at");
         if (reposError) {
             return res.status(500).json({ error: { message: reposError.message || "Failed to load repositories" } });
         }
@@ -76,8 +76,9 @@ router.get("/summary", async (_req, res) => {
 
         const archivedCandidates = (repos || [])
             .filter((r) => {
-                if (!r.created_at) return false;
-                const ageDays = (Date.now() - new Date(r.created_at).getTime()) / (1000 * 60 * 60 * 24);
+                const referenceDate = r.last_activity_at || r.created_at;
+                if (!referenceDate) return false;
+                const ageDays = (Date.now() - new Date(referenceDate).getTime()) / (1000 * 60 * 60 * 24);
                 return ageDays >= 90;
             })
             .slice(0, 10);
@@ -106,11 +107,31 @@ router.get("/summary", async (_req, res) => {
         const archivedRepositories = archivedCandidates.map((repo) => ({
             name: repo.name,
             size_bytes: sizeByRepo.get(repo.id) || 0,
-            created_at: repo.created_at || null
+            created_at: repo.last_activity_at || repo.created_at || null
         }));
 
+        const { data: nodeRows, error: nodeError } = await supabase
+            .from("node_health")
+            .select("node_key, status, heartbeat_at")
+            .order("heartbeat_at", { ascending: false });
+
+        const latestNodeByKey = new Map();
+        if (!nodeError) {
+            for (const row of nodeRows || []) {
+                if (!latestNodeByKey.has(row.node_key)) {
+                    latestNodeByKey.set(row.node_key, row);
+                }
+            }
+        }
+
+        const latestNodes = [...latestNodeByKey.values()];
+        const healthyNodes = latestNodes.filter((node) => node.status === "online").length;
+        const health = latestNodes.length > 0
+            ? `${Math.round((healthyNodes / latestNodes.length) * 100)}%`
+            : "N/A";
+
         return res.json({
-            health: "N/A",
+            health,
             active_users: activeUsers,
             total_users: totalUsers,
             used_storage_bytes: usedStorageBytes,
@@ -126,12 +147,9 @@ router.get("/summary", async (_req, res) => {
 
 router.get("/users", async (_req, res) => {
     try {
-        const maxStorageMb = Number(process.env.MAX_STORAGE_PER_USER_MB || 20480);
-        const quotaBytes = maxStorageMb * 1024 * 1024;
-
         const { data: profiles, error: profilesError } = await supabase
             .from("user_profiles")
-            .select("user_id, role, display_name");
+            .select("user_id, role, display_name, storage_quota_bytes");
         if (profilesError) {
             return res.status(500).json({ error: { message: profilesError.message || "Failed to load profiles" } });
         }
@@ -189,7 +207,7 @@ router.get("/users", async (_req, res) => {
                 name: student.display_name || authUser?.email?.split("@")?.[0] || "Unknown",
                 email: authUser?.email || "",
                 used_bytes: usedByUser.get(student.user_id) || 0,
-                quota_bytes: quotaBytes,
+                quota_bytes: Number(student.storage_quota_bytes) || 0,
                 last_active_at: lastActiveByUser.get(student.user_id) || authUser?.last_sign_in_at || null
             };
         });
@@ -202,9 +220,49 @@ router.get("/users", async (_req, res) => {
 });
 
 router.get("/nodes", async (_req, res) => {
-    // Node telemetry is environment-specific and may not be stored in Supabase.
-    // Return empty set by default so frontend can show an explicit fallback state.
-    return res.json({ nodes: [] });
+    try {
+        const { data, error } = await supabase
+            .from("node_health")
+            .select("node_key, ip_address, status, cpu_percent, temp_c, storage_used_bytes, storage_total_bytes, heartbeat_at")
+            .order("heartbeat_at", { ascending: false });
+
+        if (error) {
+            console.error("Node telemetry fallback:", error);
+            return res.json({ nodes: [] });
+        }
+
+        const latestNodeByKey = new Map();
+        for (const row of data || []) {
+            if (!latestNodeByKey.has(row.node_key)) {
+                latestNodeByKey.set(row.node_key, row);
+            }
+        }
+
+        const nodes = [...latestNodeByKey.values()].map((row) => {
+            const usedBytes = Number(row.storage_used_bytes) || 0;
+            const totalBytes = Number(row.storage_total_bytes) || 0;
+            const usedPercent = totalBytes > 0 ? Math.min(100, Math.round((usedBytes / totalBytes) * 100)) : 0;
+
+            return {
+                id: row.node_key,
+                ip: row.ip_address || "",
+                status: row.status || "unknown",
+                cpu: Number(row.cpu_percent) || 0,
+                temp: Number(row.temp_c) || 0,
+                heartbeat_at: row.heartbeat_at || null,
+                storage: {
+                    used: usedPercent,
+                    used_bytes: usedBytes,
+                    total_bytes: totalBytes
+                }
+            };
+        });
+
+        return res.json({ nodes });
+    } catch (error) {
+        console.error("Admin nodes error:", error);
+        return res.json({ nodes: [] });
+    }
 });
 
 export default router;

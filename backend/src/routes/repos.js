@@ -11,6 +11,20 @@ const router = express.Router();
 // Configure multer for temporary file storage
 const upload = multer({ dest: path.join(os.tmpdir(), 'clustergit-uploads') });
 
+async function getUserQuotaBytes(userId) {
+    const { data, error } = await supabase
+        .from("user_profiles")
+        .select("storage_quota_bytes")
+        .eq("user_id", userId)
+        .maybeSingle();
+
+    if (error) {
+        throw error;
+    }
+
+    return Number(data?.storage_quota_bytes) || 0;
+}
+
 async function insertPushEventWithFallback(payload) {
     // Fallback for environments with stricter/different push_events schema.
     const { error: fallbackError } = await supabase
@@ -117,6 +131,7 @@ router.post("/create", authMiddleware, async (req, res) => {
             .insert({
                 name: projectData.name,
                 owner_id: ownerId,
+                description: description || '',
                 is_public: Boolean(is_public),
                 git_annex_uuid: projectData.annexUuid,
             })
@@ -180,7 +195,7 @@ router.get("/my", authMiddleware, async (req, res) => {
             .from("repositories")
             .select("*")
             .eq("owner_id", ownerId)
-            .order("created_at", { ascending: false });
+            .order("last_activity_at", { ascending: false });
 
         if (error) {
             return res.status(500).json({
@@ -225,7 +240,7 @@ router.get("/my", authMiddleware, async (req, res) => {
                 ...project,
                 repo: gitUrl,
                 size: (size / (1024 * 1024)).toFixed(1) + ' MB',
-                updated: new Date(project.created_at).toLocaleDateString(),
+                updated: new Date(project.last_activity_at || project.updated_at || project.created_at).toLocaleDateString(),
                 repo_path: repoPath,
                 git_url: gitUrl,
                 size_bytes: size
@@ -246,8 +261,7 @@ router.get("/summary", authMiddleware, async (req, res) => {
     const ownerId = req.user.id;
 
     try {
-        const maxStorageMb = Number(process.env.MAX_STORAGE_PER_USER_MB || 20480);
-        const totalBytes = Math.max(0, maxStorageMb) * 1024 * 1024;
+        const totalBytes = await getUserQuotaBytes(ownerId);
 
         const { data: repos, error: reposError } = await supabase
             .from("repositories")
@@ -317,7 +331,7 @@ router.get("/summary", authMiddleware, async (req, res) => {
     }
 });
 
-// LIST FILES FOR A REPOSITORY (derived from upload commits + annex metadata)
+// LIST FILES FOR A REPOSITORY
 router.get("/:id/files", authMiddleware, async (req, res) => {
     const ownerId = req.user.id;
     const repoId = req.params.id;
@@ -342,9 +356,46 @@ router.get("/:id/files", authMiddleware, async (req, res) => {
             });
         }
 
+        const { data: repoFiles, error: repoFilesError } = await supabase
+            .from("repo_files")
+            .select("id, latest_commit_id, original_name, file_path, mime_type, size_bytes, status, uploaded_at, annex_key")
+            .eq("repo_id", repoId);
+
+        if (repoFilesError) {
+            console.error("Failed to fetch repo_files metadata:", repoFilesError);
+            return res.status(500).json({
+                error: { message: repoFilesError.message || "Failed to load file metadata" }
+            });
+        }
+
+        const inferType = (fileName) => {
+            const lower = String(fileName || "").toLowerCase();
+            if (/\.(mp4|mov|avi|mkv|webm)$/.test(lower)) return "video";
+            if (/\.(zip|rar|7z|tar|gz)$/.test(lower)) return "archive";
+            if (/\.(onnx|pt|pth|h5|ckpt|bin|safetensors)$/.test(lower)) return "model";
+            return "unknown";
+        };
+
+        if ((repoFiles || []).length > 0) {
+            return res.json((repoFiles || []).map((fileRow) => ({
+                id: fileRow.id,
+                name: fileRow.original_name || path.basename(fileRow.file_path || ""),
+                path: fileRow.file_path || fileRow.original_name || "",
+                size_bytes: Number(fileRow.size_bytes) || 0,
+                annex_key: fileRow.annex_key || null,
+                git_commit_hash: null,
+                branch: "main",
+                type: inferType(fileRow.original_name || fileRow.file_path),
+                status: fileRow.status || "synced",
+                uploaded_at: fileRow.uploaded_at || null,
+                mime_type: fileRow.mime_type || null,
+                latest_commit_id: fileRow.latest_commit_id || null,
+            })));
+        }
+
         let { data: commits, error: commitError } = await supabase
             .from("commits")
-            .select("id, message, annex_key, git_commit_hash, branch, committed_at")
+            .select("id, message, annex_key, git_commit_hash, branch, committed_at, created_at")
             .eq("repo_id", repoId)
             .order("committed_at", { ascending: false });
 
@@ -371,7 +422,7 @@ router.get("/:id/files", authMiddleware, async (req, res) => {
             .eq("repo_id", repoId);
 
         if (annexError) {
-            console.error("Failed to fetch annex metadata for files endpoint:", annexError);
+            console.error("Failed to fetch annex metadata for fallback files endpoint:", annexError);
             return res.status(500).json({
                 error: { message: annexError.message || "Failed to load annex metadata" }
             });
@@ -381,24 +432,15 @@ router.get("/:id/files", authMiddleware, async (req, res) => {
             (annexObjects || []).map((obj) => [obj.annex_key, Number(obj.size_bytes) || 0])
         );
 
-        const inferType = (fileName) => {
-            const lower = String(fileName || "").toLowerCase();
-            if (/\.(mp4|mov|avi|mkv|webm)$/.test(lower)) return "video";
-            if (/\.(zip|rar|7z|tar|gz)$/.test(lower)) return "archive";
-            if (/\.(onnx|pt|pth|h5|ckpt|bin|safetensors)$/.test(lower)) return "model";
-            return "unknown";
-        };
-
-        const files = (commits || [])
+        return res.json((commits || [])
             .filter((commit) => typeof commit.message === "string" && commit.message.startsWith("Upload "))
             .map((commit) => {
                 const name = commit.message.replace(/^Upload\s+/, "").trim() || "unknown-file";
-                const sizeBytes = commit.annex_key ? (sizeByAnnexKey.get(commit.annex_key) || 0) : 0;
-
                 return {
                     id: commit.id,
                     name,
-                    size_bytes: sizeBytes,
+                    path: name,
+                    size_bytes: commit.annex_key ? (sizeByAnnexKey.get(commit.annex_key) || 0) : 0,
                     annex_key: commit.annex_key || null,
                     git_commit_hash: commit.git_commit_hash || null,
                     branch: commit.branch || "main",
@@ -406,9 +448,7 @@ router.get("/:id/files", authMiddleware, async (req, res) => {
                     status: "synced",
                     uploaded_at: commit.committed_at || commit.created_at || null
                 };
-            });
-
-        return res.json(files);
+            }));
     } catch (error) {
         console.error("Error listing repository files:", error);
         return res.status(500).json({
@@ -523,6 +563,26 @@ router.post("/:id/upload", authMiddleware, upload.single('file'), async (req, re
             }
         }
 
+        const mimeType = file.mimetype || null;
+        const { error: repoFileError } = await supabase
+            .from("repo_files")
+            .upsert({
+                repo_id: repoId,
+                latest_commit_id: commitRow?.id || null,
+                uploaded_by: ownerId,
+                annex_key: uploadResult.annexKey || null,
+                file_path: file.originalname,
+                original_name: file.originalname,
+                mime_type: mimeType,
+                size_bytes: uploadResult.size || file.size || 0,
+                status: "synced",
+                uploaded_at: new Date().toISOString()
+            }, { onConflict: "repo_id,file_path" });
+
+        if (repoFileError) {
+            console.error("Failed to persist repo_files metadata:", repoFileError);
+        }
+
         const activityError = await insertActivityLogWithFallback({
             user_id: ownerId,
             repo_id: repoId,
@@ -537,6 +597,7 @@ router.post("/:id/upload", authMiddleware, upload.single('file'), async (req, re
         const metadataErrors = {
             push_events: resolvedPushError?.message || null,
             annex_objects: annexObjectError?.message || null,
+            repo_files: repoFileError?.message || null,
             activity_log: activityError?.message || null
         };
 
