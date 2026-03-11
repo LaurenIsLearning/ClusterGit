@@ -2,8 +2,10 @@ import express from "express";
 import { supabase } from "../utils/supabase.js";
 import authMiddleware from "../middleware/authMiddleware.js";
 import { applyEnvironmentFilter, getEnvironmentKey } from "../utils/environment.js";
+import gitService from "../services/gitService.js";
 
 const router = express.Router();
+const DEFAULT_STORAGE_QUOTA_BYTES = 20 * 1024 * 1024 * 1024;
 
 async function requireAdmin(req, res, next) {
     const userId = req.user?.id;
@@ -70,6 +72,14 @@ async function loadReviewRequests(repoIds) {
 
     if (error) throw error;
     return data || [];
+}
+
+function parseQuotaBytes(input) {
+    const parsed = Number(input);
+    if (!Number.isFinite(parsed) || parsed < 0) {
+        return null;
+    }
+    return Math.round(parsed);
 }
 
 router.get("/summary", async (req, res) => {
@@ -202,7 +212,7 @@ router.get("/users", async (req, res) => {
         const environmentKey = getEnvironmentKey(req);
         const { data: profiles, error: profilesError } = await supabase
             .from("user_profiles")
-            .select("user_id, role, display_name, storage_quota_bytes");
+            .select("user_id, role, display_name, storage_quota_bytes, is_admin_created");
         if (profilesError) {
             return res.status(500).json({ error: { message: profilesError.message || "Failed to load profiles" } });
         }
@@ -273,6 +283,7 @@ router.get("/users", async (req, res) => {
                 email: authUser?.email || "",
                 used_bytes: usedByUser.get(student.user_id) || 0,
                 quota_bytes: Number(student.storage_quota_bytes) || 0,
+                is_admin_created: Boolean(student.is_admin_created),
                 last_active_at: lastActiveByUser.get(student.user_id) || authUser?.last_sign_in_at || null,
                 repo_count: repoCountByUser.get(student.user_id) || 0,
                 has_review_request: Boolean(reviewRequest),
@@ -303,6 +314,128 @@ router.get("/users", async (req, res) => {
     } catch (error) {
         console.error("Admin users error:", error);
         return res.status(500).json({ error: { message: error.message || "Failed to load admin users" } });
+    }
+});
+
+router.post("/users", async (req, res) => {
+    try {
+        const adminUserId = req.user.id;
+        const email = String(req.body?.email || "").trim().toLowerCase();
+        const password = String(req.body?.password || "");
+        const displayName = String(req.body?.display_name || "").trim();
+        const requestedQuotaBytes = parseQuotaBytes(req.body?.storage_quota_bytes);
+
+        if (!email || !password) {
+            return res.status(400).json({ error: { message: "Email and password are required" } });
+        }
+
+        if (password.length < 6) {
+            return res.status(400).json({ error: { message: "Password must be at least 6 characters" } });
+        }
+
+        const quotaBytes = requestedQuotaBytes ?? DEFAULT_STORAGE_QUOTA_BYTES;
+
+        const { data, error } = await supabase.auth.admin.createUser({
+            email,
+            password,
+            email_confirm: true,
+            user_metadata: {
+                display_name: displayName || email.split("@")[0]
+            }
+        });
+
+        if (error || !data?.user?.id) {
+            return res.status(400).json({ error: { message: error?.message || "Failed to create student" } });
+        }
+
+        const userId = data.user.id;
+        const { error: profileError } = await supabase
+            .from("user_profiles")
+            .upsert({
+                user_id: userId,
+                role: "student",
+                display_name: displayName || email.split("@")[0],
+                storage_quota_bytes: quotaBytes,
+                is_admin_created: true,
+                admin_created_by: adminUserId
+            }, { onConflict: "user_id" });
+
+        if (profileError) {
+            return res.status(500).json({ error: { message: profileError.message || "Failed to create student profile" } });
+        }
+
+        const { error: activityError } = await supabase
+            .from("activity_log")
+            .insert({
+                user_id: adminUserId,
+                event_type: "student_created",
+                detail: `Created student ${email}`
+            });
+
+        if (activityError) {
+            console.error("Failed to log student creation:", activityError);
+        }
+
+        return res.json({
+            success: true,
+            user: {
+                id: userId,
+                email,
+                display_name: displayName || email.split("@")[0],
+                storage_quota_bytes: quotaBytes
+            }
+        });
+    } catch (error) {
+        console.error("Admin create user error:", error);
+        return res.status(500).json({ error: { message: error.message || "Failed to create student" } });
+    }
+});
+
+router.patch("/users/:userId/quota", async (req, res) => {
+    try {
+        const { userId } = req.params;
+        const requestedQuotaBytes = parseQuotaBytes(req.body?.storage_quota_bytes);
+
+        if (requestedQuotaBytes === null) {
+            return res.status(400).json({ error: { message: "Valid storage_quota_bytes is required" } });
+        }
+
+        const { data, error } = await supabase
+            .from("user_profiles")
+            .update({ storage_quota_bytes: requestedQuotaBytes })
+            .eq("user_id", userId)
+            .select("user_id, storage_quota_bytes")
+            .single();
+
+        if (error) {
+            return res.status(500).json({ error: { message: error.message || "Failed to update quota" } });
+        }
+
+        return res.json({ success: true, profile: data });
+    } catch (error) {
+        console.error("Admin quota update error:", error);
+        return res.status(500).json({ error: { message: error.message || "Failed to update quota" } });
+    }
+});
+
+router.post("/users/:userId/reset-quota", async (req, res) => {
+    try {
+        const { userId } = req.params;
+        const { data, error } = await supabase
+            .from("user_profiles")
+            .update({ storage_quota_bytes: DEFAULT_STORAGE_QUOTA_BYTES })
+            .eq("user_id", userId)
+            .select("user_id, storage_quota_bytes")
+            .single();
+
+        if (error) {
+            return res.status(500).json({ error: { message: error.message || "Failed to reset quota" } });
+        }
+
+        return res.json({ success: true, profile: data });
+    } catch (error) {
+        console.error("Admin quota reset error:", error);
+        return res.status(500).json({ error: { message: error.message || "Failed to reset quota" } });
     }
 });
 
@@ -356,6 +489,7 @@ router.get("/users/:userId/repos", async (req, res) => {
             repos: repos.map((repo) => ({
                 id: repo.id,
                 name: repo.name,
+                git_url: gitService.getGitUrl(userId, repo.name),
                 created_at: repo.created_at || null,
                 last_activity_at: repo.last_activity_at || null,
                 size_bytes: sizeByRepo.get(repo.id) || 0,
@@ -418,6 +552,93 @@ router.get("/repos/:repoId/files", async (req, res) => {
     } catch (error) {
         console.error("Admin repo files error:", error);
         return res.status(500).json({ error: { message: error.message || "Failed to load repository files" } });
+    }
+});
+
+router.get("/repos/:repoId/inspect", async (req, res) => {
+    try {
+        const environmentKey = getEnvironmentKey(req);
+        const { repoId } = req.params;
+
+        let repoQuery = supabase
+            .from("repositories")
+            .select("id, name, owner_id")
+            .eq("id", repoId);
+
+        repoQuery = applyEnvironmentFilter(repoQuery, environmentKey);
+
+        const { data: repo, error: repoError } = await repoQuery.maybeSingle();
+        if (repoError) {
+            return res.status(500).json({ error: { message: repoError.message || "Failed to load repository" } });
+        }
+
+        if (!repo) {
+            return res.status(404).json({ error: { message: "Repository not found" } });
+        }
+
+        const inspection = await gitService.inspectProjectRepository(repo.owner_id, repo.name);
+
+        return res.json({
+            environment_key: environmentKey,
+            repo: {
+                id: repo.id,
+                name: repo.name,
+                git_url: gitService.getGitUrl(repo.owner_id, repo.name)
+            },
+            branches: inspection.branches,
+            commits: inspection.commits,
+            files: inspection.files
+        });
+    } catch (error) {
+        console.error("Admin repo inspect error:", error);
+        return res.status(500).json({ error: { message: error.message || "Failed to inspect repository" } });
+    }
+});
+
+router.get("/repos/:repoId/files/download", async (req, res) => {
+    try {
+        const environmentKey = getEnvironmentKey(req);
+        const { repoId } = req.params;
+        const requestedPath = String(req.query.path || "").trim();
+
+        if (!requestedPath) {
+            return res.status(400).json({ error: { message: "File path is required" } });
+        }
+
+        if (requestedPath.includes("..")) {
+            return res.status(400).json({ error: { message: "Invalid file path" } });
+        }
+
+        let repoQuery = supabase
+            .from("repositories")
+            .select("id, name, owner_id")
+            .eq("id", repoId);
+
+        repoQuery = applyEnvironmentFilter(repoQuery, environmentKey);
+
+        const { data: repo, error: repoError } = await repoQuery.maybeSingle();
+        if (repoError) {
+            return res.status(500).json({ error: { message: repoError.message || "Failed to load repository" } });
+        }
+
+        if (!repo) {
+            return res.status(404).json({ error: { message: "Repository not found" } });
+        }
+
+        const fileResult = await gitService.getProjectFileBuffer(repo.owner_id, repo.name, requestedPath);
+        const downloadName = requestedPath.split(/[\\/]/).pop() || "download.bin";
+
+        res.setHeader("Content-Disposition", `attachment; filename="${downloadName.replace(/"/g, "")}"`);
+        res.setHeader("Content-Length", String(fileResult.size));
+        res.setHeader("Content-Type", "application/octet-stream");
+        return res.send(fileResult.buffer);
+    } catch (error) {
+        console.error("Admin repo download error:", error);
+        return res.status(500).json({
+            error: {
+                message: error.message || "Failed to download repository file"
+            }
+        });
     }
 });
 

@@ -121,6 +121,14 @@ async function prepareWorkingClone(bareRepoPath, tempWorkingPath) {
     await execAsync(GIT_BIN, ["--git-dir", bareRepoPath, "config", "user.email", "system@clustergit.local"]);
 }
 
+// clone the repo read-only into a temp dir so admin inspection can look at real git state.
+async function prepareReadOnlyClone(bareRepoPath, tempWorkingPath) {
+    await fs.mkdir(tempWorkingPath, { recursive: true });
+    await execAsync(GIT_BIN, ["clone", bareRepoPath, "."], { cwd: tempWorkingPath });
+    await syncRemoteBranches(tempWorkingPath);
+    await execAsync(GIT_BIN, ["checkout", "-B", "main", "origin/main"], { cwd: tempWorkingPath });
+}
+
 
 /**
  * Get Git clone URL
@@ -372,6 +380,108 @@ export async function deleteProjectRepository(userId, projectName) {
     }
 }
 
+export async function inspectProjectRepository(userId, projectName) {
+    const bareRepoPath = await resolveExistingRepoPath(userId, projectName);
+    const tempWorkingPath = path.join(os.tmpdir(), `clustergit-inspect-${Date.now()}`);
+
+    try {
+        if (!(await pathExists(bareRepoPath))) {
+            throw new Error(
+                `Repository storage is missing for ${projectName}. Metadata exists, but ${bareRepoPath} was not found in this environment`
+            );
+        }
+
+        await prepareReadOnlyClone(bareRepoPath, tempWorkingPath);
+
+        const [{ stdout: branchStdout }, { stdout: commitStdout }, { stdout: treeStdout }] = await Promise.all([
+            execAsync(GIT_BIN, ["branch", "-a", "--format=%(refname:short)"], { cwd: tempWorkingPath }),
+            execAsync(GIT_BIN, ["log", "--pretty=format:%H\t%an\t%ad\t%s", "--date=iso-strict", "-n", "20"], { cwd: tempWorkingPath }),
+            execAsync(GIT_BIN, ["ls-tree", "-r", "--long", "HEAD"], { cwd: tempWorkingPath })
+        ]);
+
+        const branches = branchStdout
+            .split(/\r?\n/)
+            .map((line) => line.trim())
+            .filter(Boolean);
+
+        const commits = commitStdout
+            .split(/\r?\n/)
+            .filter(Boolean)
+            .map((line) => {
+                const [hash, author, committedAt, ...messageParts] = line.split("\t");
+                return {
+                    hash,
+                    author,
+                    committed_at: committedAt,
+                    message: messageParts.join("\t")
+                };
+            });
+
+        const files = treeStdout
+            .split(/\r?\n/)
+            .filter(Boolean)
+            .map((line) => {
+                const match = line.match(/^(\d+)\s+(\w+)\s+([a-f0-9]+)\s+(\d+|-)\t(.+)$/i);
+                if (!match) return null;
+
+                return {
+                    mode: match[1],
+                    type: match[2],
+                    object_id: match[3],
+                    size_bytes: match[4] === "-" ? null : Number(match[4]),
+                    path: match[5]
+                };
+            })
+            .filter(Boolean);
+
+        return {
+            repoPath: bareRepoPath,
+            branches,
+            commits,
+            files
+        };
+    } finally {
+        try { await fs.rm(tempWorkingPath, { recursive: true, force: true }); } catch {}
+    }
+}
+
+export async function getProjectFileBuffer(userId, projectName, filePath) {
+    const bareRepoPath = await resolveExistingRepoPath(userId, projectName);
+    const tempWorkingPath = path.join(os.tmpdir(), `clustergit-download-${Date.now()}`);
+
+    try {
+        if (!(await pathExists(bareRepoPath))) {
+            throw new Error(
+                `Repository storage is missing for ${projectName}. Metadata exists, but ${bareRepoPath} was not found in this environment`
+            );
+        }
+
+        await prepareReadOnlyClone(bareRepoPath, tempWorkingPath);
+
+        try {
+            await execAsync(GIT_BIN, ["annex", "get", filePath], { cwd: tempWorkingPath });
+        } catch {
+            // some files are plain git files or the annex content may not be present.
+        }
+
+        const targetPath = path.join(tempWorkingPath, filePath);
+        if (!(await pathExists(targetPath))) {
+            throw new Error(`File ${filePath} was not found in repository ${projectName}`);
+        }
+
+        const stats = await fs.stat(targetPath);
+        const buffer = await fs.readFile(targetPath);
+
+        return {
+            buffer,
+            size: stats.size,
+            path: targetPath
+        };
+    } finally {
+        try { await fs.rm(tempWorkingPath, { recursive: true, force: true }); } catch {}
+    }
+}
+
 /**
  * Helpers
  */
@@ -397,6 +507,8 @@ export default {
     createProject,
     deleteFileFromProject,
     deleteProjectRepository,
+    inspectProjectRepository,
+    getProjectFileBuffer,
     resolveExistingRepoPath,
     getRepoPath,
     getRepoSize,

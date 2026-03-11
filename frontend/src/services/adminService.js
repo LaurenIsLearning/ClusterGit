@@ -94,6 +94,7 @@ export const adminService = {
                 usedBytes: Number(user.used_bytes) || 0,
                 quotaBytes: Number(user.quota_bytes) || 0,
                 repoCount: Number(user.repo_count) || 0,
+                isAdminCreated: Boolean(user.is_admin_created),
                 hasReviewRequest: Boolean(user.has_review_request),
                 reviewRequestedAt: user.review_requested_at || null,
                 reviewDetail: user.review_detail || '',
@@ -102,6 +103,58 @@ export const adminService = {
                 lastActiveAt: user.last_active_at || null,
             })),
         };
+    },
+
+    async createStudent({ email, password, displayName, storageQuotaBytes }) {
+        const headers = await getAuthHeaders();
+        const response = await fetch(`${API_BASE_URL}/admin/users`, {
+            method: 'POST',
+            headers,
+            body: JSON.stringify({
+                email,
+                password,
+                display_name: displayName,
+                storage_quota_bytes: storageQuotaBytes,
+            }),
+        });
+        const data = await safeParseJson(response);
+
+        if (!response.ok) {
+            throw new Error(data.error?.message || data._raw || 'Failed to create student');
+        }
+
+        return data;
+    },
+
+    async updateUserQuota(userId, storageQuotaBytes) {
+        const headers = await getAuthHeaders();
+        const response = await fetch(`${API_BASE_URL}/admin/users/${userId}/quota`, {
+            method: 'PATCH',
+            headers,
+            body: JSON.stringify({ storage_quota_bytes: storageQuotaBytes }),
+        });
+        const data = await safeParseJson(response);
+
+        if (!response.ok) {
+            throw new Error(data.error?.message || data._raw || 'Failed to update quota');
+        }
+
+        return data;
+    },
+
+    async resetUserQuota(userId) {
+        const headers = await getAuthHeaders();
+        const response = await fetch(`${API_BASE_URL}/admin/users/${userId}/reset-quota`, {
+            method: 'POST',
+            headers,
+        });
+        const data = await safeParseJson(response);
+
+        if (!response.ok) {
+            throw new Error(data.error?.message || data._raw || 'Failed to reset quota');
+        }
+
+        return data;
     },
 
     async getUserRepos(userId) {
@@ -119,6 +172,7 @@ export const adminService = {
             repos: (data.repos || []).map((repo) => ({
                 id: repo.id,
                 name: repo.name || 'Untitled',
+                gitUrl: repo.git_url || '',
                 sizeBytes: Number(repo.size_bytes) || 0,
                 sizeLabel: `${((Number(repo.size_bytes) || 0) / (1024 ** 2)).toFixed(1)} MB`,
                 createdAt: repo.created_at || null,
@@ -152,6 +206,67 @@ export const adminService = {
                 mimeType: file.mime_type || null,
             })),
         };
+    },
+
+    async inspectRepo(repoId) {
+        const headers = await getAuthHeaders();
+        const response = await fetch(`${API_BASE_URL}/admin/repos/${repoId}/inspect`, { method: 'GET', headers });
+        const data = await safeParseJson(response);
+
+        if (!response.ok) {
+            throw new Error(data.error?.message || data._raw || 'Failed to inspect repository');
+        }
+
+        return {
+            environmentKey: data.environment_key || null,
+            repo: data.repo ? {
+                id: data.repo.id,
+                name: data.repo.name,
+                gitUrl: data.repo.git_url || '',
+            } : null,
+            branches: data.branches || [],
+            commits: data.commits || [],
+            files: (data.files || []).map((file) => ({
+                mode: file.mode || '',
+                type: file.type || '',
+                objectId: file.object_id || '',
+                path: file.path || '',
+                sizeBytes: Number(file.size_bytes) || 0,
+                sizeLabel: `${((Number(file.size_bytes) || 0) / (1024 ** 2)).toFixed(1)} MB`,
+            })),
+        };
+    },
+
+    async downloadRepoFile(repoId, filePath) {
+        const session = await authService.getSession();
+        if (!session?.access_token) {
+            throw new Error('Not authenticated');
+        }
+
+        const response = await fetch(
+            `${API_BASE_URL}/admin/repos/${repoId}/files/download?path=${encodeURIComponent(filePath)}`,
+            {
+                method: 'GET',
+                headers: {
+                    Authorization: `Bearer ${session.access_token}`,
+                },
+            }
+        );
+
+        if (!response.ok) {
+            const data = await safeParseJson(response);
+            throw new Error(data.error?.message || data._raw || 'Failed to download file');
+        }
+
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const anchor = document.createElement('a');
+        anchor.href = url;
+        anchor.download = filePath.split('/').pop() || filePath.split('\\').pop() || 'download.bin';
+        document.body.appendChild(anchor);
+        anchor.click();
+        anchor.remove();
+        window.URL.revokeObjectURL(url);
     },
 
     async getNodes() {
