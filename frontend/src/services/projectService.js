@@ -246,6 +246,54 @@ export const projectService = {
             xhr.send(formData);
         });
     },
+
+    async deleteFile(projectId, fileId) {
+        const headers = await getAuthHeaders();
+
+        const response = await fetch(`${API_BASE_URL}/repos/${projectId}/files/${fileId}`, {
+            method: 'DELETE',
+            headers,
+        });
+
+        const data = await safeParseJson(response);
+        if (!response.ok) {
+            throw new Error(data.error?.message || data._raw || 'Failed to delete file');
+        }
+
+        return data;
+    },
+
+    async deleteProject(projectId) {
+        const headers = await getAuthHeaders();
+
+        const response = await fetch(`${API_BASE_URL}/repos/${projectId}`, {
+            method: 'DELETE',
+            headers,
+        });
+
+        const data = await safeParseJson(response);
+        if (!response.ok) {
+            throw new Error(data.error?.message || data._raw || 'Failed to delete repository');
+        }
+
+        return data;
+    },
+
+    async requestReview(projectId) {
+        const headers = await getAuthHeaders();
+
+        const response = await fetch(`${API_BASE_URL}/repos/${projectId}/request-review`, {
+            method: 'POST',
+            headers,
+        });
+
+        const data = await safeParseJson(response);
+        if (!response.ok) {
+            throw new Error(data.error?.message || data._raw || 'Failed to request review');
+        }
+
+        return data;
+    },
 };
 
 export default projectService;

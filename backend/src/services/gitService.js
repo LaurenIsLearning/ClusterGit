@@ -108,6 +108,19 @@ async function mergeRemoteGitAnnex(cwd) {
     }
 }
 
+async function prepareWorkingClone(bareRepoPath, tempWorkingPath) {
+    await fs.mkdir(tempWorkingPath, { recursive: true });
+    await execAsync(GIT_BIN, ["clone", bareRepoPath, "."], { cwd: tempWorkingPath });
+    await syncRemoteBranches(tempWorkingPath);
+    await execAsync(GIT_BIN, ["checkout", "-B", "main", "origin/main"], { cwd: tempWorkingPath });
+
+    await execAsync(GIT_BIN, ["config", "user.name", "ClusterGit"], { cwd: tempWorkingPath });
+    await execAsync(GIT_BIN, ["config", "user.email", "system@clustergit.local"], { cwd: tempWorkingPath });
+
+    await execAsync(GIT_BIN, ["--git-dir", bareRepoPath, "config", "user.name", "ClusterGit"]);
+    await execAsync(GIT_BIN, ["--git-dir", bareRepoPath, "config", "user.email", "system@clustergit.local"]);
+}
+
 
 /**
  * Get Git clone URL
@@ -247,18 +260,7 @@ export async function addFileToProject(userId, projectName, filePath, originalNa
             );
         }
 
-        await fs.mkdir(tempWorkingPath, { recursive: true });
-        await execAsync(GIT_BIN, ["clone", bareRepoPath, "."], { cwd: tempWorkingPath });
-        await syncRemoteBranches(tempWorkingPath);
-        await execAsync(GIT_BIN, ["checkout", "-B", "main", "origin/main"], { cwd: tempWorkingPath });
-
-        //set identity for git
-        await execAsync(GIT_BIN, ["config", "user.name", "ClusterGit"], { cwd: tempWorkingPath });
-        await execAsync(GIT_BIN, ["config", "user.email", "system@clustergit.local"], { cwd: tempWorkingPath });
-
-        // also set identity on bare repo for git-annex copy operations
-        await execAsync(GIT_BIN, ["--git-dir", bareRepoPath, "config", "user.name", "ClusterGit"]);
-        await execAsync(GIT_BIN, ["--git-dir", bareRepoPath, "config", "user.email", "system@clustergit.local"]);
+        await prepareWorkingClone(bareRepoPath, tempWorkingPath);
 
         const targetPath = path.join(tempWorkingPath, originalName);
         await fs.rename(filePath, targetPath);
@@ -311,6 +313,65 @@ export async function addFileToProject(userId, projectName, filePath, originalNa
     }
 }
 
+export async function deleteFileFromProject(userId, projectName, filePath) {
+    const bareRepoPath = await resolveExistingRepoPath(userId, projectName);
+    const tempWorkingPath = path.join(os.tmpdir(), `clustergit-delete-${Date.now()}`);
+
+    try {
+        if (!(await pathExists(bareRepoPath))) {
+            throw new Error(
+                `Repository storage is missing for ${projectName}. Metadata exists, but ${bareRepoPath} was not found in this environment`
+            );
+        }
+
+        await prepareWorkingClone(bareRepoPath, tempWorkingPath);
+
+        const targetPath = path.join(tempWorkingPath, filePath);
+        if (!(await pathExists(targetPath))) {
+            throw new Error(`File ${filePath} was not found in repository ${projectName}`);
+        }
+
+        await execAsync(GIT_BIN, ["annex", "rm", "--force", filePath], { cwd: tempWorkingPath });
+        await execAsync(GIT_BIN, ["commit", "-m", `Delete ${filePath}`], { cwd: tempWorkingPath });
+
+        const { stdout: commitStdout } = await execAsync(GIT_BIN, ["rev-parse", "HEAD"], { cwd: tempWorkingPath });
+        const gitCommitHash = commitStdout.trim();
+
+        await execAsync(GIT_BIN, ["push", "origin", "main"], { cwd: tempWorkingPath });
+        await mergeRemoteGitAnnex(tempWorkingPath);
+        await execAsync(GIT_BIN, ["push", "origin", "git-annex"], { cwd: tempWorkingPath });
+
+        return {
+            success: true,
+            gitCommitHash,
+            branch: "main"
+        };
+    } catch (error) {
+        console.error("Delete file failed:", error);
+        throw new Error(`Failed to delete file from repository: ${error.message}`);
+    } finally {
+        try { await fs.rm(tempWorkingPath, { recursive: true, force: true }); } catch {}
+    }
+}
+
+export async function deleteProjectRepository(userId, projectName) {
+    const bareRepoPath = await resolveExistingRepoPath(userId, projectName);
+
+    if (!(await pathExists(bareRepoPath))) {
+        throw new Error(
+            `Repository storage is missing for ${projectName}. Metadata exists, but ${bareRepoPath} was not found in this environment`
+        );
+    }
+
+    try {
+        await fs.rm(bareRepoPath, { recursive: true, force: true });
+        return { success: true, repoPath: bareRepoPath };
+    } catch (error) {
+        console.error("Delete repository failed:", error);
+        throw new Error(`Failed to delete repository storage: ${error.message}`);
+    }
+}
+
 /**
  * Helpers
  */
@@ -334,6 +395,8 @@ export default {
     initGitAnnex,
     getAnnexUuid,
     createProject,
+    deleteFileFromProject,
+    deleteProjectRepository,
     resolveExistingRepoPath,
     getRepoPath,
     getRepoSize,

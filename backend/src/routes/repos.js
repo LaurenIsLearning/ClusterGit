@@ -78,6 +78,24 @@ async function insertActivityLogWithFallback(payload) {
     return lastError;
 }
 
+async function loadOwnedRepository(ownerId, repoId, selectClause = "id, name, owner_id") {
+    const { data: project, error } = await supabase
+        .from("repositories")
+        .select(selectClause)
+        .eq("id", repoId)
+        .single();
+
+    if (error || !project) {
+        return { project: null, error: error || new Error("Project not found") };
+    }
+
+    if (project.owner_id !== ownerId) {
+        return { project: null, error: new Error("You do not have permission to access this project"), status: 403 };
+    }
+
+    return { project, error: null, status: 200 };
+}
+
 // CREATE REPOSITORY
 router.post("/create", authMiddleware, async (req, res) => {
     const { name, description, is_public = false } = req.body;
@@ -634,6 +652,201 @@ router.post("/:id/upload", authMiddleware, upload.single('file'), async (req, re
         console.error("Upload error:", error);
         return res.status(500).json({
             error: { message: error.message || "Failed to upload file" }
+        });
+    }
+});
+
+router.delete("/:repoId/files/:fileId", authMiddleware, async (req, res) => {
+    const ownerId = req.user.id;
+    const { repoId, fileId } = req.params;
+
+    try {
+        const { project, error, status } = await loadOwnedRepository(ownerId, repoId, "id, name, owner_id");
+        if (error || !project) {
+            return res.status(status || 404).json({
+                error: { message: error?.message || "Project not found" }
+            });
+        }
+
+        const { data: repoFile, error: repoFileError } = await supabase
+            .from("repo_files")
+            .select("id, file_path, original_name, annex_key")
+            .eq("id", fileId)
+            .eq("repo_id", repoId)
+            .maybeSingle();
+
+        if (repoFileError) {
+            return res.status(500).json({
+                error: { message: repoFileError.message || "Failed to load file metadata" }
+            });
+        }
+
+        if (!repoFile) {
+            return res.status(404).json({
+                error: { message: "File not found" }
+            });
+        }
+
+        const deleteResult = await gitService.deleteFileFromProject(
+            ownerId,
+            project.name,
+            repoFile.file_path
+        );
+
+        const { data: commitRow, error: commitError } = await supabase
+            .from("commits")
+            .insert({
+                repo_id: repoId,
+                git_commit_hash: deleteResult.gitCommitHash,
+                author_id: ownerId,
+                message: `Delete ${repoFile.original_name || repoFile.file_path}`,
+                branch: deleteResult.branch || "main",
+                is_merge: false,
+                annex_key: null,
+                committed_at: new Date().toISOString()
+            })
+            .select()
+            .single();
+
+        if (commitError) {
+            return res.status(500).json({
+                error: { message: `Delete succeeded but commit metadata failed: ${commitError.message}` }
+            });
+        }
+
+        const { error: deleteRepoFileError } = await supabase
+            .from("repo_files")
+            .delete()
+            .eq("id", fileId)
+            .eq("repo_id", repoId);
+
+        if (deleteRepoFileError) {
+            return res.status(500).json({
+                error: { message: deleteRepoFileError.message || "Failed to remove file metadata" }
+            });
+        }
+
+        if (repoFile.annex_key) {
+            const { error: annexDeleteError } = await supabase
+                .from("annex_objects")
+                .delete()
+                .eq("repo_id", repoId)
+                .eq("annex_key", repoFile.annex_key);
+
+            if (annexDeleteError) {
+                console.error("Failed to delete annex object metadata:", annexDeleteError);
+            }
+        }
+
+        const activityError = await insertActivityLogWithFallback({
+            user_id: ownerId,
+            repo_id: repoId,
+            event_type: "file_deleted",
+            detail: `Deleted ${repoFile.original_name || repoFile.file_path} (commit ${deleteResult.gitCommitHash || "unknown"})`
+        });
+
+        if (activityError) {
+            console.error("Failed to persist delete activity metadata:", activityError);
+        }
+
+        return res.json({
+            success: true,
+            message: "File deleted successfully",
+            metadata: {
+                commit_id: commitRow?.id,
+                git_commit_hash: deleteResult.gitCommitHash
+            }
+        });
+    } catch (error) {
+        console.error("Delete file error:", error);
+        return res.status(500).json({
+            error: { message: error.message || "Failed to delete file" }
+        });
+    }
+});
+
+router.post("/:id/request-review", authMiddleware, async (req, res) => {
+    const ownerId = req.user.id;
+    const repoId = req.params.id;
+
+    try {
+        const { project, error, status } = await loadOwnedRepository(ownerId, repoId, "id, name, owner_id");
+        if (error || !project) {
+            return res.status(status || 404).json({
+                error: { message: error?.message || "Project not found" }
+            });
+        }
+
+        const activityError = await insertActivityLogWithFallback({
+            user_id: ownerId,
+            repo_id: repoId,
+            event_type: "review_requested",
+            detail: `Requested admin review for ${project.name}`
+        });
+
+        if (activityError) {
+            return res.status(500).json({
+                error: { message: activityError.message || "Failed to request review" }
+            });
+        }
+
+        return res.json({
+            success: true,
+            message: "Review request sent to admins"
+        });
+    } catch (error) {
+        console.error("Request review error:", error);
+        return res.status(500).json({
+            error: { message: error.message || "Failed to request review" }
+        });
+    }
+});
+
+router.delete("/:id", authMiddleware, async (req, res) => {
+    const ownerId = req.user.id;
+    const repoId = req.params.id;
+
+    try {
+        const { project, error, status } = await loadOwnedRepository(ownerId, repoId, "id, name, owner_id");
+        if (error || !project) {
+            return res.status(status || 404).json({
+                error: { message: error?.message || "Project not found" }
+            });
+        }
+
+        await gitService.deleteProjectRepository(ownerId, project.name);
+
+        const { error: deleteRepoError } = await supabase
+            .from("repositories")
+            .delete()
+            .eq("id", repoId)
+            .eq("owner_id", ownerId);
+
+        if (deleteRepoError) {
+            return res.status(500).json({
+                error: { message: deleteRepoError.message || "Failed to delete repository metadata" }
+            });
+        }
+
+        const activityError = await insertActivityLogWithFallback({
+            user_id: ownerId,
+            repo_id: null,
+            event_type: "repository_deleted",
+            detail: `Deleted repository ${project.name}`
+        });
+
+        if (activityError) {
+            console.error("Failed to persist repository delete activity:", activityError);
+        }
+
+        return res.json({
+            success: true,
+            message: "Repository deleted successfully"
+        });
+    } catch (error) {
+        console.error("Delete repository error:", error);
+        return res.status(500).json({
+            error: { message: error.message || "Failed to delete repository" }
         });
     }
 });
