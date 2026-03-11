@@ -36,6 +36,7 @@ export default function AdminUsers() {
     const [loadingFiles, setLoadingFiles] = useState(false);
     const [loadingInspection, setLoadingInspection] = useState(false);
     const [error, setError] = useState('');
+    const [inspectWarning, setInspectWarning] = useState('');
     const [copiedCloneUrl, setCopiedCloneUrl] = useState('');
     const [quotaModalUser, setQuotaModalUser] = useState(null);
     const [studentModalOpen, setStudentModalOpen] = useState(false);
@@ -109,11 +110,13 @@ export default function AdminUsers() {
             if (!selectedRepoId) {
                 setFiles([]);
                 setInspection({ repo: null, branches: [], commits: [], files: [] });
+                setInspectWarning('');
                 return;
             }
 
             setLoadingFiles(true);
             setLoadingInspection(true);
+            setInspectWarning('');
             try {
                 const [fileData, inspectData] = await Promise.all([
                     adminService.getRepoFiles(selectedRepoId),
@@ -126,10 +129,12 @@ export default function AdminUsers() {
                     commits: inspectData.commits || [],
                     files: inspectData.files || [],
                 });
+                setInspectWarning(inspectData.unavailableReason || '');
             } catch (err) {
                 setError(err.message || 'Failed to load repository files');
                 setFiles([]);
                 setInspection({ repo: null, branches: [], commits: [], files: [] });
+                setInspectWarning('');
             } finally {
                 setLoadingFiles(false);
                 setLoadingInspection(false);
@@ -149,6 +154,7 @@ export default function AdminUsers() {
 
     const selectedUser = users.find((user) => user.id === selectedUserId) || null;
     const selectedRepo = repos.find((repo) => repo.id === selectedRepoId) || null;
+    const cloneUrl = inspection.repo?.gitUrl || selectedRepo?.gitUrl || '';
 
     const handleDownload = async (filePath) => {
         if (!selectedRepoId || !filePath) return;
@@ -328,7 +334,6 @@ export default function AdminUsers() {
                                     <StatCard label="Repos" value={String(selectedUser.repoCount)} />
                                     <StatCard label="Used" value={`${selectedUser.used.toFixed(2)} GB`} />
                                     <StatCard label="Quota" value={`${selectedUser.quota.toFixed(2)} GB`} />
-                                    <StatCard label="Source" value={selectedUser.isAdminCreated ? 'Admin' : 'Login'} />
                                 </div>
 
                                 <div className="mt-6 flex flex-wrap gap-3">
@@ -454,22 +459,28 @@ export default function AdminUsers() {
                                         <GitBranch className="w-5 h-5 text-[--accent-primary]" />
                                         <h3 className="font-semibold">Live Repository Inspect</h3>
                                     </div>
-                                    {inspection.repo?.gitUrl && (
+                                    {cloneUrl && (
                                         <button
-                                            onClick={() => handleCopyCloneUrl(inspection.repo.gitUrl)}
+                                            onClick={() => handleCopyCloneUrl(cloneUrl)}
                                             className="btn btn-secondary gap-2"
                                         >
-                                            {copiedCloneUrl === inspection.repo.gitUrl ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+                                            {copiedCloneUrl === cloneUrl ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
                                             Copy Clone URL
                                         </button>
                                     )}
                                 </div>
                                 {selectedRepo ? (
                                     <div className="space-y-5">
-                                        {inspection.repo?.gitUrl && (
+                                        {cloneUrl && (
                                             <div className="rounded-lg border border-[--border-color] bg-[--bg-secondary] px-4 py-3">
                                                 <div className="text-xs text-[--text-muted] uppercase tracking-wide">clone url</div>
-                                                <div className="mt-1 font-mono text-sm break-all">{inspection.repo.gitUrl}</div>
+                                                <div className="mt-1 font-mono text-sm break-all">{cloneUrl}</div>
+                                            </div>
+                                        )}
+
+                                        {inspectWarning && (
+                                            <div className="rounded-lg border border-amber-400/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
+                                                {inspectWarning}
                                             </div>
                                         )}
 

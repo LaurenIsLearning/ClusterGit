@@ -213,6 +213,17 @@ export const adminService = {
         const response = await fetch(`${API_BASE_URL}/admin/repos/${repoId}/inspect`, { method: 'GET', headers });
         const data = await safeParseJson(response);
 
+        if (!response.ok && isMissingRoute(response, data)) {
+            return {
+                environmentKey: null,
+                repo: null,
+                branches: [],
+                commits: [],
+                files: [],
+                unavailableReason: 'Live repository inspect is not deployed for this environment yet.',
+            };
+        }
+
         if (!response.ok) {
             throw new Error(data.error?.message || data._raw || 'Failed to inspect repository');
         }
@@ -234,6 +245,7 @@ export const adminService = {
                 sizeBytes: Number(file.size_bytes) || 0,
                 sizeLabel: `${((Number(file.size_bytes) || 0) / (1024 ** 2)).toFixed(1)} MB`,
             })),
+            unavailableReason: '',
         };
     },
 
