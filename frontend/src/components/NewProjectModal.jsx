@@ -59,8 +59,11 @@ export default function NewProjectModal({ isOpen, onClose, onCreateProject }) {
     if (!isOpen) return null;
 
     return createPortal(
-        <div className="fixed inset-0 overlay-scrim flex items-center justify-center z-50 p-4">
-            <div className="modal-panel rounded-2xl w-full max-w-md">
+        <div className="fixed inset-0 z-50 flex items-center justify-center overlay-scrim p-4" onClick={handleClose}>
+            <div
+                className="modal-panel w-full max-w-md rounded-2xl overflow-hidden"
+                onClick={(e) => e.stopPropagation()}
+            >
                 {/* Header */}
                 <div className="flex items-center justify-between p-6 border-b border-[--border-color]">
                     <div className="flex items-center gap-3">
