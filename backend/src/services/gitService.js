@@ -71,6 +71,43 @@ export async function resolveExistingRepoPath(userId, projectName) {
     return configured;
 }
 
+async function refExists(cwd, refName) {
+    try {
+        await execAsync(GIT_BIN, ["rev-parse", "--verify", refName], { cwd });
+        return true;
+    } catch {
+        return false;
+    }
+}
+
+async function syncRemoteBranches(cwd) {
+    await execAsync(GIT_BIN, ["fetch", "origin", "main"], { cwd });
+    try {
+        await execAsync(GIT_BIN, ["fetch", "origin", "git-annex"], { cwd });
+    } catch {
+        // Some repositories may not have a remote git-annex branch yet.
+    }
+}
+
+async function mergeRemoteGitAnnex(cwd) {
+    const hasLocalGitAnnex = await refExists(cwd, "git-annex");
+    const hasRemoteGitAnnex = await refExists(cwd, "origin/git-annex");
+
+    if (!hasLocalGitAnnex || !hasRemoteGitAnnex) {
+        return;
+    }
+
+    const { stdout: currentBranchStdout } = await execAsync(GIT_BIN, ["rev-parse", "--abbrev-ref", "HEAD"], { cwd });
+    const originalBranch = currentBranchStdout.trim() || "main";
+
+    await execAsync(GIT_BIN, ["checkout", "git-annex"], { cwd });
+    try {
+        await execAsync(GIT_BIN, ["merge", "--no-edit", "origin/git-annex"], { cwd });
+    } finally {
+        await execAsync(GIT_BIN, ["checkout", originalBranch], { cwd });
+    }
+}
+
 
 /**
  * Get Git clone URL
@@ -204,9 +241,16 @@ export async function addFileToProject(userId, projectName, filePath, originalNa
     const tempWorkingPath = path.join(os.tmpdir(), `clustergit-upload-${Date.now()}`);
 
     try {
+        if (!(await pathExists(bareRepoPath))) {
+            throw new Error(
+                `Repository storage is missing for ${projectName}. Metadata exists, but ${bareRepoPath} was not found in this environment`
+            );
+        }
+
         await fs.mkdir(tempWorkingPath, { recursive: true });
         await execAsync(GIT_BIN, ["clone", bareRepoPath, "."], { cwd: tempWorkingPath });
-        await execAsync(GIT_BIN, ["checkout", "-B", "main"], { cwd: tempWorkingPath });
+        await syncRemoteBranches(tempWorkingPath);
+        await execAsync(GIT_BIN, ["checkout", "-B", "main", "origin/main"], { cwd: tempWorkingPath });
 
         //set identity for git
         await execAsync(GIT_BIN, ["config", "user.name", "ClusterGit"], { cwd: tempWorkingPath });
@@ -245,6 +289,7 @@ export async function addFileToProject(userId, projectName, filePath, originalNa
         const toRef = toRefStdout.trim();
 
         await execAsync(GIT_BIN, ["push", "origin", "main"], { cwd: tempWorkingPath });
+        await mergeRemoteGitAnnex(tempWorkingPath);
         await execAsync(GIT_BIN, ["push", "origin", "git-annex"], { cwd: tempWorkingPath });
 
         // copy actual annex content to bare repo
