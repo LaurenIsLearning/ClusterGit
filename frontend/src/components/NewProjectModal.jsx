@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { X, FolderGit2, AlertCircle } from 'lucide-react';
+import { createPortal } from 'react-dom';
 
 export default function NewProjectModal({ isOpen, onClose, onCreateProject }) {
     const [name, setName] = useState('');
@@ -35,7 +36,7 @@ export default function NewProjectModal({ isOpen, onClose, onCreateProject }) {
         setIsCreating(true);
         try {
             await onCreateProject(name.trim(), description.trim());
-            // Reset form
+            // reset the form after a successful create so the next open starts clean.
             setName('');
             setDescription('');
             onClose();
@@ -57,9 +58,9 @@ export default function NewProjectModal({ isOpen, onClose, onCreateProject }) {
 
     if (!isOpen) return null;
 
-    return (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-            <div className="bg-[--bg-secondary] rounded-2xl border border-[--border-color] w-full max-w-md">
+    return createPortal(
+        <div className="fixed inset-0 overlay-scrim flex items-center justify-center z-50 p-4">
+            <div className="modal-panel rounded-2xl w-full max-w-md">
                 {/* Header */}
                 <div className="flex items-center justify-between p-6 border-b border-[--border-color]">
                     <div className="flex items-center gap-3">
@@ -137,6 +138,7 @@ export default function NewProjectModal({ isOpen, onClose, onCreateProject }) {
                     </div>
                 </form>
             </div>
-        </div>
+        </div>,
+        document.body
     );
 }

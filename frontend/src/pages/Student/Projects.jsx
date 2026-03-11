@@ -224,7 +224,7 @@ export default function StudentProjects() {
                                 </div>
                             </div>
                             {openProjectMenu === project.id && (
-                                <div className="absolute right-4 top-12 z-20 w-44 rounded-lg border border-[--border-color] bg-[--bg-secondary] shadow-xl p-1">
+                                <div className="menu-panel absolute right-4 top-12 z-20 w-44 rounded-xl p-1">
                                     <button
                                         onClick={(e) => {
                                             e.stopPropagation();
@@ -346,7 +346,7 @@ export default function StudentProjects() {
                                                     <MoreVertical className="w-4 h-4 text-[--text-secondary]" />
                                                 </button>
                                                 {openFileMenu === file.id && (
-                                                    <div className="absolute right-4 top-12 z-20 w-40 rounded-lg border border-[--border-color] bg-[--bg-secondary] shadow-xl p-1">
+                                                    <div className="menu-panel absolute right-4 top-12 z-20 w-40 rounded-xl p-1">
                                                         <button
                                                             onClick={() => {
                                                                 setOpenFileMenu(null);

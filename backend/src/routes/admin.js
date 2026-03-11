@@ -1,6 +1,7 @@
 import express from "express";
 import { supabase } from "../utils/supabase.js";
 import authMiddleware from "../middleware/authMiddleware.js";
+import { applyEnvironmentFilter, getEnvironmentKey } from "../utils/environment.js";
 
 const router = express.Router();
 
@@ -29,8 +30,51 @@ async function requireAdmin(req, res, next) {
 
 router.use(authMiddleware, requireAdmin);
 
-router.get("/summary", async (_req, res) => {
+function formatFallbackUserName(authUser, profile) {
+    return profile?.display_name
+        || authUser?.email?.split("@")?.[0]
+        || "Unknown";
+}
+
+// auth lookups let admin pages show real names/emails without trusting stale profile text.
+async function listAuthUsersById() {
+    const { data: authList } = await supabase.auth.admin.listUsers({ page: 1, perPage: 1000 });
+    return new Map((authList?.users || []).map((user) => [user.id, user]));
+}
+
+// admin views only inspect repos that belong to the current environment.
+async function loadEnvironmentRepositories(environmentKey) {
+    let query = supabase
+        .from("repositories")
+        .select("id, name, owner_id, created_at, last_activity_at, environment_key")
+        .order("last_activity_at", { ascending: false });
+
+    query = applyEnvironmentFilter(query, environmentKey);
+
+    const { data: repos, error } = await query;
+
+    if (error) throw error;
+    return repos || [];
+}
+
+// review requests are stored as activity events and surfaced back into the admin ui.
+async function loadReviewRequests(repoIds) {
+    if (!repoIds.length) return [];
+
+    const { data, error } = await supabase
+        .from("activity_log")
+        .select("id, user_id, repo_id, detail, created_at")
+        .eq("event_type", "review_requested")
+        .in("repo_id", repoIds)
+        .order("created_at", { ascending: false });
+
+    if (error) throw error;
+    return data || [];
+}
+
+router.get("/summary", async (req, res) => {
     try {
+        const environmentKey = getEnvironmentKey(req);
         const { data: profiles, error: profilesError } = await supabase
             .from("user_profiles")
             .select("user_id, role, storage_quota_bytes");
@@ -39,40 +83,48 @@ router.get("/summary", async (_req, res) => {
         }
 
         const studentProfiles = (profiles || []).filter((p) => p.role === "student");
-        const totalUsers = studentProfiles.length;
         const totalStorageBytes = studentProfiles.reduce((sum, profile) => {
             return sum + (Number(profile.storage_quota_bytes) || 0);
         }, 0);
 
-        const { data: annexRows, error: annexError } = await supabase
-            .from("annex_objects")
-            .select("size_bytes");
-        if (annexError) {
-            return res.status(500).json({ error: { message: annexError.message || "Failed to load storage usage" } });
+        const repos = await loadEnvironmentRepositories(environmentKey);
+
+        const repoById = new Map((repos || []).map((r) => [r.id, r]));
+        const repoIds = repos.map((repo) => repo.id);
+        const totalUsers = new Set(repos.map((repo) => repo.owner_id).filter(Boolean)).size;
+
+        let usedStorageBytes = 0;
+        if (repoIds.length > 0) {
+            const { data: annexRows, error: annexError } = await supabase
+                .from("annex_objects")
+                .select("size_bytes")
+                .in("repo_id", repoIds);
+            if (annexError) {
+                return res.status(500).json({ error: { message: annexError.message || "Failed to load storage usage" } });
+            }
+            usedStorageBytes = (annexRows || []).reduce((sum, row) => sum + (Number(row.size_bytes) || 0), 0);
         }
 
-        const usedStorageBytes = (annexRows || []).reduce((sum, row) => sum + (Number(row.size_bytes) || 0), 0);
-
         const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-        const { data: activityRows, error: activityError } = await supabase
+        // summary activity is constrained to repos in this environment.
+        let activityQuery = supabase
             .from("activity_log")
             .select("user_id, repo_id, detail, created_at")
             .gte("created_at", oneDayAgo)
             .order("created_at", { ascending: false });
+
+        if (repoIds.length > 0) {
+            activityQuery = activityQuery.in("repo_id", repoIds);
+        } else {
+            activityQuery = activityQuery.eq("repo_id", "00000000-0000-0000-0000-000000000000");
+        }
+
+        const { data: activityRows, error: activityError } = await activityQuery;
         if (activityError) {
             return res.status(500).json({ error: { message: activityError.message || "Failed to load activity" } });
         }
 
         const activeUsers = new Set((activityRows || []).map((r) => r.user_id).filter(Boolean)).size;
-
-        const { data: repos, error: reposError } = await supabase
-            .from("repositories")
-            .select("id, name, created_at, last_activity_at");
-        if (reposError) {
-            return res.status(500).json({ error: { message: reposError.message || "Failed to load repositories" } });
-        }
-
-        const repoById = new Map((repos || []).map((r) => [r.id, r]));
 
         const archivedCandidates = (repos || [])
             .filter((r) => {
@@ -145,8 +197,9 @@ router.get("/summary", async (_req, res) => {
     }
 });
 
-router.get("/users", async (_req, res) => {
+router.get("/users", async (req, res) => {
     try {
+        const environmentKey = getEnvironmentKey(req);
         const { data: profiles, error: profilesError } = await supabase
             .from("user_profiles")
             .select("user_id, role, display_name, storage_quota_bytes");
@@ -157,16 +210,16 @@ router.get("/users", async (_req, res) => {
         const students = (profiles || []).filter((p) => p.role === "student");
         const studentIds = students.map((s) => s.user_id);
 
-        const { data: repos, error: reposError } = await supabase
-            .from("repositories")
-            .select("id, owner_id")
-            .in("owner_id", studentIds.length ? studentIds : ["00000000-0000-0000-0000-000000000000"]);
-        if (reposError) {
-            return res.status(500).json({ error: { message: reposError.message || "Failed to load repositories" } });
-        }
+        // build user rows from environment-scoped repos so previews do not show local storage.
+        const repos = await loadEnvironmentRepositories(environmentKey);
+        const ownedRepos = repos.filter((repo) => studentIds.includes(repo.owner_id));
 
-        const repoIds = (repos || []).map((r) => r.id);
-        const ownerByRepoId = new Map((repos || []).map((r) => [r.id, r.owner_id]));
+        const repoIds = ownedRepos.map((repo) => repo.id);
+        const ownerByRepoId = new Map(ownedRepos.map((repo) => [repo.id, repo.owner_id]));
+        const repoCountByUser = new Map();
+        for (const repo of ownedRepos) {
+            repoCountByUser.set(repo.owner_id, (repoCountByUser.get(repo.owner_id) || 0) + 1);
+        }
 
         let annexRows = [];
         if (repoIds.length > 0) {
@@ -184,11 +237,15 @@ router.get("/users", async (_req, res) => {
             usedByUser.set(ownerId, (usedByUser.get(ownerId) || 0) + (Number(row.size_bytes) || 0));
         }
 
-        const { data: activityRows } = await supabase
-            .from("activity_log")
-            .select("user_id, created_at")
-            .in("user_id", studentIds.length ? studentIds : ["00000000-0000-0000-0000-000000000000"])
-            .order("created_at", { ascending: false });
+        let activityRows = [];
+        if (repoIds.length > 0) {
+            const { data } = await supabase
+                .from("activity_log")
+                .select("user_id, repo_id, created_at")
+                .in("repo_id", repoIds)
+                .order("created_at", { ascending: false });
+            activityRows = data || [];
+        }
 
         const lastActiveByUser = new Map();
         for (const row of activityRows || []) {
@@ -197,25 +254,170 @@ router.get("/users", async (_req, res) => {
             }
         }
 
-        const { data: authList } = await supabase.auth.admin.listUsers({ page: 1, perPage: 1000 });
-        const authById = new Map((authList?.users || []).map((u) => [u.id, u]));
+        const authById = await listAuthUsersById();
+        const reviewRequests = await loadReviewRequests(repoIds);
+        const latestReviewByUser = new Map();
+
+        for (const request of reviewRequests) {
+            if (!latestReviewByUser.has(request.user_id)) {
+                latestReviewByUser.set(request.user_id, request);
+            }
+        }
 
         const users = students.map((student) => {
             const authUser = authById.get(student.user_id);
+            const reviewRequest = latestReviewByUser.get(student.user_id) || null;
             return {
                 id: student.user_id,
-                name: student.display_name || authUser?.email?.split("@")?.[0] || "Unknown",
+                name: formatFallbackUserName(authUser, student),
                 email: authUser?.email || "",
                 used_bytes: usedByUser.get(student.user_id) || 0,
                 quota_bytes: Number(student.storage_quota_bytes) || 0,
-                last_active_at: lastActiveByUser.get(student.user_id) || authUser?.last_sign_in_at || null
+                last_active_at: lastActiveByUser.get(student.user_id) || authUser?.last_sign_in_at || null,
+                repo_count: repoCountByUser.get(student.user_id) || 0,
+                has_review_request: Boolean(reviewRequest),
+                review_requested_at: reviewRequest?.created_at || null,
+                review_repo_id: reviewRequest?.repo_id || null,
+                review_detail: reviewRequest?.detail || null,
             };
         });
 
-        return res.json(users);
+        users.sort((a, b) => {
+            if (a.has_review_request !== b.has_review_request) {
+                return a.has_review_request ? -1 : 1;
+            }
+
+            const aTime = a.review_requested_at ? new Date(a.review_requested_at).getTime() : 0;
+            const bTime = b.review_requested_at ? new Date(b.review_requested_at).getTime() : 0;
+            if (aTime !== bTime) return bTime - aTime;
+
+            const aLast = a.last_active_at ? new Date(a.last_active_at).getTime() : 0;
+            const bLast = b.last_active_at ? new Date(b.last_active_at).getTime() : 0;
+            return bLast - aLast;
+        });
+
+        return res.json({
+            environment_key: environmentKey,
+            users
+        });
     } catch (error) {
         console.error("Admin users error:", error);
         return res.status(500).json({ error: { message: error.message || "Failed to load admin users" } });
+    }
+});
+
+router.get("/users/:userId/repos", async (req, res) => {
+    try {
+        const environmentKey = getEnvironmentKey(req);
+        const { userId } = req.params;
+
+        const { data: profile, error: profileError } = await supabase
+            .from("user_profiles")
+            .select("user_id, role")
+            .eq("user_id", userId)
+            .maybeSingle();
+
+        if (profileError) {
+            return res.status(500).json({ error: { message: profileError.message || "Failed to load user" } });
+        }
+
+        if (!profile || profile.role !== "student") {
+            return res.status(404).json({ error: { message: "Student not found" } });
+        }
+
+        // the drill-down reuses the same environment filter as the main users list.
+        const repos = (await loadEnvironmentRepositories(environmentKey))
+            .filter((repo) => repo.owner_id === userId);
+
+        const repoIds = repos.map((repo) => repo.id);
+        const sizeByRepo = new Map();
+        const latestReviewByRepo = new Map();
+
+        if (repoIds.length > 0) {
+            const { data: annexRows } = await supabase
+                .from("annex_objects")
+                .select("repo_id, size_bytes")
+                .in("repo_id", repoIds);
+
+            for (const row of annexRows || []) {
+                sizeByRepo.set(row.repo_id, (sizeByRepo.get(row.repo_id) || 0) + (Number(row.size_bytes) || 0));
+            }
+
+            const reviewRequests = await loadReviewRequests(repoIds);
+            for (const request of reviewRequests) {
+                if (!latestReviewByRepo.has(request.repo_id)) {
+                    latestReviewByRepo.set(request.repo_id, request);
+                }
+            }
+        }
+
+        return res.json({
+            environment_key: environmentKey,
+            repos: repos.map((repo) => ({
+                id: repo.id,
+                name: repo.name,
+                created_at: repo.created_at || null,
+                last_activity_at: repo.last_activity_at || null,
+                size_bytes: sizeByRepo.get(repo.id) || 0,
+                has_review_request: latestReviewByRepo.has(repo.id),
+                review_requested_at: latestReviewByRepo.get(repo.id)?.created_at || null,
+                review_detail: latestReviewByRepo.get(repo.id)?.detail || null,
+            }))
+        });
+    } catch (error) {
+        console.error("Admin user repos error:", error);
+        return res.status(500).json({ error: { message: error.message || "Failed to load user repositories" } });
+    }
+});
+
+router.get("/repos/:repoId/files", async (req, res) => {
+    try {
+        const environmentKey = getEnvironmentKey(req);
+        const { repoId } = req.params;
+
+        let repoQuery = supabase
+            .from("repositories")
+            .select("id, owner_id, environment_key")
+            .eq("id", repoId);
+
+        repoQuery = applyEnvironmentFilter(repoQuery, environmentKey);
+
+        const { data: repo, error: repoError } = await repoQuery.maybeSingle();
+
+        if (repoError) {
+            return res.status(500).json({ error: { message: repoError.message || "Failed to load repository" } });
+        }
+
+        if (!repo) {
+            return res.status(404).json({ error: { message: "Repository not found" } });
+        }
+
+        // file inspection stays metadata-only on the admin side.
+        const { data: files, error: filesError } = await supabase
+            .from("repo_files")
+            .select("id, original_name, file_path, mime_type, size_bytes, status, uploaded_at")
+            .eq("repo_id", repoId)
+            .order("uploaded_at", { ascending: false });
+
+        if (filesError) {
+            return res.status(500).json({ error: { message: filesError.message || "Failed to load repository files" } });
+        }
+
+        return res.json({
+            environment_key: environmentKey,
+            files: (files || []).map((file) => ({
+                id: file.id,
+                name: file.original_name || file.file_path || "unknown-file",
+                path: file.file_path || file.original_name || "",
+                mime_type: file.mime_type || null,
+                size_bytes: Number(file.size_bytes) || 0,
+                status: file.status || "synced",
+                uploaded_at: file.uploaded_at || null,
+            }))
+        });
+    } catch (error) {
+        console.error("Admin repo files error:", error);
+        return res.status(500).json({ error: { message: error.message || "Failed to load repository files" } });
     }
 });
 

@@ -48,6 +48,10 @@ function formatRelativeTime(iso) {
     return `${days} day${days === 1 ? '' : 's'} ago`;
 }
 
+function bytesToGiB(bytes) {
+    return Number(((Number(bytes) || 0) / (1024 ** 3)).toFixed(2));
+}
+
 export const adminService = {
     async getSummary() {
         const headers = await getAuthHeaders();
@@ -78,15 +82,76 @@ export const adminService = {
             throw new Error(data.error?.message || data._raw || 'Failed to fetch admin users');
         }
 
-        return (data || []).map((user) => ({
-            id: user.id,
-            name: user.name || 'Unknown',
-            email: user.email || '',
-            used: Number(((Number(user.used_bytes) || 0) / (1024 ** 3)).toFixed(2)),
-            quota: Number(((Number(user.quota_bytes) || 0) / (1024 ** 3)).toFixed(2)),
-            lastActive: formatRelativeTime(user.last_active_at),
-            lastActiveAt: user.last_active_at || null,
-        }));
+        // keep the environment key with the payload so the ui can show what it is browsing.
+        return {
+            environmentKey: data.environment_key || null,
+            users: (data.users || []).map((user) => ({
+                id: user.id,
+                name: user.name || 'Unknown',
+                email: user.email || '',
+                used: bytesToGiB(user.used_bytes),
+                quota: bytesToGiB(user.quota_bytes),
+                usedBytes: Number(user.used_bytes) || 0,
+                quotaBytes: Number(user.quota_bytes) || 0,
+                repoCount: Number(user.repo_count) || 0,
+                hasReviewRequest: Boolean(user.has_review_request),
+                reviewRequestedAt: user.review_requested_at || null,
+                reviewDetail: user.review_detail || '',
+                reviewRepoId: user.review_repo_id || null,
+                lastActive: formatRelativeTime(user.last_active_at),
+                lastActiveAt: user.last_active_at || null,
+            })),
+        };
+    },
+
+    async getUserRepos(userId) {
+        const headers = await getAuthHeaders();
+        const response = await fetch(`${API_BASE_URL}/admin/users/${userId}/repos`, { method: 'GET', headers });
+        const data = await safeParseJson(response);
+
+        if (!response.ok) {
+            throw new Error(data.error?.message || data._raw || 'Failed to fetch user repositories');
+        }
+
+        // repos/files are fetched lazily for the drill-down view.
+        return {
+            environmentKey: data.environment_key || null,
+            repos: (data.repos || []).map((repo) => ({
+                id: repo.id,
+                name: repo.name || 'Untitled',
+                sizeBytes: Number(repo.size_bytes) || 0,
+                sizeLabel: `${((Number(repo.size_bytes) || 0) / (1024 ** 2)).toFixed(1)} MB`,
+                createdAt: repo.created_at || null,
+                lastActivityAt: repo.last_activity_at || null,
+                hasReviewRequest: Boolean(repo.has_review_request),
+                reviewRequestedAt: repo.review_requested_at || null,
+                reviewDetail: repo.review_detail || '',
+            })),
+        };
+    },
+
+    async getRepoFiles(repoId) {
+        const headers = await getAuthHeaders();
+        const response = await fetch(`${API_BASE_URL}/admin/repos/${repoId}/files`, { method: 'GET', headers });
+        const data = await safeParseJson(response);
+
+        if (!response.ok) {
+            throw new Error(data.error?.message || data._raw || 'Failed to fetch repository files');
+        }
+
+        return {
+            environmentKey: data.environment_key || null,
+            files: (data.files || []).map((file) => ({
+                id: file.id,
+                name: file.name || 'unknown-file',
+                path: file.path || '',
+                sizeBytes: Number(file.size_bytes) || 0,
+                sizeLabel: `${((Number(file.size_bytes) || 0) / (1024 ** 2)).toFixed(1)} MB`,
+                status: file.status || 'synced',
+                uploadedAt: file.uploaded_at || null,
+                mimeType: file.mime_type || null,
+            })),
+        };
     },
 
     async getNodes() {

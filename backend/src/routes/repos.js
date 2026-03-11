@@ -5,6 +5,7 @@ import gitService from "../services/gitService.js";
 import multer from "multer";
 import os from "os";
 import path from "path";
+import { applyEnvironmentFilter, getEnvironmentKey } from "../utils/environment.js";
 
 const router = express.Router();
 
@@ -78,28 +79,37 @@ async function insertActivityLogWithFallback(payload) {
     return lastError;
 }
 
-async function loadOwnedRepository(ownerId, repoId, selectClause = "id, name, owner_id") {
-    const { data: project, error } = await supabase
+// load one repo scoped to the current environment so preview/local metadata cannot mix.
+async function loadOwnedRepositoryInEnvironment(req, ownerId, repoId, selectClause = "id, name, owner_id") {
+    const environmentKey = req ? getEnvironmentKey(req) : null;
+    let query = supabase
         .from("repositories")
         .select(selectClause)
-        .eq("id", repoId)
-        .single();
+        .eq("id", repoId);
 
-    if (error || !project) {
-        return { project: null, error: error || new Error("Project not found") };
+    if (environmentKey) {
+        query = applyEnvironmentFilter(query, environmentKey);
     }
 
-    if (project.owner_id !== ownerId) {
+    const { data: projectScoped, error: scopedError } = await query
+        .single();
+
+    if (scopedError || !projectScoped) {
+        return { project: null, error: scopedError || new Error("Project not found") };
+    }
+
+    if (projectScoped.owner_id !== ownerId) {
         return { project: null, error: new Error("You do not have permission to access this project"), status: 403 };
     }
 
-    return { project, error: null, status: 200 };
+    return { project: projectScoped, error: null, status: 200 };
 }
 
 // CREATE REPOSITORY
 router.post("/create", authMiddleware, async (req, res) => {
     const { name, description, is_public = false } = req.body;
     const ownerId = req.user.id;
+    const environmentKey = getEnvironmentKey(req);
 
     if (!name) {
         return res.status(400).json({
@@ -116,13 +126,16 @@ router.post("/create", authMiddleware, async (req, res) => {
             });
         }
 
-        // Check if project with same name already exists for this user
-        const { data: existing } = await supabase
+        // check name collisions inside the current environment only.
+        let existingQuery = supabase
             .from("repositories")
             .select("id")
             .eq("owner_id", ownerId)
-            .eq("name", name)
-            .single();
+            .eq("name", name);
+
+        existingQuery = applyEnvironmentFilter(existingQuery, environmentKey);
+
+        const { data: existing } = await existingQuery.single();
 
         if (existing) {
             return res.status(400).json({
@@ -142,8 +155,7 @@ router.post("/create", authMiddleware, async (req, res) => {
             throw new Error("git-annex UUID could not be determined");
         }
 
-        // Store repository metadata in database
-        // git_annex_uuid is a mandatory column in the repositories table
+        // persist the environment key so shared supabase metadata does not cross environments.
         const { data, error } = await supabase
             .from("repositories")
             .insert({
@@ -152,6 +164,7 @@ router.post("/create", authMiddleware, async (req, res) => {
                 description: description || '',
                 is_public: Boolean(is_public),
                 git_annex_uuid: projectData.annexUuid,
+                environment_key: environmentKey,
             })
             .select()
             .single();
@@ -207,13 +220,18 @@ router.post("/create", authMiddleware, async (req, res) => {
 // LIST USER REPOSITORIES
 router.get("/my", authMiddleware, async (req, res) => {
     const ownerId = req.user.id;
+    const environmentKey = getEnvironmentKey(req);
 
     try {
-        const { data, error } = await supabase
+        let projectQuery = supabase
             .from("repositories")
             .select("*")
-            .eq("owner_id", ownerId)
+            .eq("owner_id", ownerId);
+
+        projectQuery = applyEnvironmentFilter(projectQuery, environmentKey)
             .order("last_activity_at", { ascending: false });
+
+        const { data, error } = await projectQuery;
 
         if (error) {
             return res.status(500).json({
@@ -239,7 +257,7 @@ router.get("/my", authMiddleware, async (req, res) => {
             }
         }
 
-        // Enrich projects with metadata not stored in DB
+        // keep git urls filesystem-derived while the size stays db-first.
         const enrichedProjects = await Promise.all((data || []).map(async (project) => {
             const repoPath = gitService.getRepoPath(ownerId, project.name);
             const gitUrl = gitService.getGitUrl(ownerId, project.name);
@@ -261,7 +279,8 @@ router.get("/my", authMiddleware, async (req, res) => {
                 updated: new Date(project.last_activity_at || project.updated_at || project.created_at).toLocaleDateString(),
                 repo_path: repoPath,
                 git_url: gitUrl,
-                size_bytes: size
+                size_bytes: size,
+                environment_key: project.environment_key || environmentKey,
             };
         }));
 
@@ -277,14 +296,19 @@ router.get("/my", authMiddleware, async (req, res) => {
 // USER DASHBOARD SUMMARY (quota + recent activity)
 router.get("/summary", authMiddleware, async (req, res) => {
     const ownerId = req.user.id;
+    const environmentKey = getEnvironmentKey(req);
 
     try {
         const totalBytes = await getUserQuotaBytes(ownerId);
 
-        const { data: repos, error: reposError } = await supabase
+        let reposQuery = supabase
             .from("repositories")
             .select("id, name")
             .eq("owner_id", ownerId);
+
+        reposQuery = applyEnvironmentFilter(reposQuery, environmentKey);
+
+        const { data: repos, error: reposError } = await reposQuery;
 
         if (reposError) {
             return res.status(500).json({
@@ -313,17 +337,24 @@ router.get("/summary", authMiddleware, async (req, res) => {
             }, 0);
         }
 
-        const { data: activityRows, error: activityError } = await supabase
-            .from("activity_log")
-            .select("id, repo_id, event_type, detail, created_at")
-            .eq("user_id", ownerId)
-            .order("created_at", { ascending: false })
-            .limit(10);
+        // recent activity is also repo-scoped so local and preview feeds stay separate.
+        let activityRows = [];
+        if (repoIds.length > 0) {
+            const { data, error: activityError } = await supabase
+                .from("activity_log")
+                .select("id, repo_id, event_type, detail, created_at")
+                .eq("user_id", ownerId)
+                .in("repo_id", repoIds)
+                .order("created_at", { ascending: false })
+                .limit(10);
 
-        if (activityError) {
-            return res.status(500).json({
-                error: { message: activityError.message || "Failed to load activity" }
-            });
+            if (activityError) {
+                return res.status(500).json({
+                    error: { message: activityError.message || "Failed to load activity" }
+                });
+            }
+
+            activityRows = data || [];
         }
 
         const recentActivity = (activityRows || []).map((row) => ({
@@ -353,13 +384,17 @@ router.get("/summary", authMiddleware, async (req, res) => {
 router.get("/:id/files", authMiddleware, async (req, res) => {
     const ownerId = req.user.id;
     const repoId = req.params.id;
+    const environmentKey = getEnvironmentKey(req);
 
     try {
-        const { data: project, error: fetchError } = await supabase
+        let projectQuery = supabase
             .from("repositories")
             .select("id, owner_id")
-            .eq("id", repoId)
-            .single();
+            .eq("id", repoId);
+
+        projectQuery = applyEnvironmentFilter(projectQuery, environmentKey);
+
+        const { data: project, error: fetchError } = await projectQuery.single();
 
         if (fetchError || !project) {
             console.error("Failed to fetch repository for files endpoint:", fetchError);
@@ -480,6 +515,7 @@ router.post("/:id/upload", authMiddleware, upload.single('file'), async (req, re
     const ownerId = req.user.id;
     const repoId = req.params.id;
     const file = req.file;
+    const environmentKey = getEnvironmentKey(req);
 
     if (!file) {
         return res.status(400).json({
@@ -489,11 +525,14 @@ router.post("/:id/upload", authMiddleware, upload.single('file'), async (req, re
 
     try {
         // 1. Get repository info from database
-        const { data: project, error: fetchError } = await supabase
+        let projectQuery = supabase
             .from("repositories")
             .select("name, owner_id")
-            .eq("id", repoId)
-            .single();
+            .eq("id", repoId);
+
+        projectQuery = applyEnvironmentFilter(projectQuery, environmentKey);
+
+        const { data: project, error: fetchError } = await projectQuery.single();
 
         if (fetchError || !project) {
             return res.status(404).json({
@@ -661,7 +700,7 @@ router.delete("/:repoId/files/:fileId", authMiddleware, async (req, res) => {
     const { repoId, fileId } = req.params;
 
     try {
-        const { project, error, status } = await loadOwnedRepository(ownerId, repoId, "id, name, owner_id");
+        const { project, error, status } = await loadOwnedRepositoryInEnvironment(req, ownerId, repoId, "id, name, owner_id");
         if (error || !project) {
             return res.status(status || 404).json({
                 error: { message: error?.message || "Project not found" }
@@ -770,7 +809,7 @@ router.post("/:id/request-review", authMiddleware, async (req, res) => {
     const repoId = req.params.id;
 
     try {
-        const { project, error, status } = await loadOwnedRepository(ownerId, repoId, "id, name, owner_id");
+        const { project, error, status } = await loadOwnedRepositoryInEnvironment(req, ownerId, repoId, "id, name, owner_id");
         if (error || !project) {
             return res.status(status || 404).json({
                 error: { message: error?.message || "Project not found" }
@@ -807,7 +846,7 @@ router.delete("/:id", authMiddleware, async (req, res) => {
     const repoId = req.params.id;
 
     try {
-        const { project, error, status } = await loadOwnedRepository(ownerId, repoId, "id, name, owner_id");
+        const { project, error, status } = await loadOwnedRepositoryInEnvironment(req, ownerId, repoId, "id, name, owner_id");
         if (error || !project) {
             return res.status(status || 404).json({
                 error: { message: error?.message || "Project not found" }
