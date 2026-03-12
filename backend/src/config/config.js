@@ -1,5 +1,8 @@
 import path from 'path';
 import os from 'os';
+import dotenv from 'dotenv';
+
+dotenv.config();
 
 // Repository storage configuration
 const rawRepoPath = process.env.REPO_BASE_PATH || "/repos"; // path.join(os.homedir(), 'clustergit-repos');    This gets seen as root/clustergit-repos in docker

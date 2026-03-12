@@ -3,6 +3,7 @@ import { promisify } from 'util';
 import fs from 'fs/promises';
 import path from 'path';
 import os from 'os';
+import { supabase } from '../utils/supabase.js';
 import { REPO_BASE_PATH, GIT_ANNEX_CONFIG } from '../config/config.js';
 
 const execAsync = promisify(execFile);
@@ -46,10 +47,23 @@ export function getRepoPath(userId, projectName) {
 /**
  * Get Git clone URL
  */
-export function getGitUrl(userId, projectName) {
-    const repoPath = getRepoPath(userId, projectName);
-    const host = '10.27.12.244'; // adjust if needed
-    return `git@${host}:${repoPath}`;
+export async function getGitUrl(userId, projectName) {
+    const host = process.env.SERVER_HOST || 'localhost';
+    const port = process.env.PORT || 8080;
+
+    // Resolve email prefix for professional URL
+    let username = userId; // fallback to UUID
+    try {
+        const { data: { user }, error } = await supabase.auth.admin.getUserById(userId);
+        if (!error && user && user.email) {
+            username = user.email.split('@')[0];
+        }
+    } catch (err) {
+        console.warn(`Could not resolve username for ${userId}, falling back to UUID in URL`);
+    }
+
+    const hostPrefix = host === 'localhost' ? `http://${host}:${port}` : `https://${host}`;
+    return `${hostPrefix}/${username}/${projectName}.git`;
 }
 
 /**
@@ -77,52 +91,52 @@ export async function getAnnexUuid(repoPath) {
  * Create a bare Git repository
  */
 export async function createRepository(userId, projectName, description = '') {
-  const repoPath = getRepoPath(userId, projectName);
-  await fs.mkdir(path.dirname(repoPath), { recursive: true });
-  await fs.mkdir(repoPath);
+    const repoPath = getRepoPath(userId, projectName);
+    await fs.mkdir(path.dirname(repoPath), { recursive: true });
+    await fs.mkdir(repoPath);
 
-  const tempInit = path.join(os.tmpdir(), `clustergit-init-${Date.now()}`);
-  await fs.mkdir(tempInit);
+    const tempInit = path.join(os.tmpdir(), `clustergit-init-${Date.now()}`);
+    await fs.mkdir(tempInit);
 
-  // 1. init bare
-  await execAsync("/usr/bin/git", ["init", "--bare"], { cwd: repoPath });
-  await execAsync("/usr/bin/git", ["symbolic-ref", "HEAD", "refs/heads/main"], { cwd: repoPath });
+    // 1. init bare
+    await execAsync("/usr/bin/git", ["init", "--bare"], { cwd: repoPath });
+    await execAsync("/usr/bin/git", ["symbolic-ref", "HEAD", "refs/heads/main"], { cwd: repoPath });
 
-  // 2. clone to temp working copy
-  await execAsync("/usr/bin/git", ["clone", repoPath, "."], { cwd: tempInit });
-  await execAsync("/usr/bin/git", ["checkout", "-B", "main"], { cwd: tempInit });
+    // 2. clone to temp working copy
+    await execAsync("/usr/bin/git", ["clone", repoPath, "."], { cwd: tempInit });
+    await execAsync("/usr/bin/git", ["checkout", "-B", "main"], { cwd: tempInit });
 
-  // 3. identity
-  await execAsync("/usr/bin/git", ["config", "user.name", "ClusterGit"], { cwd: tempInit });
-  await execAsync("/usr/bin/git", ["config", "user.email", "system@clustergit.local"], { cwd: tempInit });
+    // 3. identity
+    await execAsync("/usr/bin/git", ["config", "user.name", "ClusterGit"], { cwd: tempInit });
+    await execAsync("/usr/bin/git", ["config", "user.email", "system@clustergit.local"], { cwd: tempInit });
 
-  // 4. README commit
-  await fs.writeFile(path.join(tempInit, "README.md"), "# ClusterGit Repository\n");
-  await execAsync("/usr/bin/git", ["add", "."], { cwd: tempInit });
-  await execAsync("/usr/bin/git", ["commit", "-m", "Initial commit"], { cwd: tempInit });
+    // 4. README commit
+    await fs.writeFile(path.join(tempInit, "README.md"), "# ClusterGit Repository\n");
+    await execAsync("/usr/bin/git", ["add", "."], { cwd: tempInit });
+    await execAsync("/usr/bin/git", ["commit", "-m", "Initial commit"], { cwd: tempInit });
 
-  // 5. git-annex init + placeholder
-  await execAsync("/usr/bin/git", ["annex", "init"], { cwd: tempInit });
-  const annexPlaceholder = path.join(tempInit, ".annex-placeholder");
-  await fs.writeFile(annexPlaceholder, "This file anchors the git-annex branch");
-  await execAsync("/usr/bin/git", ["add", "."], { cwd: tempInit });
-  await execAsync("/usr/bin/git", ["commit", "-m", "Initialize git-annex with placeholder"], { cwd: tempInit });
+    // 5. git-annex init + placeholder
+    await execAsync("/usr/bin/git", ["annex", "init"], { cwd: tempInit });
+    const annexPlaceholder = path.join(tempInit, ".annex-placeholder");
+    await fs.writeFile(annexPlaceholder, "This file anchors the git-annex branch");
+    await execAsync("/usr/bin/git", ["add", "."], { cwd: tempInit });
+    await execAsync("/usr/bin/git", ["commit", "-m", "Initialize git-annex with placeholder"], { cwd: tempInit });
 
-  // 6. push branches back to bare
-  await execAsync("/usr/bin/git", ["push", "origin", "main"], { cwd: tempInit });
-  await execAsync("/usr/bin/git", ["push", "origin", "git-annex"], { cwd: tempInit });
+    // 6. push branches back to bare
+    await execAsync("/usr/bin/git", ["push", "origin", "main"], { cwd: tempInit });
+    await execAsync("/usr/bin/git", ["push", "origin", "git-annex"], { cwd: tempInit });
 
-  // 7. get annex UUID from working clone (not bare)
-  const annexUuid = await getAnnexUuid(tempInit);
+    // 7. get annex UUID from working clone (not bare)
+    const annexUuid = await getAnnexUuid(tempInit);
 
-  // 8. cleanup
-  await fs.rm(tempInit, { recursive: true, force: true });
+    // 8. cleanup
+    await fs.rm(tempInit, { recursive: true, force: true });
 
-  if (description) {
-    await fs.writeFile(path.join(repoPath, 'description'), description);
-  }
+    if (description) {
+        await fs.writeFile(path.join(repoPath, 'description'), description);
+    }
 
-  return { repoPath, userId, annexUuid };
+    return { repoPath, userId, annexUuid };
 }
 
 
@@ -154,7 +168,7 @@ export async function createProject(userId, projectName, description = '') {
     const size = await getRepoSize(repoPath);
 
     // get git clone URL
-    const gitUrl = getGitUrl(userId, projectName);
+    const gitUrl = await getGitUrl(userId, projectName);
 
     return {
         name: projectName,
@@ -193,7 +207,7 @@ export async function addFileToProject(userId, projectName, filePath, originalNa
         // unlock file if it already exists in annex (allows overwrite)
         try {
             await execAsync("/usr/bin/git", ["annex", "unlock", originalName], { cwd: tempWorkingPath });
-        } catch {}
+        } catch { }
 
         await execAsync("/usr/bin/git", ["annex", "add", originalName], { cwd: tempWorkingPath });
 
@@ -233,7 +247,7 @@ export async function addFileToProject(userId, projectName, filePath, originalNa
         console.error("Upload failed:", err);
         throw new Error(`Failed to add file to repository: ${err.message}`);
     } finally {
-        try { await fs.rm(tempWorkingPath, { recursive: true, force: true }); } catch {}
+        try { await fs.rm(tempWorkingPath, { recursive: true, force: true }); } catch { }
     }
 }
 

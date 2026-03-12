@@ -5,11 +5,32 @@ import gitService from "../services/gitService.js";
 import multer from "multer";
 import os from "os";
 import path from "path";
+import fs from "fs/promises";
 
 const router = express.Router();
 
 // Configure multer for temporary file storage
 const upload = multer({ dest: path.join(os.tmpdir(), 'clustergit-uploads') });
+
+/**
+ * Resolve a username (email prefix) to a user UUID
+ */
+async function resolveUserByEmailPrefix(username) {
+    // 1. Check if it's already a UUID (v4)
+    const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+    if (uuidPattern.test(username)) return username;
+
+    // 2. Lookup in Supabase Auth via admin API
+    // Note: In a production environment with many users, this should be cached or use a DB index on email_prefix
+    const { data: { users }, error } = await supabase.auth.admin.listUsers();
+    if (error) {
+        console.error("Supabase Admin lookup error:", error);
+        return null;
+    }
+
+    const user = users.find(u => u.email && u.email.split('@')[0] === username);
+    return user ? user.id : null;
+}
 
 async function insertPushEventWithFallback(payload) {
     // Fallback for environments with stricter/different push_events schema.
@@ -190,8 +211,8 @@ router.get("/my", authMiddleware, async (req, res) => {
 
         // Enrich projects with metadata not stored in DB
         const enrichedProjects = await Promise.all((data || []).map(async (project) => {
-        const repoPath = gitService.getRepoPath(ownerId, project.name);
-        const gitUrl = gitService.getGitUrl(ownerId, project.name);
+            const repoPath = gitService.getRepoPath(ownerId, project.name);
+            const gitUrl = await gitService.getGitUrl(ownerId, project.name);
 
             // Format for frontend expectations
             // Frontend expects: repo, size, updated
@@ -380,6 +401,98 @@ router.post("/:id/upload", authMiddleware, upload.single('file'), async (req, re
             error: { message: error.message || "Failed to upload file" }
         });
     }
+});
+
+// GIT HTTP CLONE HANDLER - Using regex to avoid PathError with .git suffix
+// Supports: 
+// 1. /api/repos/clone/:userId/:projectName.git
+// 2. /:username/:projectName.git (when mounted at root)
+router.all([/\/clone\/([^/]+)\/([^/]+)\.git(.*)/, /\/([^/]+)\/([^/]+)\.git(.*)/], async (req, res) => {
+    let username = req.params[0];
+    const projectName = req.params[1];
+    const suffix = req.params[2];
+
+    // Resolve username to userId if it's not a UUID
+    const userId = await resolveUserByEmailPrefix(username);
+
+    if (!userId) {
+        return res.status(404).json({ error: { message: `User '${username}' not found` } });
+    }
+
+    const repoPath = gitService.getRepoPath(userId, projectName);
+
+    // Validate repository existence
+    try {
+        await fs.access(repoPath);
+    } catch (err) {
+        return res.status(404).json({ error: { message: "Repository not found" } });
+    }
+
+    // Git Smart HTTP protocol needs special handling
+    // We use git http-backend (CGI)
+    const { spawn } = await import("child_process");
+    const gitHttpBackend = "/opt/homebrew/opt/git/libexec/git-core/git-http-backend";
+
+    const env = {
+        ...process.env,
+        GIT_PROJECT_ROOT: path.resolve(process.env.REPO_BASE_PATH || "./clustergit-repos"),
+        GIT_HTTP_EXPORT_ALL: "1",
+        PATH_INFO: `/${userId}/${projectName}.git${suffix}`,
+        REMOTE_USER: "clustergit", // Mock user for now
+        REMOTE_ADDR: req.ip,
+        QUERY_STRING: req.url.split("?")[1] || "",
+        REQUEST_METHOD: req.method,
+    };
+
+    const gitProcess = spawn(gitHttpBackend, [], {
+        env,
+        stdio: ["pipe", "pipe", "pipe"],
+    });
+
+    // Pipe request body (if any) to git process
+    req.pipe(gitProcess.stdin);
+
+    // Capture headers from stdout
+    let headersSent = false;
+    let stdoutBuffer = Buffer.alloc(0);
+
+    gitProcess.stdout.on("data", (chunk) => {
+        if (!headersSent) {
+            stdoutBuffer = Buffer.concat([stdoutBuffer, chunk]);
+            const headerEndIndex = stdoutBuffer.indexOf("\r\n\r\n");
+            if (headerEndIndex !== -1) {
+                const headerText = stdoutBuffer.slice(0, headerEndIndex).toString();
+                const bodyPart = stdoutBuffer.slice(headerEndIndex + 4);
+
+                headerText.split("\r\n").forEach((line) => {
+                    const [name, value] = line.split(": ");
+                    if (name && value) res.setHeader(name, value);
+                });
+
+                headersSent = true;
+                if (bodyPart.length > 0) res.write(bodyPart);
+            }
+        } else {
+            res.write(chunk);
+        }
+    });
+
+    gitProcess.stdout.on("end", () => {
+        res.end();
+    });
+
+    gitProcess.stderr.on("data", (data) => {
+        // Suppress benign warnings
+        if (!data.toString().includes("is not regular file")) {
+            console.error(`git-http-backend error: ${data}`);
+        }
+    });
+
+    gitProcess.on("close", (code) => {
+        if (code !== 0 && code !== null) {
+            console.error(`git-http-backend exited with code ${code}`);
+        }
+    });
 });
 
 export default router;

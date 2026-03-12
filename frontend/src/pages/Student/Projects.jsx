@@ -127,18 +127,18 @@ export default function StudentProjects() {
                             </div>
                             <div className="text-sm text-[--text-secondary] flex items-center justify-between gap-2 mb-2">
                                 <div className="flex items-center gap-2 truncate">
-                                    <Github className="w-3 h-3 flex-shrink-0" />
-                                    <span className="truncate">{project.repo}</span>
+                                    <span className="text-[10px] font-bold px-1 rounded bg-[--bg-tertiary] text-[--accent-primary] border border-[--accent-primary]/20">HTTPS</span>
+                                    <span className="truncate font-mono text-[11px]">{project.repo}</span>
                                 </div>
                                 <button
                                     onClick={(e) => handleCopyCloneLink(e, project.repo, project.id)}
                                     className="p-1 hover:bg-[--bg-tertiary] rounded transition-colors flex-shrink-0"
-                                    title="Copy clone link"
+                                    title="Copy HTTPS clone link"
                                 >
                                     {copiedId === project.id ? (
                                         <Check className="w-3 h-3 text-emerald-500" />
                                     ) : (
-                                        <Copy className="w-3 h-3 text-[--text-muted]" />
+                                        <Copy className="w-3 h-3 text-[--text-muted] hover:text-[--text-secondary]" />
                                     )}
                                 </button>
                             </div>
@@ -165,13 +165,18 @@ export default function StudentProjects() {
                                 <p className="text-sm text-[--text-secondary] mt-1">{files.length} large files stored</p>
                             </div>
                             <div className="flex gap-3">
-                                <button
-                                    onClick={(e) => handleCopyCloneLink(e, currentProject.repo, 'header')}
-                                    className="btn btn-secondary gap-2"
-                                >
-                                    {copiedId === 'header' ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
-                                    Clone
-                                </button>
+                                <div className="flex items-center rounded-lg border border-[--border-color] bg-[--bg-tertiary]/50 p-1">
+                                    <span className="px-3 text-xs font-bold text-[--accent-primary]">HTTPS</span>
+                                    <div className="h-4 w-px bg-[--border-color] mx-1"></div>
+                                    <span className="px-3 text-sm font-mono text-[--text-secondary] hidden lg:inline max-w-[200px] truncate">{currentProject.repo}</span>
+                                    <button
+                                        onClick={(e) => handleCopyCloneLink(e, currentProject.repo, 'header')}
+                                        className="btn btn-secondary btn-sm ml-2 gap-2 h-8 min-h-0"
+                                    >
+                                        {copiedId === 'header' ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                                        Copy
+                                    </button>
+                                </div>
                                 <button
                                     onClick={() => setIsUploadOpen(true)}
                                     className="btn btn-primary gap-2"

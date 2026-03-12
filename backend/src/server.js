@@ -32,7 +32,7 @@ app.use(cors({
     if (
       allowedOrigins.includes(origin) ||
       origin.endsWith(".clustergit.pages.dev") ||
-      origin.endsWith(".clustergit.com")  
+      origin.endsWith(".clustergit.com")
     ) {
       return callback(null, true);
     }
@@ -42,7 +42,17 @@ app.use(cors({
   credentials: true
 }));
 
-app.use(express.json());
+app.use((req, res, next) => {
+  // Pass Git HTTP requests to repo handler WITHOUT body parsing
+  if (req.path.includes('.git')) {
+    next();
+  } else {
+    express.json()(req, res, next);
+  }
+});
+
+// Mount at root for professional URLs (e.g. /username/repo.git)
+app.use("/", repoRoutes);
 
 app.get("/", (req, res) => {
   res.send("ClusterGit backend is alive");
