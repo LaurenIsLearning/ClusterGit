@@ -12,10 +12,11 @@ export function getApiBaseUrl() {
     return `https://${branch}.clustergit.com`;
   }
 
-  // Production
+  // Production (clustergit.com frontend → develop.clustergit.com backend)
+  // clustergit.com is Cloudflare Pages so API calls must go to the cluster directly
   if (host === "clustergit.com") {
-    return "https://api.clustergit.com";
+    return "https://develop.clustergit.com";
   }
 
-  return "https://api.clustergit.com";
+  return "https://develop.clustergit.com";
 }
