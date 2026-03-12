@@ -76,9 +76,9 @@ All repo PVCs are mounted at `/repos` inside the backend pod.
 | Environment | Frontend URL | Backend URL |
 |-------------|-------------|-------------|
 | Local dev | http://localhost:5173 | http://localhost:3000 |
-| Preview branch | `<branch>.clustergit.pages.dev` | `<branch>.clustergit.com` |
-| Develop | develop.clustergit.pages.dev | develop.clustergit.com |
-| Production | clustergit.com | clustergit.com |
+| Feature branch | `<branch>.clustergit.pages.dev` | `<branch>.clustergit.com` |
+| Production (develop) | clustergit.com | develop.clustergit.com |
+| main | not active yet | — |
 
 ### Infrastructure files
 
