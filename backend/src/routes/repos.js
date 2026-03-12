@@ -119,11 +119,17 @@ router.post("/create", authMiddleware, async (req, res) => {
             });
         }
 
-        // Create Git repository with git-annex
+        // 2. Determine host and protocol from request
+        const protocol = req.protocol === 'https' || req.get('x-forwarded-proto') === 'https' ? 'https' : 'http';
+        const host = req.get('host');
+
+        // 3. Create Git repository with git-annex
         const projectData = await gitService.createProject(
             ownerId,
             name,
-            description || ''
+            description || '',
+            host,
+            protocol
         );
 
         // Safety check
@@ -212,7 +218,11 @@ router.get("/my", authMiddleware, async (req, res) => {
         // Enrich projects with metadata not stored in DB
         const enrichedProjects = await Promise.all((data || []).map(async (project) => {
             const repoPath = gitService.getRepoPath(ownerId, project.name);
-            const gitUrl = await gitService.getGitUrl(ownerId, project.name);
+
+            // Determine protocol and host from request for relative/remote URLs
+            const protocol = req.protocol === 'https' || req.get('x-forwarded-proto') === 'https' ? 'https' : 'http';
+            const host = req.get('host');
+            const gitUrl = await gitService.getGitUrl(ownerId, project.name, host, protocol);
 
             // Format for frontend expectations
             // Frontend expects: repo, size, updated

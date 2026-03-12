@@ -47,22 +47,28 @@ export function getRepoPath(userId, projectName) {
 /**
  * Get Git clone URL
  */
-export async function getGitUrl(userId, projectName) {
-    const host = process.env.SERVER_HOST || 'localhost';
-    const port = process.env.PORT || 8080;
-
+export async function getGitUrl(userId, projectName, requestedHost = null, protocol = 'http') {
     // Resolve email prefix for professional URL
     let username = userId; // fallback to UUID
     try {
-        const { data: { user }, error } = await supabase.auth.admin.getUserById(userId);
-        if (!error && user && user.email) {
-            username = user.email.split('@')[0];
+        const { data, error } = await supabase.auth.admin.getUserById(userId);
+        if (!error && data?.user?.email) {
+            username = data.user.email.split('@')[0];
         }
     } catch (err) {
         console.warn(`Could not resolve username for ${userId}, falling back to UUID in URL`);
     }
 
-    const hostPrefix = host === 'localhost' ? `http://${host}:${port}` : `https://${host}`;
+    // Determine host prefix dynamically or from env
+    let hostPrefix;
+    if (requestedHost) {
+        hostPrefix = `${protocol}://${requestedHost}`;
+    } else {
+        const host = process.env.SERVER_HOST || 'localhost';
+        const port = process.env.PORT || 8080;
+        hostPrefix = host === 'localhost' ? `http://${host}:${port}` : `https://${host}`;
+    }
+
     return `${hostPrefix}/${username}/${projectName}.git`;
 }
 
@@ -160,7 +166,7 @@ export async function initGitAnnex(repoPath) {
 /**
  * Create a project (wrapper)
  */
-export async function createProject(userId, projectName, description = '') {
+export async function createProject(userId, projectName, description = '', requestedHost = null, protocol = 'http') {
     // createRepository now returns annexUuid from the working clone
     const { repoPath, annexUuid } = await createRepository(userId, projectName, description);
 
@@ -168,7 +174,7 @@ export async function createProject(userId, projectName, description = '') {
     const size = await getRepoSize(repoPath);
 
     // get git clone URL
-    const gitUrl = await getGitUrl(userId, projectName);
+    const gitUrl = await getGitUrl(userId, projectName, requestedHost, protocol);
 
     return {
         name: projectName,

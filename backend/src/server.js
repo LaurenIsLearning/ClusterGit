@@ -9,6 +9,9 @@ import commitRoutes from "./routes/commits.js";
 
 const app = express();
 
+// Trust proxy for correct protocol detection (e.g. https) behind Cloudflare/Load Balancers
+app.set("trust proxy", true);
+
 //logging to watch Node
 process.on("uncaughtException", err => {
   console.error("Uncaught Exception:", err);
