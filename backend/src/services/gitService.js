@@ -59,15 +59,9 @@ export async function getGitUrl(userId, projectName, requestedHost = null, proto
         console.warn(`Could not resolve username for ${userId}, falling back to UUID in URL`);
     }
 
-    // Determine host prefix dynamically or from env
-    let hostPrefix;
-    if (requestedHost) {
-        hostPrefix = `${protocol}://${requestedHost}`;
-    } else {
-        const host = process.env.SERVER_HOST || 'localhost';
-        const port = process.env.PORT || 8080;
-        hostPrefix = host === 'localhost' ? `http://${host}:${port}` : `https://${host}`;
-    }
+    // Default to 'http://clustergit' as requested by the user, 
+    // but allow an environment variable override for future flexibility.
+    const hostPrefix = process.env.GIT_CLONE_PREFIX || 'http://clustergit';
 
     return `${hostPrefix}/${username}/${projectName}.git`;
 }
