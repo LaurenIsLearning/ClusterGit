@@ -157,13 +157,24 @@ When your branch is deleted after merging, the entire `preview-<branch>` namespa
    git checkout -b your-feature-name
    git push origin your-feature-name
 ```
-   > The preview namespace is created automatically. The backend image builds on your first push touching `backend/`.
 
-2. Wait ~2-3 minutes for `Build Backend Image` and `Preview Deploy` actions to complete.
+2. Push a commit touching `backend/` to trigger the image build:
+```bash
+   git push origin your-feature-name
+```
+   > Note: The preview namespace is created on branch creation. The backend image only builds when `backend/` is changed — push any small change (even a comment) to trigger it.
 
-3. Test at `https://your-feature-name.clustergit.pages.dev`
+3. Watch progress:
+   - **Image build:** GitHub → Actions → `Build Backend Image`
+   - **Pod status:** `kubectl get pods -n preview-<your-branch-name> -w`
+   
+   Wait for `1/1 Running` before testing.
 
-4. Open a PR into `develop` when ready.
+> ⚠️ **"Failed to load projects"?** The pod isn't ready yet — once it shows `1/1 Running` the error resolves on its own, no refresh needed.
+
+4. Test at `https://your-feature-name.clustergit.pages.dev`
+
+5. Open a PR into `develop` when ready.
 
 ### Notes
 
