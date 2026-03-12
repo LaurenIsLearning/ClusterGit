@@ -74,6 +74,14 @@ export default function App() {
             </AdminGuard>
           }
         />
+        <Route
+          path="/admin/settings"
+          element={
+            <AdminGuard>
+              <StudentSettings />
+            </AdminGuard>
+          }
+        />
       </Route>
 
       <Route path="*" element={<NotFound />} />

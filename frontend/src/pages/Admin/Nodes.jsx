@@ -1,48 +1,32 @@
 import { useState, useEffect } from 'react';
-import { mockService } from '../../services/mockData';
+import { adminService } from '../../services/adminService';
 import { Server, HardDrive, Cpu, Thermometer, AlertTriangle } from 'lucide-react';
 
 export default function AdminNodes() {
     const [nodes, setNodes] = useState([]);
     const [loading, setLoading] = useState(true);
+    const [error, setError] = useState('');
 
     // Initial load
     useEffect(() => {
-        mockService.getClusterStatus().then(data => {
-            setNodes(data.nodes);
-            setLoading(false);
-        });
+        const load = async () => {
+            setLoading(true);
+            setError('');
+            try {
+                const data = await adminService.getNodes();
+                setNodes(data || []);
+            } catch (err) {
+                setError(err.message || 'Failed to load node telemetry');
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        load();
     }, []);
 
-    // Simulate live data updates
-    useEffect(() => {
-        if (loading) return;
-
-        const interval = setInterval(() => {
-            setNodes(prevNodes => prevNodes.map(node => {
-                if (node.status === 'offline') return node;
-
-                // Randomly perturb metrics
-                const cpuChange = Math.floor(Math.random() * 11) - 5; // -5 to +5
-                const tempChange = Math.floor(Math.random() * 3) - 1; // -1 to +1
-                const storageChange = Math.random() > 0.8 ? 0.1 : 0; // Occasional storage increase
-
-                return {
-                    ...node,
-                    cpu: Math.max(0, Math.min(100, node.cpu + cpuChange)),
-                    temp: Math.max(20, Math.min(95, node.temp + tempChange)),
-                    storage: {
-                        ...node.storage,
-                        used: Number((Math.min(100, node.storage.used + storageChange)).toFixed(1))
-                    }
-                };
-            }));
-        }, 1500); // Update every 1.5 seconds
-
-        return () => clearInterval(interval);
-    }, [loading]);
-
     if (loading) return <div className="p-10 text-center">Loading node telemetry...</div>;
+    if (error) return <div className="p-10 text-center text-red-500">{error}</div>;
 
     const onlineCount = nodes.filter(n => n.status === 'online').length;
     const warningCount = nodes.filter(n => n.status === 'warning').length;
