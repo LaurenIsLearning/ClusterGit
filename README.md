@@ -170,9 +170,9 @@ When your branch is deleted after merging, the entire `preview-<branch>` namespa
    
    Wait for `1/1 Running` before testing.
 
-> ⚠️ **"Failed to load projects"?** The pod isn't ready yet — once it shows `1/1 Running` the error resolves on its own, no refresh needed.
-
 4. Test at `https://your-feature-name.clustergit.pages.dev`
+
+> ⚠️ **"Failed to load projects"?** The pod isn't ready yet — once it shows `1/1 Running` the error resolves on its own, no refresh needed.
 
 5. Open a PR into `develop` when ready.
 
