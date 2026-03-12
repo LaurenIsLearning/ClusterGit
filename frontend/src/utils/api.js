@@ -2,7 +2,7 @@ export function getApiBaseUrl() {
   const host = window.location.hostname;
 
   // Local dev
-  if (host === "localhost") {
+  if (host === "localhost" || host === "127.0.0.1" || host === "::1") {
     return "http://localhost:3000";
   }
 
@@ -12,10 +12,11 @@ export function getApiBaseUrl() {
     return `https://${branch}.clustergit.com`;
   }
 
-  // Production
+  // Production (clustergit.com frontend → develop.clustergit.com backend)
+  // clustergit.com is Cloudflare Pages so API calls must go to the cluster directly
   if (host === "clustergit.com") {
-    return "https://api.clustergit.com";
+    return "https://develop.clustergit.com";
   }
 
-  return "https://api.clustergit.com";
+  return "https://develop.clustergit.com";
 }

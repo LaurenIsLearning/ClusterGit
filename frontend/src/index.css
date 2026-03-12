@@ -5,6 +5,8 @@
   --bg-primary: #ffffff;
   --bg-secondary: #f8fafc;
   --bg-tertiary: #f1f5f9;
+  --surface-elevated: #ffffff;
+  --overlay-scrim: rgba(15, 23, 42, 0.52);
 
   --text-primary: #0f172a;
   --text-secondary: #475569;
@@ -87,6 +89,30 @@ pre {
   background-color: var(--bg-secondary);
   border: 1px solid var(--border-color);
   @apply rounded-xl overflow-hidden;
+}
+
+.overlay-scrim {
+  /* shared opaque overlay for dropdowns and dialogs. */
+  background-color: var(--overlay-scrim);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+.modal-panel {
+  /* shared elevated shell for create, upload, and confirm flows. */
+  background-color: rgba(255, 255, 255, 0.98);
+  border: 1px solid rgba(226, 232, 240, 0.9);
+  box-shadow: 0 24px 60px rgba(15, 23, 42, 0.18);
+  isolation: isolate;
+}
+
+.menu-panel {
+  /* shared solid dropdown shell so actions do not blend into the page. */
+  background-color: #ffffff;
+  border: 1px solid rgba(226, 232, 240, 0.95);
+  box-shadow: 0 16px 36px rgba(15, 23, 42, 0.14);
+  isolation: isolate;
+  opacity: 1;
 }
 
 .badge {

@@ -6,6 +6,7 @@ dotenv.config();
 import authRoutes from "./routes/auth.js";
 import repoRoutes from "./routes/repos.js";
 import commitRoutes from "./routes/commits.js";
+import adminRoutes from "./routes/admin.js";
 import app from "./app.js";
 
 const app = express();
@@ -53,6 +54,7 @@ app.get("/", (req, res) => {
 app.use("/api/auth", authRoutes);
 app.use("/api/repos", repoRoutes);
 app.use("/api/commits", commitRoutes);
+app.use("/api/admin", adminRoutes);
 
 // Error handler (helps with white screen)
 app.use((err, req, res, next) => {
@@ -60,7 +62,7 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: "Internal server error" });
 });
 
-const PORT = process.env.PORT || 8080; //guarantees backend always starts
+const PORT = process.env.PORT || 80;
 
 app.listen(PORT, () => {
   console.log(`ClusterGit API running on port ${PORT}`);

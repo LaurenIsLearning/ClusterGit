@@ -76,9 +76,9 @@ All repo PVCs are mounted at `/repos` inside the backend pod.
 | Environment | Frontend URL | Backend URL |
 |-------------|-------------|-------------|
 | Local dev | http://localhost:5173 | http://localhost:3000 |
-| Preview branch | `<branch>.clustergit.pages.dev` | `<branch>.clustergit.com` |
-| Develop | develop.clustergit.pages.dev | develop.clustergit.com |
-| Production | clustergit.com | clustergit.com |
+| Feature branch | `<branch>.clustergit.pages.dev` | `<branch>.clustergit.com` |
+| Production (develop) | clustergit.com | develop.clustergit.com |
+| main | not active yet | — |
 
 ### Infrastructure files
 
@@ -141,14 +141,9 @@ Frontend runs at http://localhost:5173. The API URL is determined automatically 
 
 ### How it works
 
-When you push any branch, the CI pipeline automatically:
-1. Builds a Docker image tagged with your branch name and pushes it to GHCR
-2. Creates an isolated `preview-<branch>` namespace on the cluster with its own 5Gi PVC
-3. Deploys your backend image to that namespace
-4. Creates a Traefik ingress at `<branch>.clustergit.com`
-5. Cloudflare Pages deploys your frontend at `<branch>.clustergit.pages.dev`
+Creating a branch automatically spins up an isolated preview environment on the cluster. When you push commits, the backend image builds and deploys to that environment. Cloudflare Pages builds the frontend automatically on every push.
 
-The frontend automatically detects the branch from the hostname and routes API calls to `<branch>.clustergit.com`. Each branch is fully isolated — nothing you do affects anyone else.
+The frontend detects the branch from the hostname and routes API calls to `<branch>.clustergit.com`. Each branch is fully isolated — nothing you do affects anyone else.
 
 When your branch is deleted after merging, the entire `preview-<branch>` namespace and PVC are automatically deleted. **Any repo data in that preview environment is permanently gone.**
 
@@ -156,20 +151,28 @@ When your branch is deleted after merging, the entire `preview-<branch>` namespa
 
 ### Steps
 
-1. Branch off `develop`:
-   ```bash
+1. Create your branch off `develop` — either on GitHub or locally:
+```bash
    git checkout develop && git pull
    git checkout -b your-feature-name
-   ```
-
-2. Push to trigger the pipeline:
-   ```bash
    git push origin your-feature-name
-   ```
+```
 
-3. Wait ~2-3 minutes for `Build Backend Image` and `Preview Deploy` actions to complete.
+2. Push a commit touching `backend/` to trigger the image build:
+```bash
+   git push origin your-feature-name
+```
+   > Note: The preview namespace is created on branch creation. The backend image only builds when `backend/` is changed — push any small change (even a comment) to trigger it.
+
+3. Watch progress:
+   - **Image build:** GitHub → Actions → `Build Backend Image`
+   - **Pod status:** `kubectl get pods -n preview-<your-branch-name> -w`
+   
+   Wait for `1/1 Running` before testing.
 
 4. Test at `https://your-feature-name.clustergit.pages.dev`
+
+> ⚠️ **"Failed to load projects"?** The pod isn't ready yet — once it shows `1/1 Running` the error resolves on its own, no refresh needed.
 
 5. Open a PR into `develop` when ready.
 
@@ -187,7 +190,7 @@ When your branch is deleted after merging, the entire `preview-<branch>` namespa
 |----------|---------|--------------|
 | `backend-base.yml` | Push to `backend/Dockerfile.base` | Rebuilds base Docker image as `clustergit-backend-base:latest` |
 | `backend-image.yml` | Push to any branch touching `backend/` | Builds and pushes `clustergit-backend:<branch>` (also `:latest` for main) |
-| `preview-deploy.yml` | Push to any branch | Deploys preview environment (skips main/develop) |
+| `preview-deploy.yml` | Branch created or push to any branch | Deploys preview environment (skips main/develop) |
 | `preview-cleanup.yml` | Branch deleted | Deletes `preview-<branch>` namespace and PVC |
 | `deploy-production.yml` | Push to `main` or `develop` | Restarts `storage` deployment to pick up new image |
 

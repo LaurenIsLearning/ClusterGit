@@ -5,11 +5,26 @@ import gitService from "../services/gitService.js";
 import multer from "multer";
 import os from "os";
 import path from "path";
+import { applyEnvironmentFilter, getEnvironmentKey } from "../utils/environment.js";
 
 const router = express.Router();
 
 // Configure multer for temporary file storage
 const upload = multer({ dest: path.join(os.tmpdir(), 'clustergit-uploads') });
+
+async function getUserQuotaBytes(userId) {
+    const { data, error } = await supabase
+        .from("user_profiles")
+        .select("storage_quota_bytes")
+        .eq("user_id", userId)
+        .maybeSingle();
+
+    if (error) {
+        throw error;
+    }
+
+    return Number(data?.storage_quota_bytes) || 0;
+}
 
 async function insertPushEventWithFallback(payload) {
     // Fallback for environments with stricter/different push_events schema.
@@ -64,10 +79,37 @@ async function insertActivityLogWithFallback(payload) {
     return lastError;
 }
 
+// load one repo scoped to the current environment so preview/local metadata cannot mix.
+async function loadOwnedRepositoryInEnvironment(req, ownerId, repoId, selectClause = "id, name, owner_id") {
+    const environmentKey = req ? getEnvironmentKey(req) : null;
+    let query = supabase
+        .from("repositories")
+        .select(selectClause)
+        .eq("id", repoId);
+
+    if (environmentKey) {
+        query = applyEnvironmentFilter(query, environmentKey);
+    }
+
+    const { data: projectScoped, error: scopedError } = await query
+        .single();
+
+    if (scopedError || !projectScoped) {
+        return { project: null, error: scopedError || new Error("Project not found") };
+    }
+
+    if (projectScoped.owner_id !== ownerId) {
+        return { project: null, error: new Error("You do not have permission to access this project"), status: 403 };
+    }
+
+    return { project: projectScoped, error: null, status: 200 };
+}
+
 // CREATE REPOSITORY
 router.post("/create", authMiddleware, async (req, res) => {
     const { name, description, is_public = false } = req.body;
     const ownerId = req.user.id;
+    const environmentKey = getEnvironmentKey(req);
 
     if (!name) {
         return res.status(400).json({
@@ -84,13 +126,16 @@ router.post("/create", authMiddleware, async (req, res) => {
             });
         }
 
-        // Check if project with same name already exists for this user
-        const { data: existing } = await supabase
+        // check name collisions inside the current environment only.
+        let existingQuery = supabase
             .from("repositories")
             .select("id")
             .eq("owner_id", ownerId)
-            .eq("name", name)
-            .single();
+            .eq("name", name);
+
+        existingQuery = applyEnvironmentFilter(existingQuery, environmentKey);
+
+        const { data: existing } = await existingQuery.single();
 
         if (existing) {
             return res.status(400).json({
@@ -110,15 +155,16 @@ router.post("/create", authMiddleware, async (req, res) => {
             throw new Error("git-annex UUID could not be determined");
         }
 
-        // Store repository metadata in database
-        // git_annex_uuid is a mandatory column in the repositories table
+        // persist the environment key so shared supabase metadata does not cross environments.
         const { data, error } = await supabase
             .from("repositories")
             .insert({
                 name: projectData.name,
                 owner_id: ownerId,
+                description: description || '',
                 is_public: Boolean(is_public),
                 git_annex_uuid: projectData.annexUuid,
+                environment_key: environmentKey,
             })
             .select()
             .single();
@@ -174,13 +220,18 @@ router.post("/create", authMiddleware, async (req, res) => {
 // LIST USER REPOSITORIES
 router.get("/my", authMiddleware, async (req, res) => {
     const ownerId = req.user.id;
+    const environmentKey = getEnvironmentKey(req);
 
     try {
-        const { data, error } = await supabase
+        let projectQuery = supabase
             .from("repositories")
             .select("*")
-            .eq("owner_id", ownerId)
-            .order("created_at", { ascending: false });
+            .eq("owner_id", ownerId);
+
+        projectQuery = applyEnvironmentFilter(projectQuery, environmentKey)
+            .order("last_activity_at", { ascending: false });
+
+        const { data, error } = await projectQuery;
 
         if (error) {
             return res.status(500).json({
@@ -188,28 +239,48 @@ router.get("/my", authMiddleware, async (req, res) => {
             });
         }
 
-        // Enrich projects with metadata not stored in DB
-        const enrichedProjects = await Promise.all((data || []).map(async (project) => {
-        const repoPath = gitService.getRepoPath(ownerId, project.name);
-        const gitUrl = gitService.getGitUrl(ownerId, project.name);
+        const repoIds = (data || []).map((project) => project.id);
+        let sizeByRepoId = new Map();
 
-            // Format for frontend expectations
-            // Frontend expects: repo, size, updated
-            let size = 0;
-            try {
-                size = await gitService.getRepoSize(repoPath);
-            } catch (err) {
-                console.warn("Repo path missing:", repoPath);
+        if (repoIds.length > 0) {
+            const { data: annexRows, error: annexError } = await supabase
+                .from("annex_objects")
+                .select("repo_id, size_bytes")
+                .in("repo_id", repoIds);
+
+            if (!annexError) {
+                sizeByRepoId = (annexRows || []).reduce((acc, row) => {
+                    const current = acc.get(row.repo_id) || 0;
+                    acc.set(row.repo_id, current + (Number(row.size_bytes) || 0));
+                    return acc;
+                }, new Map());
             }
+        }
+
+        // keep git urls filesystem-derived while the size stays db-first.
+        const enrichedProjects = await Promise.all((data || []).map(async (project) => {
+            const repoPath = gitService.getRepoPath(ownerId, project.name);
+            const gitUrl = gitService.getGitUrl(ownerId, project.name);
+
+            // Prefer authoritative metadata size from Supabase; fallback to filesystem if missing.
+            let size = sizeByRepoId.get(project.id) || 0;
+            if (!size) {
+                try {
+                    size = await gitService.getRepoSize(repoPath);
+                } catch (err) {
+                    console.warn("Repo path missing:", repoPath);
+                }
+            }
+
             return {
                 ...project,
                 repo: gitUrl,
                 size: (size / (1024 * 1024)).toFixed(1) + ' MB',
-                updated: new Date(project.created_at).toLocaleDateString(),
-                // Also provide original values just in case
+                updated: new Date(project.last_activity_at || project.updated_at || project.created_at).toLocaleDateString(),
                 repo_path: repoPath,
                 git_url: gitUrl,
-                size_bytes: size
+                size_bytes: size,
+                environment_key: project.environment_key || environmentKey,
             };
         }));
 
@@ -222,11 +293,229 @@ router.get("/my", authMiddleware, async (req, res) => {
     }
 });
 
+// USER DASHBOARD SUMMARY (quota + recent activity)
+router.get("/summary", authMiddleware, async (req, res) => {
+    const ownerId = req.user.id;
+    const environmentKey = getEnvironmentKey(req);
+
+    try {
+        const totalBytes = await getUserQuotaBytes(ownerId);
+
+        let reposQuery = supabase
+            .from("repositories")
+            .select("id, name")
+            .eq("owner_id", ownerId);
+
+        reposQuery = applyEnvironmentFilter(reposQuery, environmentKey);
+
+        const { data: repos, error: reposError } = await reposQuery;
+
+        if (reposError) {
+            return res.status(500).json({
+                error: { message: reposError.message || "Failed to load repositories" }
+            });
+        }
+
+        const repoIds = (repos || []).map((repo) => repo.id);
+        const repoNameById = new Map((repos || []).map((repo) => [repo.id, repo.name]));
+
+        let usedBytes = 0;
+        if (repoIds.length > 0) {
+            const { data: annexObjects, error: annexError } = await supabase
+                .from("annex_objects")
+                .select("size_bytes")
+                .in("repo_id", repoIds);
+
+            if (annexError) {
+                return res.status(500).json({
+                    error: { message: annexError.message || "Failed to load storage usage" }
+                });
+            }
+
+            usedBytes = (annexObjects || []).reduce((sum, row) => {
+                return sum + (Number(row.size_bytes) || 0);
+            }, 0);
+        }
+
+        // recent activity is also repo-scoped so local and preview feeds stay separate.
+        let activityRows = [];
+        if (repoIds.length > 0) {
+            const { data, error: activityError } = await supabase
+                .from("activity_log")
+                .select("id, repo_id, event_type, detail, created_at")
+                .eq("user_id", ownerId)
+                .in("repo_id", repoIds)
+                .order("created_at", { ascending: false })
+                .limit(10);
+
+            if (activityError) {
+                return res.status(500).json({
+                    error: { message: activityError.message || "Failed to load activity" }
+                });
+            }
+
+            activityRows = data || [];
+        }
+
+        const recentActivity = (activityRows || []).map((row) => ({
+            id: row.id,
+            event_type: row.event_type || "activity",
+            detail: row.detail || "Activity recorded",
+            project: row.repo_id ? (repoNameById.get(row.repo_id) || "Unknown project") : "Account",
+            created_at: row.created_at || null
+        }));
+
+        return res.json({
+            quota: {
+                used: usedBytes,
+                total: totalBytes
+            },
+            recent_activity: recentActivity
+        });
+    } catch (error) {
+        console.error("Error loading dashboard summary:", error);
+        return res.status(500).json({
+            error: { message: error.message || "Failed to load dashboard summary" }
+        });
+    }
+});
+
+// LIST FILES FOR A REPOSITORY
+router.get("/:id/files", authMiddleware, async (req, res) => {
+    const ownerId = req.user.id;
+    const repoId = req.params.id;
+    const environmentKey = getEnvironmentKey(req);
+
+    try {
+        let projectQuery = supabase
+            .from("repositories")
+            .select("id, owner_id")
+            .eq("id", repoId);
+
+        projectQuery = applyEnvironmentFilter(projectQuery, environmentKey);
+
+        const { data: project, error: fetchError } = await projectQuery.single();
+
+        if (fetchError || !project) {
+            console.error("Failed to fetch repository for files endpoint:", fetchError);
+            return res.status(404).json({
+                error: { message: fetchError?.message || "Project not found" }
+            });
+        }
+
+        if (project.owner_id !== ownerId) {
+            return res.status(403).json({
+                error: { message: "You do not have permission to view this project" }
+            });
+        }
+
+        const { data: repoFiles, error: repoFilesError } = await supabase
+            .from("repo_files")
+            .select("id, latest_commit_id, original_name, file_path, mime_type, size_bytes, status, uploaded_at, annex_key")
+            .eq("repo_id", repoId);
+
+        if (repoFilesError) {
+            console.error("Failed to fetch repo_files metadata:", repoFilesError);
+            return res.status(500).json({
+                error: { message: repoFilesError.message || "Failed to load file metadata" }
+            });
+        }
+
+        const inferType = (fileName) => {
+            const lower = String(fileName || "").toLowerCase();
+            if (/\.(mp4|mov|avi|mkv|webm)$/.test(lower)) return "video";
+            if (/\.(zip|rar|7z|tar|gz)$/.test(lower)) return "archive";
+            if (/\.(onnx|pt|pth|h5|ckpt|bin|safetensors)$/.test(lower)) return "model";
+            return "unknown";
+        };
+
+        if ((repoFiles || []).length > 0) {
+            return res.json((repoFiles || []).map((fileRow) => ({
+                id: fileRow.id,
+                name: fileRow.original_name || path.basename(fileRow.file_path || ""),
+                path: fileRow.file_path || fileRow.original_name || "",
+                size_bytes: Number(fileRow.size_bytes) || 0,
+                annex_key: fileRow.annex_key || null,
+                git_commit_hash: null,
+                branch: "main",
+                type: inferType(fileRow.original_name || fileRow.file_path),
+                status: fileRow.status || "synced",
+                uploaded_at: fileRow.uploaded_at || null,
+                mime_type: fileRow.mime_type || null,
+                latest_commit_id: fileRow.latest_commit_id || null,
+            })));
+        }
+
+        let { data: commits, error: commitError } = await supabase
+            .from("commits")
+            .select("id, message, annex_key, git_commit_hash, branch, committed_at, created_at")
+            .eq("repo_id", repoId)
+            .order("committed_at", { ascending: false });
+
+        if (commitError && String(commitError.message || '').toLowerCase().includes('committed_at')) {
+            const fallback = await supabase
+                .from("commits")
+                .select("id, message, annex_key, git_commit_hash, branch, created_at")
+                .eq("repo_id", repoId)
+                .order("created_at", { ascending: false });
+            commits = fallback.data;
+            commitError = fallback.error;
+        }
+
+        if (commitError) {
+            console.error("Failed to fetch commits for files endpoint:", commitError);
+            return res.status(500).json({
+                error: { message: commitError.message || "Failed to load project commits" }
+            });
+        }
+
+        const { data: annexObjects, error: annexError } = await supabase
+            .from("annex_objects")
+            .select("annex_key, size_bytes")
+            .eq("repo_id", repoId);
+
+        if (annexError) {
+            console.error("Failed to fetch annex metadata for fallback files endpoint:", annexError);
+            return res.status(500).json({
+                error: { message: annexError.message || "Failed to load annex metadata" }
+            });
+        }
+
+        const sizeByAnnexKey = new Map(
+            (annexObjects || []).map((obj) => [obj.annex_key, Number(obj.size_bytes) || 0])
+        );
+
+        return res.json((commits || [])
+            .filter((commit) => typeof commit.message === "string" && commit.message.startsWith("Upload "))
+            .map((commit) => {
+                const name = commit.message.replace(/^Upload\s+/, "").trim() || "unknown-file";
+                return {
+                    id: commit.id,
+                    name,
+                    path: name,
+                    size_bytes: commit.annex_key ? (sizeByAnnexKey.get(commit.annex_key) || 0) : 0,
+                    annex_key: commit.annex_key || null,
+                    git_commit_hash: commit.git_commit_hash || null,
+                    branch: commit.branch || "main",
+                    type: inferType(name),
+                    status: "synced",
+                    uploaded_at: commit.committed_at || commit.created_at || null
+                };
+            }));
+    } catch (error) {
+        console.error("Error listing repository files:", error);
+        return res.status(500).json({
+            error: { message: error.message || "Failed to fetch repository files" }
+        });
+    }
+});
+
 // UPLOAD FILE TO REPOSITORY
 router.post("/:id/upload", authMiddleware, upload.single('file'), async (req, res) => {
     const ownerId = req.user.id;
     const repoId = req.params.id;
     const file = req.file;
+    const environmentKey = getEnvironmentKey(req);
 
     if (!file) {
         return res.status(400).json({
@@ -236,11 +525,14 @@ router.post("/:id/upload", authMiddleware, upload.single('file'), async (req, re
 
     try {
         // 1. Get repository info from database
-        const { data: project, error: fetchError } = await supabase
+        let projectQuery = supabase
             .from("repositories")
             .select("name, owner_id")
-            .eq("id", repoId)
-            .single();
+            .eq("id", repoId);
+
+        projectQuery = applyEnvironmentFilter(projectQuery, environmentKey);
+
+        const { data: project, error: fetchError } = await projectQuery.single();
 
         if (fetchError || !project) {
             return res.status(404).json({
@@ -328,6 +620,26 @@ router.post("/:id/upload", authMiddleware, upload.single('file'), async (req, re
             }
         }
 
+        const mimeType = file.mimetype || null;
+        const { error: repoFileError } = await supabase
+            .from("repo_files")
+            .upsert({
+                repo_id: repoId,
+                latest_commit_id: commitRow?.id || null,
+                uploaded_by: ownerId,
+                annex_key: uploadResult.annexKey || null,
+                file_path: file.originalname,
+                original_name: file.originalname,
+                mime_type: mimeType,
+                size_bytes: uploadResult.size || file.size || 0,
+                status: "synced",
+                uploaded_at: new Date().toISOString()
+            }, { onConflict: "repo_id,file_path" });
+
+        if (repoFileError) {
+            console.error("Failed to persist repo_files metadata:", repoFileError);
+        }
+
         const activityError = await insertActivityLogWithFallback({
             user_id: ownerId,
             repo_id: repoId,
@@ -342,6 +654,7 @@ router.post("/:id/upload", authMiddleware, upload.single('file'), async (req, re
         const metadataErrors = {
             push_events: resolvedPushError?.message || null,
             annex_objects: annexObjectError?.message || null,
+            repo_files: repoFileError?.message || null,
             activity_log: activityError?.message || null
         };
 
@@ -378,6 +691,201 @@ router.post("/:id/upload", authMiddleware, upload.single('file'), async (req, re
         console.error("Upload error:", error);
         return res.status(500).json({
             error: { message: error.message || "Failed to upload file" }
+        });
+    }
+});
+
+router.delete("/:repoId/files/:fileId", authMiddleware, async (req, res) => {
+    const ownerId = req.user.id;
+    const { repoId, fileId } = req.params;
+
+    try {
+        const { project, error, status } = await loadOwnedRepositoryInEnvironment(req, ownerId, repoId, "id, name, owner_id");
+        if (error || !project) {
+            return res.status(status || 404).json({
+                error: { message: error?.message || "Project not found" }
+            });
+        }
+
+        const { data: repoFile, error: repoFileError } = await supabase
+            .from("repo_files")
+            .select("id, file_path, original_name, annex_key")
+            .eq("id", fileId)
+            .eq("repo_id", repoId)
+            .maybeSingle();
+
+        if (repoFileError) {
+            return res.status(500).json({
+                error: { message: repoFileError.message || "Failed to load file metadata" }
+            });
+        }
+
+        if (!repoFile) {
+            return res.status(404).json({
+                error: { message: "File not found" }
+            });
+        }
+
+        const deleteResult = await gitService.deleteFileFromProject(
+            ownerId,
+            project.name,
+            repoFile.file_path
+        );
+
+        const { data: commitRow, error: commitError } = await supabase
+            .from("commits")
+            .insert({
+                repo_id: repoId,
+                git_commit_hash: deleteResult.gitCommitHash,
+                author_id: ownerId,
+                message: `Delete ${repoFile.original_name || repoFile.file_path}`,
+                branch: deleteResult.branch || "main",
+                is_merge: false,
+                annex_key: null,
+                committed_at: new Date().toISOString()
+            })
+            .select()
+            .single();
+
+        if (commitError) {
+            return res.status(500).json({
+                error: { message: `Delete succeeded but commit metadata failed: ${commitError.message}` }
+            });
+        }
+
+        const { error: deleteRepoFileError } = await supabase
+            .from("repo_files")
+            .delete()
+            .eq("id", fileId)
+            .eq("repo_id", repoId);
+
+        if (deleteRepoFileError) {
+            return res.status(500).json({
+                error: { message: deleteRepoFileError.message || "Failed to remove file metadata" }
+            });
+        }
+
+        if (repoFile.annex_key) {
+            const { error: annexDeleteError } = await supabase
+                .from("annex_objects")
+                .delete()
+                .eq("repo_id", repoId)
+                .eq("annex_key", repoFile.annex_key);
+
+            if (annexDeleteError) {
+                console.error("Failed to delete annex object metadata:", annexDeleteError);
+            }
+        }
+
+        const activityError = await insertActivityLogWithFallback({
+            user_id: ownerId,
+            repo_id: repoId,
+            event_type: "file_deleted",
+            detail: `Deleted ${repoFile.original_name || repoFile.file_path} (commit ${deleteResult.gitCommitHash || "unknown"})`
+        });
+
+        if (activityError) {
+            console.error("Failed to persist delete activity metadata:", activityError);
+        }
+
+        return res.json({
+            success: true,
+            message: "File deleted successfully",
+            metadata: {
+                commit_id: commitRow?.id,
+                git_commit_hash: deleteResult.gitCommitHash
+            }
+        });
+    } catch (error) {
+        console.error("Delete file error:", error);
+        return res.status(500).json({
+            error: { message: error.message || "Failed to delete file" }
+        });
+    }
+});
+
+router.post("/:id/request-review", authMiddleware, async (req, res) => {
+    const ownerId = req.user.id;
+    const repoId = req.params.id;
+
+    try {
+        const { project, error, status } = await loadOwnedRepositoryInEnvironment(req, ownerId, repoId, "id, name, owner_id");
+        if (error || !project) {
+            return res.status(status || 404).json({
+                error: { message: error?.message || "Project not found" }
+            });
+        }
+
+        const activityError = await insertActivityLogWithFallback({
+            user_id: ownerId,
+            repo_id: repoId,
+            event_type: "review_requested",
+            detail: `Requested admin review for ${project.name}`
+        });
+
+        if (activityError) {
+            return res.status(500).json({
+                error: { message: activityError.message || "Failed to request review" }
+            });
+        }
+
+        return res.json({
+            success: true,
+            message: "Review request sent to admins"
+        });
+    } catch (error) {
+        console.error("Request review error:", error);
+        return res.status(500).json({
+            error: { message: error.message || "Failed to request review" }
+        });
+    }
+});
+
+router.delete("/:id", authMiddleware, async (req, res) => {
+    const ownerId = req.user.id;
+    const repoId = req.params.id;
+
+    try {
+        const { project, error, status } = await loadOwnedRepositoryInEnvironment(req, ownerId, repoId, "id, name, owner_id");
+        if (error || !project) {
+            return res.status(status || 404).json({
+                error: { message: error?.message || "Project not found" }
+            });
+        }
+
+        await gitService.deleteProjectRepository(ownerId, project.name);
+
+        const { error: deleteRepoError } = await supabase
+            .from("repositories")
+            .delete()
+            .eq("id", repoId)
+            .eq("owner_id", ownerId);
+
+        if (deleteRepoError) {
+            return res.status(500).json({
+                error: { message: deleteRepoError.message || "Failed to delete repository metadata" }
+            });
+        }
+
+        const activityError = await insertActivityLogWithFallback({
+            user_id: ownerId,
+            repo_id: null,
+            event_type: "repository_deleted",
+            detail: `Deleted repository ${project.name}`
+        });
+
+        if (activityError) {
+            console.error("Failed to persist repository delete activity:", activityError);
+        }
+
+        return res.json({
+            success: true,
+            message: "Repository deleted successfully"
+        });
+    } catch (error) {
+        console.error("Delete repository error:", error);
+        return res.status(500).json({
+            error: { message: error.message || "Failed to delete repository" }
         });
     }
 });

@@ -4,9 +4,11 @@ on:
   push:
     branches:
       - "**"
+    create:
 
 jobs:
   deploy-preview:
+    if: github.ref_type == 'branch'
     runs-on: self-hosted
 
     steps:

@@ -1,22 +1,45 @@
 import { useEffect, useState } from 'react';
-import { mockService } from '../../services/mockData';
+import { adminService } from '../../services/adminService';
 import { Activity, Server, HardDrive, Users, Archive } from 'lucide-react';
 
 export default function AdminDashboard() {
-    const [status, setStatus] = useState(null);
+    const [summary, setSummary] = useState(null);
+    const [nodes, setNodes] = useState([]);
+    const [error, setError] = useState('');
 
     useEffect(() => {
-        mockService.getClusterStatus().then(setStatus);
+        const load = async () => {
+            try {
+                const [summaryData, nodeData] = await Promise.all([
+                    adminService.getSummary(),
+                    adminService.getNodes()
+                ]);
+                setSummary(summaryData);
+                setNodes(nodeData || []);
+            } catch (err) {
+                setError(err.message || 'Failed to load admin dashboard');
+            }
+        };
+
+        load();
     }, []);
 
-    if (!status) return <div className="p-10 text-center">Loading cluster status...</div>;
+    if (!summary && !error) return <div className="p-10 text-center">Loading cluster status...</div>;
+    if (error) return <div className="p-10 text-center text-red-500">{error}</div>;
 
-    // Mock archived repositories (replace with real data later)
-    const archivedRepos = [
-        { name: 'legacy-auth-service', lastCommit: '3 months ago', size: '120 MB' },
-        { name: 'old-analytics-engine', lastCommit: '6 months ago', size: '340 MB' },
-        { name: 'v1-mobile-backend', lastCommit: '1 year ago', size: '210 MB' }
-    ];
+    const formatBytes = (bytes) => {
+        const value = Number(bytes) || 0;
+        if (value >= 1024 ** 3) return `${(value / (1024 ** 3)).toFixed(2)} GB`;
+        if (value >= 1024 ** 2) return `${(value / (1024 ** 2)).toFixed(1)} MB`;
+        if (value >= 1024) return `${(value / 1024).toFixed(1)} KB`;
+        return `${value} B`;
+    };
+
+    const onlineNodes = nodes.filter(n => n.status === 'online').length;
+    const totalNodes = nodes.length;
+    const storageUsed = formatBytes(summary?.used_storage_bytes || 0);
+    const storageTotal = formatBytes(summary?.total_storage_bytes || 0);
+    const archivedRepos = summary?.archived_repositories || [];
 
     return (
         <div className="space-y-8">
@@ -30,22 +53,22 @@ export default function AdminDashboard() {
 
             {/* Vital Signs */}
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                <MetricCard label="Health Score" value={status.health} icon={Activity} color="text-[--status-success]" />
+                <MetricCard label="Health Score" value={summary?.health || 'N/A'} icon={Activity} color="text-[--status-success]" />
                 <MetricCard
                     label="Active Nodes"
-                    value={`${status.nodes.filter(n => n.status === 'online').length}/${status.nodes.length}`}
+                    value={`${onlineNodes}/${totalNodes}`}
                     icon={Server}
                     color="text-blue-400"
                 />
-                <MetricCard label="Storage Used" value={status.usedStorage} sub={`of ${status.totalStorage}`} icon={HardDrive} color="text-purple-400" />
-                <MetricCard label="Active Users" value="24" icon={Users} color="text-orange-400" />
+                <MetricCard label="Storage Used" value={storageUsed} sub={`of ${storageTotal}`} icon={HardDrive} color="text-purple-400" />
+                <MetricCard label="Active Users" value={String(summary?.active_users ?? 0)} icon={Users} color="text-orange-400" />
             </div>
 
             {/* Nodes Quick View */}
             <div className="card p-6">
                 <h2 className="text-lg font-semibold mb-6">Node Status Map</h2>
                 <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-4">
-                    {status.nodes.map(node => (
+                    {nodes.map(node => (
                         <div
                             key={node.id}
                             className="flex flex-col items-center p-4 rounded-lg bg-[--bg-tertiary] border border-[--border-color]"
@@ -71,14 +94,15 @@ export default function AdminDashboard() {
             <div className="card p-6 border-l-4 border-l-[--status-warning]">
                 <h2 className="text-lg font-semibold mb-4 text-[--status-warning]">Recent Alerts</h2>
                 <div className="space-y-2">
-                    <div className="flex justify-between text-sm">
-                        <span>Node-03 high temperature warning (58°C)</span>
-                        <span className="text-[--text-muted]">10 mins ago</span>
-                    </div>
-                    <div className="flex justify-between text-sm">
-                        <span>Node-06 connection restored</span>
-                        <span className="text-[--text-muted]">45 mins ago</span>
-                    </div>
+                    {(summary?.recent_activity || []).slice(0, 2).map((item, idx) => (
+                        <div key={`${item.created_at || idx}`} className="flex justify-between text-sm">
+                            <span>{item.detail}</span>
+                            <span className="text-[--text-muted]">{item.project}</span>
+                        </div>
+                    ))}
+                    {(summary?.recent_activity || []).length === 0 && (
+                        <div className="text-sm text-[--text-muted]">No recent activity recorded.</div>
+                    )}
                 </div>
             </div>
 
@@ -97,11 +121,14 @@ export default function AdminDashboard() {
                         >
                             <div>
                                 <p className="font-mono text-sm">{repo.name}</p>
-                                <p className="text-xs text-[--text-muted] mt-1">Last commit: {repo.lastCommit}</p>
+                                <p className="text-xs text-[--text-muted] mt-1">Archived snapshot</p>
                             </div>
-                            <span className="text-xs text-[--text-secondary]">{repo.size}</span>
+                            <span className="text-xs text-[--text-secondary]">{formatBytes(repo.size_bytes || 0)}</span>
                         </div>
                     ))}
+                    {archivedRepos.length === 0 && (
+                        <div className="text-sm text-[--text-muted]">No archived repositories detected.</div>
+                    )}
                 </div>
             </div>
         </div>

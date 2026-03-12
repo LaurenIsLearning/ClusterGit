@@ -14,5 +14,4 @@ jobs:
           BRANCH=$(echo "${{ github.event.ref }}" | tr '/' '-' | tr '[:upper:]' '[:lower:]')
           echo "Branch: $BRANCH"
           echo "Deleting preview-$BRANCH"
-          
           kubectl delete namespace preview-$BRANCH --ignore-not-found
