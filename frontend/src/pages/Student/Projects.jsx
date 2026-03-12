@@ -84,6 +84,11 @@ export default function StudentProjects() {
         setTimeout(() => setCopiedId(null), 2000);
     };
 
+    const getCloneUrl = (project) => {
+        if (!project) return '';
+        return `${window.location.origin}/${project.owner_id}/${project.name}.git`;
+    };
+
     if (loading) return <div className="p-10 text-center">Loading projects...</div>;
 
     const currentProject = projects.find(p => p.id === selectedProject);
@@ -128,10 +133,10 @@ export default function StudentProjects() {
                             <div className="text-sm text-[--text-secondary] flex items-center justify-between gap-2 mb-2">
                                 <div className="flex items-center gap-2 truncate">
                                     <span className="text-[10px] font-bold px-1 rounded bg-[--bg-tertiary] text-[--accent-primary] border border-[--accent-primary]/20">HTTPS</span>
-                                    <span className="truncate font-mono text-[11px]">{project.repo}</span>
+                                    <span className="truncate font-mono text-[11px]">{getCloneUrl(project)}</span>
                                 </div>
                                 <button
-                                    onClick={(e) => handleCopyCloneLink(e, project.repo, project.id)}
+                                    onClick={(e) => handleCopyCloneLink(e, getCloneUrl(project), project.id)}
                                     className="p-1 hover:bg-[--bg-tertiary] rounded transition-colors flex-shrink-0"
                                     title="Copy HTTPS clone link"
                                 >
@@ -168,9 +173,9 @@ export default function StudentProjects() {
                                 <div className="flex items-center rounded-lg border border-[--border-color] bg-[--bg-tertiary]/50 p-1">
                                     <span className="px-3 text-xs font-bold text-[--accent-primary]">HTTPS</span>
                                     <div className="h-4 w-px bg-[--border-color] mx-1"></div>
-                                    <span className="px-3 text-sm font-mono text-[--text-secondary] hidden lg:inline max-w-[200px] truncate">{currentProject.repo}</span>
+                                    <span className="px-3 text-sm font-mono text-[--text-secondary] hidden lg:inline max-w-[200px] truncate">{getCloneUrl(currentProject)}</span>
                                     <button
-                                        onClick={(e) => handleCopyCloneLink(e, currentProject.repo, 'header')}
+                                        onClick={(e) => handleCopyCloneLink(e, getCloneUrl(currentProject), 'header')}
                                         className="btn btn-secondary btn-sm ml-2 gap-2 h-8 min-h-0"
                                     >
                                         {copiedId === 'header' ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
