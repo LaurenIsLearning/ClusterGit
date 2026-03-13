@@ -108,6 +108,27 @@ async function mergeRemoteGitAnnex(cwd) {
     }
 }
 
+function isFetchFirstPushError(error) {
+    const stderr = String(error?.stderr || error?.message || "");
+    return stderr.includes("git-annex -> git-annex") && stderr.includes("(fetch first)");
+}
+
+async function pushGitAnnexBranch(cwd) {
+    try {
+        await mergeRemoteGitAnnex(cwd);
+        await execAsync(GIT_BIN, ["push", "origin", "git-annex"], { cwd });
+    } catch (error) {
+        if (!isFetchFirstPushError(error)) {
+            throw error;
+        }
+
+        // retry once after refreshing remote refs so the first upload does not require a manual second try.
+        await syncRemoteBranches(cwd);
+        await mergeRemoteGitAnnex(cwd);
+        await execAsync(GIT_BIN, ["push", "origin", "git-annex"], { cwd });
+    }
+}
+
 async function prepareWorkingClone(bareRepoPath, tempWorkingPath) {
     await fs.mkdir(tempWorkingPath, { recursive: true });
     await execAsync(GIT_BIN, ["clone", bareRepoPath, "."], { cwd: tempWorkingPath });
@@ -299,8 +320,7 @@ export async function addFileToProject(userId, projectName, filePath, originalNa
         const toRef = toRefStdout.trim();
 
         await execAsync(GIT_BIN, ["push", "origin", "main"], { cwd: tempWorkingPath });
-        await mergeRemoteGitAnnex(tempWorkingPath);
-        await execAsync(GIT_BIN, ["push", "origin", "git-annex"], { cwd: tempWorkingPath });
+        await pushGitAnnexBranch(tempWorkingPath);
 
         // copy actual annex content to bare repo
         await execAsync(GIT_BIN, ["annex", "copy", "--to", "origin", originalName], { cwd: tempWorkingPath });
@@ -346,8 +366,7 @@ export async function deleteFileFromProject(userId, projectName, filePath) {
         const gitCommitHash = commitStdout.trim();
 
         await execAsync(GIT_BIN, ["push", "origin", "main"], { cwd: tempWorkingPath });
-        await mergeRemoteGitAnnex(tempWorkingPath);
-        await execAsync(GIT_BIN, ["push", "origin", "git-annex"], { cwd: tempWorkingPath });
+        await pushGitAnnexBranch(tempWorkingPath);
 
         return {
             success: true,
