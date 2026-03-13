@@ -8,6 +8,7 @@ const API_BASE_URL = normalizedApiUrl.endsWith('/api')
   : `${normalizedApiUrl}/api`;
 
 async function getAccessToken() {
+  // grabs the current supabase jwt for backend-authenticated routes
   const { data, error } = await supabase.auth.getSession();
   if (error) throw error;
   const token = data?.session?.access_token;
@@ -68,6 +69,7 @@ export const authService = {
   },
 
   async getProfile() {
+    // prefers the backend profile route but can fall back to direct supabase reads in older deployments
     const token = await getAccessToken();
     let response = await fetch(`${API_BASE_URL}/auth/profile`, {
       method: "GET",
@@ -107,6 +109,7 @@ export const authService = {
   },
 
   async updateDisplayName(displayName) {
+    // updates profile through the backend first and falls back to direct supabase upsert if needed
     const token = await getAccessToken();
     let response = await fetch(`${API_BASE_URL}/auth/profile`, {
       method: "PATCH",

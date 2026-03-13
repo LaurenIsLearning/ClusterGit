@@ -1,7 +1,7 @@
 import { authService } from './authService';
 import { getApiBaseUrl } from "../utils/api";
 
-//ensure that final base always ends with /api
+// makes sure every project request hits the api path no matter what getApiBaseUrl returns
 const rawApiUrl = getApiBaseUrl();
 const normalizedApiUrl = rawApiUrl.replace(/\/+$/, '');
 const API_BASE_URL = normalizedApiUrl.endsWith('/api')
@@ -24,6 +24,7 @@ function isMissingRoute(response, data) {
 }
 
 function parseSizeToBytes(sizeValue) {
+    // converts size strings like 12.4 mb back into bytes for dashboard math fallbacks
     if (typeof sizeValue === 'number') return sizeValue;
     const raw = String(sizeValue || '').trim();
     const match = raw.match(/^([\d.]+)\s*(B|KB|MB|GB|TB)$/i);
@@ -41,6 +42,7 @@ function parseSizeToBytes(sizeValue) {
 }
 
 function uploadWithXhr(url, accessToken, formData, onProgress) {
+    // keeps upload progress available in the ui for bigger file posts
     return new Promise((resolve, reject) => {
         const xhr = new XMLHttpRequest();
         xhr.open('POST', url);
@@ -134,6 +136,7 @@ export const projectService = {
     async getProjectFiles(projectId) {
         const headers = await getAuthHeaders();
 
+        // prefers the newer repo files route but can still recover from older commits-only deployments
         let response = await fetch(`${API_BASE_URL}/repos/${projectId}/files`, {
             method: 'GET',
             headers,
@@ -173,6 +176,7 @@ export const projectService = {
     async getDashboardSummary() {
         const headers = await getAuthHeaders();
 
+        // falls back to computing usage from project sizes if the summary route is missing
         let response = await fetch(`${API_BASE_URL}/repos/summary`, {
             method: 'GET',
             headers,
@@ -209,6 +213,7 @@ export const projectService = {
             throw new Error('Not authenticated');
         }
 
+        // uses xhr instead of fetch so the upload modal can show progress updates
         const formData = new FormData();
         formData.append('file', file);
 

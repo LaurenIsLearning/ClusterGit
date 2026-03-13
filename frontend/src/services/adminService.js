@@ -24,6 +24,7 @@ function isMissingRoute(response, data) {
 }
 
 async function getAuthHeaders() {
+    // attaches the supabase access token to admin api calls
     const session = await authService.getSession();
     if (!session?.access_token) {
         throw new Error('Not authenticated');
@@ -82,7 +83,7 @@ export const adminService = {
             throw new Error(data.error?.message || data._raw || 'Failed to fetch admin users');
         }
 
-        // keep the environment key with the payload so the ui can show what it is browsing.
+        // keeps the environment label with the user payload so the ui knows what storage view it is in
         return {
             environmentKey: data.environment_key || null,
             users: (data.users || []).map((user) => ({
@@ -166,7 +167,7 @@ export const adminService = {
             throw new Error(data.error?.message || data._raw || 'Failed to fetch user repositories');
         }
 
-        // repos/files are fetched lazily for the drill-down view.
+        // repo drill-down stays lazy so the users page does not try to load every repo at once
         return {
             environmentKey: data.environment_key || null,
             repos: (data.repos || []).map((repo) => ({
@@ -214,6 +215,7 @@ export const adminService = {
         const data = await safeParseJson(response);
 
         if (!response.ok && isMissingRoute(response, data)) {
+            // degrades cleanly when the preview backend is missing the newer inspect route
             return {
                 environmentKey: null,
                 repo: null,
@@ -294,7 +296,7 @@ export const adminService = {
             return data.nodes;
         }
 
-        // Fallback to mock nodes only when telemetry does not exist in Supabase/backend.
+        // falls back to mock nodes only when real node_health data is not there yet
         const mock = await mockService.getClusterStatus();
         return mock.nodes;
     },

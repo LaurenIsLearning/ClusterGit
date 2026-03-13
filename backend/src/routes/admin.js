@@ -8,6 +8,7 @@ const router = express.Router();
 const DEFAULT_STORAGE_QUOTA_BYTES = 20 * 1024 * 1024 * 1024;
 
 async function requireAdmin(req, res, next) {
+    // checks if the signed in user is actually an admin before letting them use admin routes
     const userId = req.user?.id;
     if (!userId) {
         return res.status(401).json({ error: { message: "Authentication required" } });
@@ -33,6 +34,7 @@ async function requireAdmin(req, res, next) {
 router.use(authMiddleware, requireAdmin);
 
 function formatFallbackUserName(authUser, profile) {
+    // gives the admin ui a name even if the profile row is missing display_name
     return profile?.display_name
         || authUser?.email?.split("@")?.[0]
         || "Unknown";
@@ -75,6 +77,7 @@ async function loadReviewRequests(repoIds) {
 }
 
 function parseQuotaBytes(input) {
+    // normalizes quota input so the db always gets a safe integer byte value
     const parsed = Number(input);
     if (!Number.isFinite(parsed) || parsed < 0) {
         return null;
@@ -85,6 +88,7 @@ function parseQuotaBytes(input) {
 router.get("/summary", async (req, res) => {
     try {
         const environmentKey = getEnvironmentKey(req);
+        // pulls student quotas so the admin summary uses real supabase allocations instead of filler values
         const { data: profiles, error: profilesError } = await supabase
             .from("user_profiles")
             .select("user_id, role, storage_quota_bytes");
@@ -210,6 +214,7 @@ router.get("/summary", async (req, res) => {
 router.get("/users", async (req, res) => {
     try {
         const environmentKey = getEnvironmentKey(req);
+        // loads the real student list from supabase and then decorates it with repo usage for this environment
         const { data: profiles, error: profilesError } = await supabase
             .from("user_profiles")
             .select("user_id, role, display_name, storage_quota_bytes, is_admin_created");
@@ -294,6 +299,7 @@ router.get("/users", async (req, res) => {
         });
 
         users.sort((a, b) => {
+            // pushes review requests to the top so admins see them first
             if (a.has_review_request !== b.has_review_request) {
                 return a.has_review_request ? -1 : 1;
             }
@@ -320,6 +326,7 @@ router.get("/users", async (req, res) => {
 router.post("/users", async (req, res) => {
     try {
         const adminUserId = req.user.id;
+        // lets admins create student auth users directly from the dashboard
         const email = String(req.body?.email || "").trim().toLowerCase();
         const password = String(req.body?.password || "");
         const displayName = String(req.body?.display_name || "").trim();
@@ -394,6 +401,7 @@ router.post("/users", async (req, res) => {
 router.patch("/users/:userId/quota", async (req, res) => {
     try {
         const { userId } = req.params;
+        // updates a student's storage allocation in supabase
         const requestedQuotaBytes = parseQuotaBytes(req.body?.storage_quota_bytes);
 
         if (requestedQuotaBytes === null) {
@@ -421,6 +429,7 @@ router.patch("/users/:userId/quota", async (req, res) => {
 router.post("/users/:userId/reset-quota", async (req, res) => {
     try {
         const { userId } = req.params;
+        // resets a student's quota back to the app default
         const { data, error } = await supabase
             .from("user_profiles")
             .update({ storage_quota_bytes: DEFAULT_STORAGE_QUOTA_BYTES })
@@ -560,6 +569,7 @@ router.get("/repos/:repoId/inspect", async (req, res) => {
         const environmentKey = getEnvironmentKey(req);
         const { repoId } = req.params;
 
+        // uses the live repo on disk so admins can inspect real branches, commits, and file trees
         let repoQuery = supabase
             .from("repositories")
             .select("id, name, owner_id")
@@ -605,6 +615,7 @@ router.get("/repos/:repoId/files/download", async (req, res) => {
             return res.status(400).json({ error: { message: "File path is required" } });
         }
 
+        // blocks obvious path traversal before touching the repo checkout
         if (requestedPath.includes("..")) {
             return res.status(400).json({ error: { message: "Invalid file path" } });
         }
@@ -644,6 +655,7 @@ router.get("/repos/:repoId/files/download", async (req, res) => {
 
 router.get("/nodes", async (_req, res) => {
     try {
+        // returns the latest node snapshot rows if node_health has been populated
         const { data, error } = await supabase
             .from("node_health")
             .select("node_key, ip_address, status, cpu_percent, temp_c, storage_used_bytes, storage_total_bytes, heartbeat_at")

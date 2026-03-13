@@ -56,6 +56,7 @@ async function pathExists(targetPath) {
 export async function resolveExistingRepoPath(userId, projectName) {
     const repoDirName = `${projectName}.git`;
     const configured = getRepoPath(userId, projectName);
+    // tries legacy local repo paths too so old environments still work while storage is being cleaned up
     const candidates = [
         configured,
         path.resolve(process.cwd(), 'local-repos', userId, repoDirName),
@@ -81,6 +82,7 @@ async function refExists(cwd, refName) {
 }
 
 async function syncRemoteBranches(cwd) {
+    // refreshes the remote refs before uploads or deletes touch main/git-annex
     await execAsync(GIT_BIN, ["fetch", "origin", "main"], { cwd });
     try {
         await execAsync(GIT_BIN, ["fetch", "origin", "git-annex"], { cwd });
@@ -90,6 +92,7 @@ async function syncRemoteBranches(cwd) {
 }
 
 async function mergeRemoteGitAnnex(cwd) {
+    // pulls origin/git-annex into the local checkout so annex pushes stay fast-forwardable
     const hasLocalGitAnnex = await refExists(cwd, "git-annex");
     const hasRemoteGitAnnex = await refExists(cwd, "origin/git-annex");
 
@@ -109,6 +112,7 @@ async function mergeRemoteGitAnnex(cwd) {
 }
 
 function isFetchFirstPushError(error) {
+    // spots the annoying git-annex race where the remote branch moved first
     const stderr = String(error?.stderr || error?.message || "");
     return stderr.includes("git-annex -> git-annex") && stderr.includes("(fetch first)");
 }
@@ -122,7 +126,7 @@ async function pushGitAnnexBranch(cwd) {
             throw error;
         }
 
-        // retry once after refreshing remote refs so the first upload does not require a manual second try.
+        // retries once so the user does not have to upload the same file twice
         await syncRemoteBranches(cwd);
         await mergeRemoteGitAnnex(cwd);
         await execAsync(GIT_BIN, ["push", "origin", "git-annex"], { cwd });
@@ -130,6 +134,7 @@ async function pushGitAnnexBranch(cwd) {
 }
 
 async function prepareWorkingClone(bareRepoPath, tempWorkingPath) {
+    // creates the temp working copy used for uploads and delete operations
     await fs.mkdir(tempWorkingPath, { recursive: true });
     await execAsync(GIT_BIN, ["clone", bareRepoPath, "."], { cwd: tempWorkingPath });
     await syncRemoteBranches(tempWorkingPath);
@@ -156,6 +161,7 @@ async function prepareReadOnlyClone(bareRepoPath, tempWorkingPath) {
  */
 export function getGitUrl(userId, projectName) {
     const repoPath = getRepoPath(userId, projectName);
+    // builds the ssh clone string shown in the ui
     const host = '10.27.12.244'; // adjust if needed
     return `git@${host}:${repoPath}`;
 }
@@ -210,6 +216,7 @@ export async function createRepository(userId, projectName, description = '') {
   await execAsync(GIT_BIN, ["commit", "-m", "Initial commit"], { cwd: tempInit });
 
   // 5. git-annex init + placeholder
+  // keeps the git-annex branch alive right from repo creation
   await execAsync(GIT_BIN, ["annex", "init"], { cwd: tempInit });
   const annexPlaceholder = path.join(tempInit, ".annex-placeholder");
   await fs.writeFile(annexPlaceholder, "This file anchors the git-annex branch");
@@ -294,7 +301,7 @@ export async function addFileToProject(userId, projectName, filePath, originalNa
         const targetPath = path.join(tempWorkingPath, originalName);
         await fs.rename(filePath, targetPath);
 
-        // unlock file if it already exists in annex (allows overwrite)
+        // unlocks existing annexed files so re-uploads can overwrite cleanly
         try {
             await execAsync(GIT_BIN, ["annex", "unlock", originalName], { cwd: tempWorkingPath });
         } catch {}
@@ -322,7 +329,7 @@ export async function addFileToProject(userId, projectName, filePath, originalNa
         await execAsync(GIT_BIN, ["push", "origin", "main"], { cwd: tempWorkingPath });
         await pushGitAnnexBranch(tempWorkingPath);
 
-        // copy actual annex content to bare repo
+        // copies the annex object itself after the git refs are pushed
         await execAsync(GIT_BIN, ["annex", "copy", "--to", "origin", originalName], { cwd: tempWorkingPath });
 
 
@@ -412,6 +419,7 @@ export async function inspectProjectRepository(userId, projectName) {
 
         await prepareReadOnlyClone(bareRepoPath, tempWorkingPath);
 
+        // collects live git info so admins can inspect the real repo instead of just table rows
         const [{ stdout: branchStdout }, { stdout: commitStdout }, { stdout: treeStdout }] = await Promise.all([
             execAsync(GIT_BIN, ["branch", "-a", "--format=%(refname:short)"], { cwd: tempWorkingPath }),
             execAsync(GIT_BIN, ["log", "--pretty=format:%H\t%an\t%ad\t%s", "--date=iso-strict", "-n", "20"], { cwd: tempWorkingPath }),
@@ -477,6 +485,7 @@ export async function getProjectFileBuffer(userId, projectName, filePath) {
 
         await prepareReadOnlyClone(bareRepoPath, tempWorkingPath);
 
+        // tries annex get first in case the file content is annexed instead of plain git tracked
         try {
             await execAsync(GIT_BIN, ["annex", "get", filePath], { cwd: tempWorkingPath });
         } catch {
@@ -505,6 +514,7 @@ export async function getProjectFileBuffer(userId, projectName, filePath) {
  * Helpers
  */
 export async function getRepoSize(repoPath) {
+    // walks the repo directory when we need a filesystem fallback size
     const getDirectorySize = async (targetPath) => {
         const entries = await fs.readdir(targetPath, { withFileTypes: true });
         let total = 0;

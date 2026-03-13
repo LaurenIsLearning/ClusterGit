@@ -1,4 +1,5 @@
 function normalizeHost(rawHost) {
+    // strips ports and proxy formatting so env detection stays consistent
     return String(rawHost || "")
         .split(",")[0]
         .trim()
@@ -46,6 +47,7 @@ export function getEnvironmentKey(req) {
 // keep legacy local rows visible while making preview and production strict.
 export function applyEnvironmentFilter(query, environmentKey, column = "environment_key") {
     if (environmentKey === "local") {
+        // keeps old null rows visible locally while previews stay isolated
         return query.or(`${column}.eq.local,${column}.is.null`);
     }
 

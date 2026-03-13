@@ -13,6 +13,7 @@ const router = express.Router();
 const upload = multer({ dest: path.join(os.tmpdir(), 'clustergit-uploads') });
 
 async function getUserQuotaBytes(userId) {
+    // fetches the signed in user's storage quota from supabase
     const { data, error } = await supabase
         .from("user_profiles")
         .select("storage_quota_bytes")
@@ -27,6 +28,7 @@ async function getUserQuotaBytes(userId) {
 }
 
 async function insertPushEventWithFallback(payload) {
+    // backfills older push_events schemas that may not have every new column yet
     // Fallback for environments with stricter/different push_events schema.
     const { error: fallbackError } = await supabase
         .from("push_events")
@@ -42,6 +44,7 @@ async function insertPushEventWithFallback(payload) {
 }
 
 async function insertAnnexObjectWithFallback(payload) {
+    // keeps annex object metadata idempotent if the same upload logic retries
     // Prefer upsert so repeated uploads/metadata retries don't fail on duplicate keys.
     const { error: upsertError } = await supabase
         .from("annex_objects")
@@ -61,6 +64,7 @@ async function insertAnnexObjectWithFallback(payload) {
 }
 
 async function insertActivityLogWithFallback(payload) {
+    // tries a few event names so activity logging still works against older schemas
     const attempts = [
         payload,
         { ...payload, event_type: "commit_recorded" },
@@ -143,14 +147,14 @@ router.post("/create", authMiddleware, async (req, res) => {
             });
         }
 
-        // Create Git repository with git-annex
+        // creates the actual bare repo on disk before saving the supabase row
         const projectData = await gitService.createProject(
             ownerId,
             name,
             description || ''
         );
 
-        // Safety check
+        // makes sure the repo really initialized with git-annex metadata
         if (!projectData.annexUuid) {
             throw new Error("git-annex UUID could not be determined");
         }
@@ -257,7 +261,7 @@ router.get("/my", authMiddleware, async (req, res) => {
             }
         }
 
-        // keep git urls filesystem-derived while the size stays db-first.
+        // combines db metadata with git url/path info for the student projects page
         const enrichedProjects = await Promise.all((data || []).map(async (project) => {
             const repoPath = gitService.getRepoPath(ownerId, project.name);
             const gitUrl = gitService.getGitUrl(ownerId, project.name);
@@ -421,6 +425,7 @@ router.get("/:id/files", authMiddleware, async (req, res) => {
             });
         }
 
+        // keeps the ui labels decent even when all we have is a filename
         const inferType = (fileName) => {
             const lower = String(fileName || "").toLowerCase();
             if (/\.(mp4|mov|avi|mkv|webm)$/.test(lower)) return "video";
@@ -429,6 +434,7 @@ router.get("/:id/files", authMiddleware, async (req, res) => {
             return "unknown";
         };
 
+        // uses the new repo_files table first if it exists for this repo
         if ((repoFiles || []).length > 0) {
             return res.json((repoFiles || []).map((fileRow) => ({
                 id: fileRow.id,
@@ -446,6 +452,7 @@ router.get("/:id/files", authMiddleware, async (req, res) => {
             })));
         }
 
+        // falls back to parsing upload commits for older repos that do not have repo_files rows yet
         let { data: commits, error: commitError } = await supabase
             .from("commits")
             .select("id, message, annex_key, git_commit_hash, branch, committed_at, created_at")
@@ -547,7 +554,7 @@ router.post("/:id/upload", authMiddleware, upload.single('file'), async (req, re
             });
         }
 
-        // 3. Add file to Git repository using git-annex
+        // sends the uploaded file through the git-annex flow first, then writes metadata rows
         const uploadResult = await gitService.addFileToProject(
             ownerId,
             project.name,
@@ -651,6 +658,7 @@ router.post("/:id/upload", authMiddleware, upload.single('file'), async (req, re
             console.error("Failed to persist upload activity metadata:", activityError);
         }
 
+        // reports partial-success cases where git worked but one of the metadata tables did not
         const metadataErrors = {
             push_events: resolvedPushError?.message || null,
             annex_objects: annexObjectError?.message || null,
@@ -726,6 +734,7 @@ router.delete("/:repoId/files/:fileId", authMiddleware, async (req, res) => {
             });
         }
 
+        // deletes from the real repo first so supabase does not get ahead of storage
         const deleteResult = await gitService.deleteFileFromProject(
             ownerId,
             project.name,
@@ -816,6 +825,7 @@ router.post("/:id/request-review", authMiddleware, async (req, res) => {
             });
         }
 
+        // uses activity_log as the lightweight admin review notification path
         const activityError = await insertActivityLogWithFallback({
             user_id: ownerId,
             repo_id: repoId,
@@ -853,6 +863,7 @@ router.delete("/:id", authMiddleware, async (req, res) => {
             });
         }
 
+        // removes the actual repo storage before removing the supabase metadata row
         await gitService.deleteProjectRepository(ownerId, project.name);
 
         const { error: deleteRepoError } = await supabase

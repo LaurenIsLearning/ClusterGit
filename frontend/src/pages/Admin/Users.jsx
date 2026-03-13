@@ -43,6 +43,7 @@ export default function AdminUsers() {
     const { addToast } = useToast();
 
     const loadUsers = async (preserveSelection = true) => {
+        // loads the main admin user list and keeps the current selection if it still exists
         setLoadingUsers(true);
         setError('');
         try {
@@ -80,6 +81,7 @@ export default function AdminUsers() {
                 return;
             }
 
+            // loads repos only after an admin selects a student row
             setLoadingRepos(true);
             try {
                 const data = await adminService.getUserRepos(selectedUserId);
@@ -114,6 +116,7 @@ export default function AdminUsers() {
                 return;
             }
 
+            // loads metadata files and live inspect data side by side for the selected repo
             setLoadingFiles(true);
             setLoadingInspection(true);
             setInspectWarning('');
@@ -129,6 +132,7 @@ export default function AdminUsers() {
                     commits: inspectData.commits || [],
                     files: inspectData.files || [],
                 });
+                // shows a soft warning when the backend route is not deployed instead of breaking the whole page
                 setInspectWarning(inspectData.unavailableReason || '');
             } catch (err) {
                 setError(err.message || 'Failed to load repository files');
@@ -154,6 +158,7 @@ export default function AdminUsers() {
 
     const selectedUser = users.find((user) => user.id === selectedUserId) || null;
     const selectedRepo = repos.find((repo) => repo.id === selectedRepoId) || null;
+    // falls back to the repo list clone url when live inspect is unavailable
     const cloneUrl = inspection.repo?.gitUrl || selectedRepo?.gitUrl || '';
 
     const handleDownload = async (filePath) => {
@@ -176,6 +181,7 @@ export default function AdminUsers() {
     };
 
     const handleCreateStudent = async ({ email, password, displayName, quotaGb }) => {
+        // converts the admin modal's gb input into bytes before sending it to the backend
         await adminService.createStudent({
             email,
             password,
@@ -263,6 +269,7 @@ export default function AdminUsers() {
                                         : 'hover:bg-[--bg-tertiary]/40'
                                 } ${user.hasReviewRequest ? 'border-l-4 border-l-amber-400' : ''}`}
                             >
+                                {/* keeps review-requested users visually obvious in the list */}
                                 <div className="flex items-start justify-between gap-3">
                                     <div className="min-w-0">
                                         <div className="flex items-center gap-2">
@@ -576,6 +583,7 @@ function CreateStudentModal({ isOpen, onClose, onSubmit }) {
     if (!isOpen) return null;
 
     const handleSubmit = async (event) => {
+        // creates a student auth user and profile from the admin modal
         event.preventDefault();
         setError('');
         setSaving(true);
@@ -637,6 +645,7 @@ function QuotaModal({ user, isOpen, onClose, onSubmit }) {
     if (!isOpen || !user) return null;
 
     const handleSubmit = async (event) => {
+        // saves a quota override for the selected student
         event.preventDefault();
         setError('');
         setSaving(true);
