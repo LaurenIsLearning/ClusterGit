@@ -5,7 +5,8 @@
   "main": "src/server.js",
   "scripts": {
     "start": "node --trace-warnings src/server.js",
-    "dev": "nodemon src/server.js"
+    "dev": "nodemon src/server.js",
+    "sync:nodes": "node ../scripts/sync-node-health.js"
   },
   "keywords": [],
   "author": "",
