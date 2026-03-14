@@ -19,12 +19,11 @@ export default function Login() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [stuck, setStuck] = useState(false);
 
-  // If you want admins to land on /admin after login, do it when role resolves.
+  // Route users after auth once role has resolved.
   useEffect(() => {
     if (!user) return;
-    if (role === "admin") {
-      navigate("/admin", { replace: true });
-    }
+    if (role === null) return;
+    navigate(role === "admin" ? "/admin" : "/dashboard", { replace: true });
   }, [user, role, navigate]);
 
   const validate = () => {
@@ -57,9 +56,6 @@ export default function Login() {
         await signIn(email, password);
         addToast("Welcome back!", "success");
       }
-
-      // Default route after auth. Admin redirect happens via the effect above.
-      navigate("/dashboard");
     } catch (e2) {
       setError(e2?.message ?? "Authentication failed");
     } finally {
@@ -76,9 +72,9 @@ export default function Login() {
     const watchdog = window.setTimeout(() => setStuck(true), 12000);
 
     try {
-      // For local dev this is fine. For prod use your deployed URL.
-      await signInWithGitHub(`${window.location.origin}/dashboard`);
-      // With OAuth, you'll usually be redirected by Supabase. No navigate here.
+      // Return to /login and let role-aware routing above navigate in-app.
+      // This avoids direct hard reloads to nested SPA paths in preview/prod.
+      await signInWithGitHub(`${window.location.origin}/login`);
     } catch (e) {
       setError(e?.message ?? "GitHub login failed");
       setIsSubmitting(false);

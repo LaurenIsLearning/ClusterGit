@@ -5,7 +5,9 @@
   "main": "src/server.js",
   "scripts": {
     "start": "node --trace-warnings src/server.js",
-    "dev": "nodemon src/server.js"
+    "dev": "nodemon src/server.js",
+    "sync:nodes": "node ../scripts/sync-node-health.js",
+    "test": "mocha --config .mocharc.json"
   },
   "keywords": [],
   "author": "",
@@ -19,6 +21,9 @@
     "multer": "^2.1.0"
   },
   "devDependencies": {
-    "nodemon": "^3.1.11"
+    "mocha": "^7.2.0",
+    "nodemon": "^3.1.11",
+    "sinon": "^21.0.2",
+    "supertest": "^7.2.2"
   }
 }

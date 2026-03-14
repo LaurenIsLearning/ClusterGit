@@ -1,19 +1,18 @@
 export function getApiBaseUrl() {
   const host = window.location.hostname;
 
-  // Local dev
-  if (host === "localhost") {
+  // sends local dev to the local backend
+  if (host === "localhost" || host === "127.0.0.1" || host === "::1") {
     return "http://localhost:3000";
   }
 
-  // Preview deployments
+  // maps each pages preview to the matching cluster preview backend
   if (host.endsWith(".clustergit.pages.dev")) {
     const branch = host.split(".")[0].replace(/[^a-z0-9-]/gi, '').toLowerCase();
     return `https://${branch}.clustergit.com`;
   }
 
-  // Production (clustergit.com frontend → develop.clustergit.com backend)
-  // clustergit.com is Cloudflare Pages so API calls must go to the cluster directly
+  // keeps production frontend talking to the cluster backend instead of pages itself
   if (host === "clustergit.com") {
     return "https://develop.clustergit.com";
   }
