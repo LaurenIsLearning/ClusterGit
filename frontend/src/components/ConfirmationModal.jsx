@@ -1,4 +1,4 @@
-import { AlertTriangle, X } from 'lucide-react';
+import { AlertTriangle } from 'lucide-react';
 import { createPortal } from 'react-dom';
 
 export default function ConfirmationModal({
@@ -13,8 +13,14 @@ export default function ConfirmationModal({
     if (!isOpen) return null;
 
     return createPortal(
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm animate-fade-in">
-            <div className="w-full max-w-sm bg-[--bg-secondary] border border-[--border-color] rounded-xl shadow-2xl p-6 scale-in-center">
+        <div
+            className="fixed inset-0 z-[60] flex items-center justify-center overlay-scrim animate-fade-in p-4"
+            onClick={onClose}
+        >
+            <div
+                className="modal-panel w-full max-w-sm rounded-2xl p-6 scale-in-center"
+                onClick={(e) => e.stopPropagation()}
+            >
                 <div className="flex justify-between items-start mb-4">
                     <div className="flex items-center gap-3">
                         <div className={`p-2 rounded-full ${confirmStyle === 'danger' ? 'bg-red-500/10 text-red-500' : 'bg-blue-500/10 text-blue-500'}`}>

@@ -4,6 +4,35 @@ import authMiddleware from "../middleware/authMiddleware.js";
 
 const router = express.Router();
 
+async function upsertRepoFileMetadata({
+    repoId,
+    commitId,
+    authorId,
+    annexKey,
+    sizeBytes,
+    originalName,
+    mimeType
+}) {
+    if (!originalName) return null;
+
+    const { error } = await supabase
+        .from("repo_files")
+        .upsert({
+            repo_id: repoId,
+            latest_commit_id: commitId,
+            uploaded_by: authorId,
+            annex_key: annexKey || null,
+            file_path: originalName,
+            original_name: originalName,
+            mime_type: mimeType || null,
+            size_bytes: Number.isFinite(Number(sizeBytes)) ? Number(sizeBytes) : 0,
+            status: "synced",
+            uploaded_at: new Date().toISOString()
+        }, { onConflict: "repo_id,file_path" });
+
+    return error || null;
+}
+
 // RECORD A COMMIT
 router.post("/:repo_id", authMiddleware, async (req, res) => {
     const { repo_id } = req.params;
@@ -22,7 +51,10 @@ router.post("/:repo_id", authMiddleware, async (req, res) => {
         to_ref,
         commit_count,
         file_count, // compatibility fallback
-        hook_source
+        hook_source,
+        original_name,
+        file_path,
+        mime_type
     } = req.body;
 
     const commitPayload = {
@@ -69,16 +101,36 @@ router.post("/:repo_id", authMiddleware, async (req, res) => {
         const parsedSizeBytes = Number(size_bytes);
         const { error: annexObjectError } = await supabase
             .from("annex_objects")
-            .insert({
+            .upsert({
                 repo_id,
                 annex_key: commitPayload.annex_key,
                 size_bytes: Number.isFinite(parsedSizeBytes) ? parsedSizeBytes : 0,
                 storage_backend: storage_backend || "git-annex"
-            });
+            }, { onConflict: "repo_id,annex_key" });
 
         if (annexObjectError) {
             console.error("Failed to persist annex object metadata:", annexObjectError);
         }
+    }
+
+    const derivedName = original_name
+        || file_path
+        || (typeof message === "string" && message.startsWith("Upload ")
+            ? message.replace(/^Upload\s+/, "").trim()
+            : null);
+
+    const repoFileError = await upsertRepoFileMetadata({
+        repoId: repo_id,
+        commitId: data?.id || null,
+        authorId,
+        annexKey: commitPayload.annex_key,
+        sizeBytes: size_bytes,
+        originalName: derivedName,
+        mimeType: mime_type
+    });
+
+    if (repoFileError) {
+        console.error("Failed to persist repo file metadata:", repoFileError);
     }
 
     const { error: activityError } = await supabase

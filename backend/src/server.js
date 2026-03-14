@@ -1,7 +1,4 @@
-import express from "express";
-import cors from "cors";
-import dotenv from "dotenv";
-dotenv.config();
+import app from "./app.js";
 
 import authRoutes from "./routes/auth.js";
 import repoRoutes from "./routes/repos.js";
@@ -17,7 +14,7 @@ process.on("uncaughtException", err => {
   console.error("Uncaught Exception:", err);
 });
 
-process.on("unhandledRejection", err => {
+process.on("unhandledRejection", (err) => {
   console.error("Unhandled Rejection:", err);
 });
 
@@ -72,10 +69,8 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: "Internal server error" });
 });
 
-const PORT = process.env.PORT || 8080; //guarantees backend always starts
+const PORT = process.env.PORT || 80; //guarantees backend always starts
 
 app.listen(PORT, () => {
   console.log(`ClusterGit API running on port ${PORT}`);
 });
-//rebuild
-// trigger deploy 14
