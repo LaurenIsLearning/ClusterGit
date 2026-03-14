@@ -119,6 +119,8 @@ export default function StudentProjects() {
     const getCloneUrl = (project) => {
         if (!project) return '';
         return `http://develop.clustergit.com/${project.owner_id}/${project.name}.git`;
+    };
+
     const handleDeleteFile = async (file) => {
         if (!currentProject) return;
 
