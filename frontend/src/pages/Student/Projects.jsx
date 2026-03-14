@@ -86,7 +86,7 @@ export default function StudentProjects() {
 
     const getCloneUrl = (project) => {
         if (!project) return '';
-        return `${window.location.origin}/${project.owner_id}/${project.name}.git`;
+        return `http://develop.clustergit.com/${project.owner_id}/${project.name}.git`;
     };
 
     if (loading) return <div className="p-10 text-center">Loading projects...</div>;
