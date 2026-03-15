@@ -6,8 +6,12 @@ import authRoutes from "./routes/auth.js";
 import repoRoutes from "./routes/repos.js";
 import commitRoutes from "./routes/commits.js";
 import adminRoutes from "./routes/admin.js";
+import gitHttpRoutes from "./routes/gitHttp.js";
 
 const app = express();
+
+// Git Smart HTTP routes BEFORE body parsers — they exchange raw binary streams
+app.use("/git", gitHttpRoutes);
 
 app.use(cors({
   origin: function (origin, callback) {
