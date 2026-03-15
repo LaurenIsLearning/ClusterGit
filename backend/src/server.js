@@ -12,7 +12,7 @@ const PORT = process.env.PORT || 80;
 
 app.listen(PORT, () => {
   console.log(`ClusterGit API running on port ${PORT}`);
-}); on('error', (err) => {
+}).on('error', (err) => {
   console.error('Listen error:', err);
   process.exit(1);
 })
