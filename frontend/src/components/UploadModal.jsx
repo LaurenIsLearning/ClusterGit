@@ -24,7 +24,7 @@ export default function UploadModal({ project, projectId, isOpen, onClose, onCom
         }
     };
 
-    // Let the user cancel their upload if taking too long
+    // let the user back out cleanly if the upload stalls.
     const cancelUpload = () => {
         setStatus('idle');
         setProgress(0);
@@ -58,11 +58,11 @@ export default function UploadModal({ project, projectId, isOpen, onClose, onCom
     if (!isOpen) return null;
 
     return createPortal(
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-            <div className="w-full max-w-md bg-[--bg-secondary] border border-[--border-color] rounded-xl shadow-2xl p-6">
+        <div className="fixed inset-0 z-50 flex items-center justify-center overlay-scrim p-4">
+            <div className="modal-panel w-full max-w-md rounded-2xl p-6">
                 <div className="flex justify-between items-center mb-6">
                     <h2 className="text-xl font-bold">Upload to {project}</h2>
-                    <button onClick={onClose}><X className="w-5 h-5" /></button>
+                    <button onClick={onClose} className="p-2 rounded-lg hover:bg-[--bg-tertiary]"><X className="w-5 h-5" /></button>
                 </div>
 
                 {status === 'idle' ? (
