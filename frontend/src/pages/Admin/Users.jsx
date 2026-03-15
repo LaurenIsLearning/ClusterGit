@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import DashboardLayout from '../../layouts/DashboardLayout';
 import adminService from '../../services/adminService';
+import { userService } from '../../services/userService';
 
 function formatBytes(bytes) {
   if (!Number.isFinite(bytes) || bytes < 0) return '0 B';
@@ -54,6 +55,7 @@ function RepoFilesTable({ files }) {
 
 export default function Users() {
   const [users, setUsers] = useState([]);
+  const [search, setSearch] = useState('');
   const [environmentKey, setEnvironmentKey] = useState('unknown');
   const [selectedUserId, setSelectedUserId] = useState(null);
   const [loadingUsers, setLoadingUsers] = useState(true);
@@ -68,7 +70,28 @@ export default function Users() {
     email: '',
     password: '',
     displayName: '',
+    role: 'student',
+    quotaMb: '20480',
     submitting: false,
+    error: '',
+  });
+  const [editState, setEditState] = useState({
+    open: false,
+    userId: '',
+    email: '',
+    displayName: '',
+    role: 'student',
+    quotaMb: '',
+    usedBytes: '',
+    lastActiveAt: '',
+    submitting: false,
+    error: '',
+  });
+  const [deleteState, setDeleteState] = useState({
+    open: false,
+    userId: '',
+    label: '',
+    deleting: false,
     error: '',
   });
   const [quotaState, setQuotaState] = useState({
@@ -84,6 +107,17 @@ export default function Users() {
     () => users.find((user) => user.id === selectedUserId) || null,
     [users, selectedUserId],
   );
+
+  const filteredUsers = useMemo(() => {
+    const query = search.trim().toLowerCase();
+    if (!query) return users;
+    return users.filter((user) => {
+      const displayName = String(user.display_name || user.name || '').toLowerCase();
+      const email = String(user.email || '').toLowerCase();
+      const role = String(user.role || '').toLowerCase();
+      return displayName.includes(query) || email.includes(query) || role.includes(query);
+    });
+  }, [users, search]);
 
   useEffect(() => {
     let mounted = true;
@@ -218,6 +252,8 @@ export default function Users() {
       email: '',
       password: '',
       displayName: '',
+      role: 'student',
+      quotaMb: '20480',
       submitting: false,
       error: '',
     });
@@ -232,24 +268,125 @@ export default function Users() {
     }));
   };
 
+  const openEditModal = (user) => {
+    setEditState({
+      open: true,
+      userId: user.id,
+      email: user.email || '',
+      displayName: user.display_name || user.name || '',
+      role: user.role || 'student',
+      quotaMb: user.storage_quota_mb != null ? String(user.storage_quota_mb) : '0',
+      usedBytes: String(user.storage_used_bytes ?? 0),
+      lastActiveAt: user.last_active_at ? new Date(user.last_active_at).toISOString().slice(0, 16) : '',
+      submitting: false,
+      error: '',
+    });
+  };
+
+  const closeEditModal = () => {
+    setEditState({
+      open: false,
+      userId: '',
+      email: '',
+      displayName: '',
+      role: 'student',
+      quotaMb: '',
+      usedBytes: '',
+      lastActiveAt: '',
+      submitting: false,
+      error: '',
+    });
+  };
+
+  const openDeleteModal = (user) => {
+    setDeleteState({
+      open: true,
+      userId: user.id,
+      label: user.display_name || user.name || user.email || 'this user',
+      deleting: false,
+      error: '',
+    });
+  };
+
+  const closeDeleteModal = () => {
+    setDeleteState({
+      open: false,
+      userId: '',
+      label: '',
+      deleting: false,
+      error: '',
+    });
+  };
+
   const handleCreateUser = async (event) => {
     event.preventDefault();
     setCreateState((current) => ({ ...current, submitting: true, error: '' }));
 
     try {
-      const created = await adminService.createStudent({
+      const created = await userService.createUser({
         email: createState.email.trim(),
         password: createState.password,
         display_name: createState.displayName.trim(),
+        role: createState.role,
+        storage_quota_bytes: Math.round(Number(createState.quotaMb || 0) * 1024 * 1024),
       });
 
       closeCreateModal();
-      await refreshUsers(created?.user?.id || selectedUserId);
+      await refreshUsers(created?.user_id || created?.id || selectedUserId);
     } catch (error) {
       setCreateState((current) => ({
         ...current,
         submitting: false,
         error: error.message || 'failed to create user',
+      }));
+    }
+  };
+
+  const handleEditUser = async (event) => {
+    event.preventDefault();
+    setEditState((current) => ({ ...current, submitting: true, error: '' }));
+
+    try {
+      await userService.updateUser(editState.userId, {
+        display_name: editState.displayName.trim() || null,
+        role: editState.role,
+        storage_quota_bytes: Math.round(Number(editState.quotaMb || 0) * 1024 * 1024),
+        storage_used_bytes: Number(editState.usedBytes || 0),
+        last_active_at: editState.lastActiveAt || null,
+      });
+
+      closeEditModal();
+      await refreshUsers(editState.userId);
+      if (editState.userId === selectedUserId) {
+        const detail = await adminService.getUserDetail(editState.userId);
+        setSelectedUser(detail);
+      }
+    } catch (error) {
+      setEditState((current) => ({
+        ...current,
+        submitting: false,
+        error: error.message || 'failed to update user',
+      }));
+    }
+  };
+
+  const handleDeleteUser = async () => {
+    setDeleteState((current) => ({ ...current, deleting: true, error: '' }));
+
+    try {
+      const deletedUserId = deleteState.userId;
+      await userService.deleteUser(deletedUserId);
+      closeDeleteModal();
+      const fallbackUser = users.find((user) => user.id !== deletedUserId);
+      await refreshUsers(fallbackUser?.id || null);
+      if (selectedUserId === deletedUserId) {
+        setSelectedUser(null);
+      }
+    } catch (error) {
+      setDeleteState((current) => ({
+        ...current,
+        deleting: false,
+        error: error.message || 'failed to delete user',
       }));
     }
   };
@@ -329,6 +466,13 @@ export default function Users() {
           <section className="users-panel users-list-panel">
             <div className="users-panel-header">
               <h2>students</h2>
+              <input
+                type="text"
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                className="users-search-input"
+                placeholder="search users..."
+              />
             </div>
 
             {loadingUsers ? <div className="users-empty">loading users...</div> : null}
@@ -337,9 +481,9 @@ export default function Users() {
               <div className="users-empty">no users found</div>
             ) : null}
 
-            {!loadingUsers && !usersError && users.length > 0 ? (
+            {!loadingUsers && !usersError && filteredUsers.length > 0 ? (
               <div className="users-list">
-                {users.map((user) => {
+                {filteredUsers.map((user) => {
                   const isSelected = user.id === selectedUserId;
                   const isReady = Boolean(user.ready_for_review || user.has_review_request);
 
@@ -380,15 +524,33 @@ export default function Users() {
                     <h2>{selectedUser.profile?.display_name || selectedUser.profile?.email || 'user profile'}</h2>
                     <p>{selectedUser.profile?.email || 'no email available'}</p>
                   </div>
-                  {selectedUserSummary ? (
-                    <button
-                      type="button"
-                      className="users-secondary-btn"
-                      onClick={() => openQuotaModal(selectedUserSummary)}
-                    >
-                      set quota
-                    </button>
-                  ) : null}
+                  <div className="users-detail-actions">
+                    {selectedUserSummary ? (
+                      <>
+                        <button
+                          type="button"
+                          className="users-secondary-btn"
+                          onClick={() => openEditModal(selectedUserSummary)}
+                        >
+                          edit user
+                        </button>
+                        <button
+                          type="button"
+                          className="users-secondary-btn"
+                          onClick={() => openQuotaModal(selectedUserSummary)}
+                        >
+                          set quota
+                        </button>
+                        <button
+                          type="button"
+                          className="users-secondary-btn users-danger-btn"
+                          onClick={() => openDeleteModal(selectedUserSummary)}
+                        >
+                          delete user
+                        </button>
+                      </>
+                    ) : null}
+                  </div>
                 </div>
 
                 <div className="users-profile-grid">
@@ -520,6 +682,29 @@ export default function Users() {
                   />
                 </label>
 
+                <label>
+                  <span>role</span>
+                  <select
+                    value={createState.role}
+                    onChange={(event) => setCreateState((current) => ({ ...current, role: event.target.value }))}
+                  >
+                    <option value="student">student</option>
+                    <option value="instructor">instructor</option>
+                    <option value="admin">admin</option>
+                  </select>
+                </label>
+
+                <label>
+                  <span>quota mb</span>
+                  <input
+                    type="number"
+                    min="0"
+                    step="1"
+                    value={createState.quotaMb}
+                    onChange={(event) => setCreateState((current) => ({ ...current, quotaMb: event.target.value }))}
+                  />
+                </label>
+
                 {createState.error ? <div className="users-error">{createState.error}</div> : null}
 
                 <div className="users-modal-actions">
@@ -528,6 +713,89 @@ export default function Users() {
                   </button>
                   <button type="submit" className="users-primary-btn" disabled={createState.submitting}>
                     {createState.submitting ? 'creating...' : 'create user'}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        ) : null}
+
+        {editState.open ? (
+          <div className="users-modal-backdrop" role="presentation" onClick={closeEditModal}>
+            <div className="users-modal" role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
+              <div className="users-modal-header">
+                <h2>edit user</h2>
+                <button type="button" className="users-close-btn" onClick={closeEditModal}>
+                  close
+                </button>
+              </div>
+
+              <form className="users-form" onSubmit={handleEditUser}>
+                <label>
+                  <span>email</span>
+                  <input type="text" value={editState.email} readOnly />
+                </label>
+
+                <label>
+                  <span>display name</span>
+                  <input
+                    type="text"
+                    value={editState.displayName}
+                    onChange={(event) => setEditState((current) => ({ ...current, displayName: event.target.value }))}
+                  />
+                </label>
+
+                <label>
+                  <span>role</span>
+                  <select
+                    value={editState.role}
+                    onChange={(event) => setEditState((current) => ({ ...current, role: event.target.value }))}
+                  >
+                    <option value="student">student</option>
+                    <option value="instructor">instructor</option>
+                    <option value="admin">admin</option>
+                  </select>
+                </label>
+
+                <label>
+                  <span>quota mb</span>
+                  <input
+                    type="number"
+                    min="0"
+                    step="1"
+                    value={editState.quotaMb}
+                    onChange={(event) => setEditState((current) => ({ ...current, quotaMb: event.target.value }))}
+                  />
+                </label>
+
+                <label>
+                  <span>used bytes</span>
+                  <input
+                    type="number"
+                    min="0"
+                    step="1"
+                    value={editState.usedBytes}
+                    onChange={(event) => setEditState((current) => ({ ...current, usedBytes: event.target.value }))}
+                  />
+                </label>
+
+                <label>
+                  <span>last active</span>
+                  <input
+                    type="datetime-local"
+                    value={editState.lastActiveAt}
+                    onChange={(event) => setEditState((current) => ({ ...current, lastActiveAt: event.target.value }))}
+                  />
+                </label>
+
+                {editState.error ? <div className="users-error">{editState.error}</div> : null}
+
+                <div className="users-modal-actions">
+                  <button type="button" className="users-secondary-btn" onClick={closeEditModal}>
+                    cancel
+                  </button>
+                  <button type="submit" className="users-primary-btn" disabled={editState.submitting}>
+                    {editState.submitting ? 'saving...' : 'save user'}
                   </button>
                 </div>
               </form>
@@ -579,6 +847,36 @@ export default function Users() {
                   </button>
                 </div>
               </form>
+            </div>
+          </div>
+        ) : null}
+
+        {deleteState.open ? (
+          <div className="users-modal-backdrop" role="presentation" onClick={closeDeleteModal}>
+            <div className="users-modal" role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
+              <div className="users-modal-header">
+                <h2>delete user</h2>
+                <button type="button" className="users-close-btn" onClick={closeDeleteModal}>
+                  close
+                </button>
+              </div>
+              <div className="users-form">
+                <p>are you sure you want to delete {deleteState.label}?</p>
+                {deleteState.error ? <div className="users-error">{deleteState.error}</div> : null}
+                <div className="users-modal-actions">
+                  <button type="button" className="users-secondary-btn" onClick={closeDeleteModal}>
+                    cancel
+                  </button>
+                  <button
+                    type="button"
+                    className="users-primary-btn users-danger-btn"
+                    disabled={deleteState.deleting}
+                    onClick={handleDeleteUser}
+                  >
+                    {deleteState.deleting ? 'deleting...' : 'delete user'}
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
         ) : null}
