@@ -6,18 +6,18 @@ import { useAuth } from "../context/AuthContext";
 export default function PublicLayout() {
     const { user } = useApp();
 
-    function AuthDebug() {
-        const { user, role, loading, authError } = useAuth();
-        return (
-            <pre style={{ fontSize: 12, opacity: 0.7, padding: 8 }}>
-            {JSON.stringify(
-                { hasUser: !!user, userId: user?.id, role, loading, authError },
-                null,
-                2
-            )}
-            </pre>
-        );
-    }
+    // function AuthDebug() {
+    //     const { user, role, loading, authError } = useAuth();
+    //     return (
+    //         <pre style={{ fontSize: 12, opacity: 0.7, padding: 8 }}>
+    //         {JSON.stringify(
+    //             { hasUser: !!user, userId: user?.id, role, loading, authError },
+    //             null,
+    //             2
+    //         )}
+    //         </pre>
+    //     );
+    // }
 
     return (
         <div className="flex flex-col min-h-screen bg-[--bg-primary] text-[--text-primary]">
@@ -42,7 +42,7 @@ export default function PublicLayout() {
             </header>
 
             <main className="flex-1 w-full pt-20">
-                <AuthDebug />
+                {/* <AuthDebug /> */}
                 <Outlet />
             </main>
 

@@ -6,6 +6,7 @@ dotenv.config();
 import authRoutes from "./routes/auth.js";
 import repoRoutes from "./routes/repos.js";
 import commitRoutes from "./routes/commits.js";
+import adminUsers from "./routes/adminUsers.js";
 
 const app = express();
 
@@ -52,6 +53,7 @@ app.get("/", (req, res) => {
 app.use("/api/auth", authRoutes);
 app.use("/api/repos", repoRoutes);
 app.use("/api/commits", commitRoutes);
+app.use("/api/admin/users", adminUsers);
 
 // Error handler (helps with white screen)
 app.use((err, req, res, next) => {

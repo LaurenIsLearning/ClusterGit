@@ -3,7 +3,7 @@ export function getApiBaseUrl() {
 
   // Local dev
   if (host === "localhost") {
-    return "http://localhost:3000";
+    return "http://localhost:8080"; //TODO: Make pull the PORT env var
   }
 
   // Preview deployments
