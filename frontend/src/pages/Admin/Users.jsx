@@ -1,505 +1,588 @@
-import { useEffect, useMemo, useState } from "react";
-import {
-  Users,
-  Search,
-  HelpCircle,
-  Pencil,
-  Trash2,
-  Plus,
-  X,
-} from "lucide-react";
-import ConfirmationModal from "../../components/ConfirmationModal";
-import { useToast } from "../../context/ToastContext";
-import { userService } from "../../services/userService";
-
-const emptyForm = {
-  email: "",
-  password: "",
-  display_name: "",
-  role: "student",
-  storage_quota_bytes: 21474836480, // 20 GB
-  storage_used_bytes: 0,
-  last_active_at: "",
-};
+import { useEffect, useMemo, useState } from 'react';
+import DashboardLayout from '../../layouts/DashboardLayout';
+import adminService from '../../services/adminService';
 
 function formatBytes(bytes) {
-  const value = Number(bytes ?? 0);
-  if (!Number.isFinite(value) || value < 0) return "0 B";
-
-  const units = ["B", "KB", "MB", "GB", "TB"];
-  let size = value;
-  let unitIndex = 0;
-
-  while (size >= 1024 && unitIndex < units.length - 1) {
-    size /= 1024;
-    unitIndex += 1;
-  }
-
-  return `${size.toFixed(size >= 10 || unitIndex === 0 ? 0 : 1)} ${units[unitIndex]}`;
+  if (!Number.isFinite(bytes) || bytes < 0) return '0 B';
+  if (bytes === 0) return '0 B';
+  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+  const exp = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
+  const value = bytes / (1024 ** exp);
+  return `${value.toFixed(value >= 10 || exp === 0 ? 0 : 1)} ${units[exp]}`;
 }
 
 function formatDate(value) {
-  if (!value) return "Never";
-
+  if (!value) return 'never';
   const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "Unknown";
-
+  if (Number.isNaN(date.getTime())) return 'unknown';
   return date.toLocaleString();
 }
 
-export default function AdminUsers() {
-  const { addToast } = useToast();
+function normalizeGitPath(path) {
+  if (!path) return '';
+  return path.replace(/\\/g, '/');
+}
 
-  const [users, setUsers] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [pageError, setPageError] = useState("");
-
-  const [search, setSearch] = useState("");
-
-  const [isFormOpen, setIsFormOpen] = useState(false);
-  const [editingUser, setEditingUser] = useState(null);
-  const [formData, setFormData] = useState(emptyForm);
-  const [saving, setSaving] = useState(false);
-
-  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
-  const [selectedUser, setSelectedUser] = useState(null);
-  const [deleting, setDeleting] = useState(false);
-
-  async function loadUsers() {
-    setLoading(true);
-    setPageError("");
-
-    try {
-      const data = await userService.listUsers();
-      setUsers(Array.isArray(data) ? data : []);
-    } catch (error) {
-      console.error("[AdminUsers] loadUsers error:", error);
-      setPageError(error.message || "Failed to load users");
-      addToast(error.message || "Failed to load users", "error");
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  useEffect(() => {
-    loadUsers();
-  }, []);
-
-  const filteredUsers = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    if (!q) return users;
-
-    return users.filter((user) => {
-      const displayName = String(user.display_name ?? "").toLowerCase();
-      const email = String(user.email ?? "").toLowerCase();
-      const role = String(user.role ?? "").toLowerCase();
-      const userId = String(user.user_id ?? "").toLowerCase();
-
-      return (
-        displayName.includes(q) ||
-        email.includes(q) ||
-        role.includes(q) ||
-        userId.includes(q)
-      );
-    });
-  }, [users, search]);
-
-  function openCreateForm() {
-    setEditingUser(null);
-    setFormData(emptyForm);
-    setIsFormOpen(true);
-  }
-
-  function openEditForm(user) {
-    setEditingUser(user);
-    setFormData({
-      email: user.email ?? "",
-      password: "",
-      display_name: user.display_name ?? "",
-      role: user.role ?? "student",
-      storage_quota_bytes: Number(user.storage_quota_bytes ?? 21474836480),
-      storage_used_bytes: Number(user.storage_used_bytes ?? 0),
-      last_active_at: user.last_active_at
-        ? new Date(user.last_active_at).toISOString().slice(0, 16)
-        : "",
-    });
-    setIsFormOpen(true);
-  }
-
-  function closeForm() {
-    setIsFormOpen(false);
-    setEditingUser(null);
-    setFormData(emptyForm);
-  }
-
-  function handleFormChange(e) {
-    const { name, value } = e.target;
-
-    setFormData((prev) => ({
-      ...prev,
-      [name]:
-        name === "storage_quota_bytes" || name === "storage_used_bytes"
-          ? value === ""
-            ? ""
-            : Number(value)
-          : value,
-    }));
-  }
-
-  async function handleSaveUser(e) {
-    e.preventDefault();
-    setSaving(true);
-
-    try {
-      if (editingUser) {
-        const updates = {
-          display_name: formData.display_name.trim() || null,
-          role: formData.role,
-          storage_quota_bytes: Number(formData.storage_quota_bytes || 0),
-          storage_used_bytes: Number(formData.storage_used_bytes || 0),
-          last_active_at: formData.last_active_at || null,
-        };
-
-        await userService.updateUser(editingUser.user_id, updates);
-        addToast("User updated successfully.", "success");
-      } else {
-        if (!formData.email.trim()) {
-          throw new Error("Email is required");
-        }
-        if (!formData.password.trim()) {
-          throw new Error("Password is required");
-        }
-
-        const payload = {
-          email: formData.email.trim(),
-          password: formData.password,
-          display_name: formData.display_name.trim() || null,
-          role: formData.role,
-          storage_quota_bytes: Number(formData.storage_quota_bytes || 0),
-          storage_used_bytes: Number(formData.storage_used_bytes || 0),
-          last_active_at: formData.last_active_at || null,
-        };
-
-        await userService.createUser(payload);
-        addToast("User created successfully.", "success");
-      }
-
-      closeForm();
-      await loadUsers();
-    } catch (error) {
-      console.error("[AdminUsers] handleSaveUser error:", error);
-      addToast(error.message || "Failed to save user", "error");
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  function handleDeleteClick(user) {
-    setSelectedUser(user);
-    setIsDeleteModalOpen(true);
-  }
-
-  async function handleConfirmDelete() {
-    if (!selectedUser) return;
-
-    setDeleting(true);
-    try {
-      await userService.deleteUser(selectedUser.user_id);
-      addToast(`Deleted ${selectedUser.display_name || selectedUser.email || "user"}`, "success");
-      setIsDeleteModalOpen(false);
-      setSelectedUser(null);
-      await loadUsers();
-    } catch (error) {
-      console.error("[AdminUsers] delete error:", error);
-      addToast(error.message || "Failed to delete user", "error");
-    } finally {
-      setDeleting(false);
-    }
+function RepoFilesTable({ files }) {
+  if (!files.length) {
+    return <div className="users-empty-subtle">no tracked files</div>;
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex justify-between items-center gap-4">
-        <h1 className="text-3xl font-bold">User Management</h1>
-        <button className="btn btn-primary flex items-center gap-2" onClick={openCreateForm}>
-          <Plus className="w-4 h-4" />
-          Add User
-        </button>
-      </div>
+    <div className="users-files-table-wrapper">
+      <table className="users-files-table">
+        <thead>
+          <tr>
+            <th>file</th>
+            <th>size</th>
+            <th>last modified</th>
+          </tr>
+        </thead>
+        <tbody>
+          {files.map((file) => (
+            <tr key={`${file.path}-${file.last_modified || 'unknown'}`}>
+              <td>{file.path || 'unknown'}</td>
+              <td>{formatBytes(file.size_bytes || 0)}</td>
+              <td>{formatDate(file.last_modified)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
 
-      {isFormOpen && (
-        <div className="card p-6 space-y-4">
-          <div className="flex justify-between items-center">
-            <h2 className="text-xl font-semibold">
-              {editingUser ? "Edit User" : "Create User"}
-            </h2>
-            <button
-              type="button"
-              onClick={closeForm}
-              className="text-[--text-secondary] hover:text-[--text-primary]"
-            >
-              <X className="w-5 h-5" />
+export default function Users() {
+  const [users, setUsers] = useState([]);
+  const [environmentKey, setEnvironmentKey] = useState('unknown');
+  const [selectedUserId, setSelectedUserId] = useState(null);
+  const [loadingUsers, setLoadingUsers] = useState(true);
+  const [usersError, setUsersError] = useState('');
+  const [selectedUser, setSelectedUser] = useState(null);
+  const [loadingDetail, setLoadingDetail] = useState(false);
+  const [detailError, setDetailError] = useState('');
+  const [copiedRepoId, setCopiedRepoId] = useState(null);
+  const [inspectState, setInspectState] = useState({});
+  const [createState, setCreateState] = useState({
+    open: false,
+    email: '',
+    password: '',
+    displayName: '',
+    submitting: false,
+    error: '',
+  });
+  const [quotaState, setQuotaState] = useState({
+    open: false,
+    userId: '',
+    email: '',
+    quotaMb: '',
+    submitting: false,
+    error: '',
+  });
+
+  const selectedUserSummary = useMemo(
+    () => users.find((user) => user.id === selectedUserId) || null,
+    [users, selectedUserId],
+  );
+
+  useEffect(() => {
+    let mounted = true;
+
+    const loadUsers = async () => {
+      try {
+        setLoadingUsers(true);
+        setUsersError('');
+        const data = await adminService.listUsers();
+        if (!mounted) return;
+
+        const nextUsers = Array.isArray(data?.users) ? data.users : [];
+        setUsers(nextUsers);
+        setEnvironmentKey(data?.environment_key || 'unknown');
+
+        if (nextUsers.length > 0) {
+          setSelectedUserId((current) => current || nextUsers[0].id);
+        } else {
+          setSelectedUserId(null);
+        }
+      } catch (error) {
+        if (!mounted) return;
+        setUsers([]);
+        setSelectedUserId(null);
+        setUsersError(error.message || 'failed to load users');
+      } finally {
+        if (mounted) setLoadingUsers(false);
+      }
+    };
+
+    loadUsers();
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!selectedUserId) {
+      setSelectedUser(null);
+      setDetailError('');
+      return;
+    }
+
+    let mounted = true;
+
+    const loadUserDetail = async () => {
+      try {
+        setLoadingDetail(true);
+        setDetailError('');
+        const data = await adminService.getUserDetail(selectedUserId);
+        if (!mounted) return;
+        setSelectedUser(data);
+      } catch (error) {
+        if (!mounted) return;
+        setSelectedUser(null);
+        setDetailError(error.message || 'failed to load user detail');
+      } finally {
+        if (mounted) setLoadingDetail(false);
+      }
+    };
+
+    loadUserDetail();
+    return () => {
+      mounted = false;
+    };
+  }, [selectedUserId]);
+
+  useEffect(() => {
+    if (!copiedRepoId) return undefined;
+    const timeout = setTimeout(() => setCopiedRepoId(null), 1800);
+    return () => clearTimeout(timeout);
+  }, [copiedRepoId]);
+
+  const refreshUsers = async (preferredSelectedUserId = selectedUserId) => {
+    setLoadingUsers(true);
+    setUsersError('');
+    try {
+      const data = await adminService.listUsers();
+      const nextUsers = Array.isArray(data?.users) ? data.users : [];
+      setUsers(nextUsers);
+      setEnvironmentKey(data?.environment_key || 'unknown');
+
+      if (nextUsers.length === 0) {
+        setSelectedUserId(null);
+        return;
+      }
+
+      const preferredExists = nextUsers.some((user) => user.id === preferredSelectedUserId);
+      setSelectedUserId(preferredExists ? preferredSelectedUserId : nextUsers[0].id);
+    } catch (error) {
+      setUsersError(error.message || 'failed to load users');
+    } finally {
+      setLoadingUsers(false);
+    }
+  };
+
+  const handleCopyCloneUrl = async (repo) => {
+    const cloneUrl = repo.clone_url || repo.cloneUrl || '';
+    if (!cloneUrl) return;
+
+    try {
+      await navigator.clipboard.writeText(cloneUrl);
+      setCopiedRepoId(repo.id);
+    } catch (error) {
+      setDetailError(error.message || 'failed to copy clone url');
+    }
+  };
+
+  const handleInspectRepo = async (repoId) => {
+    setInspectState((current) => ({
+      ...current,
+      [repoId]: { loading: true, error: '', data: null },
+    }));
+
+    try {
+      const data = await adminService.inspectRepo(repoId);
+      setInspectState((current) => ({
+        ...current,
+        [repoId]: { loading: false, error: '', data },
+      }));
+    } catch (error) {
+      setInspectState((current) => ({
+        ...current,
+        [repoId]: { loading: false, error: error.message || 'failed to inspect repo', data: null },
+      }));
+    }
+  };
+
+  const openCreateModal = () => {
+    setCreateState({
+      open: true,
+      email: '',
+      password: '',
+      displayName: '',
+      submitting: false,
+      error: '',
+    });
+  };
+
+  const closeCreateModal = () => {
+    setCreateState((current) => ({
+      ...current,
+      open: false,
+      submitting: false,
+      error: '',
+    }));
+  };
+
+  const handleCreateUser = async (event) => {
+    event.preventDefault();
+    setCreateState((current) => ({ ...current, submitting: true, error: '' }));
+
+    try {
+      const created = await adminService.createStudent({
+        email: createState.email.trim(),
+        password: createState.password,
+        display_name: createState.displayName.trim(),
+      });
+
+      closeCreateModal();
+      await refreshUsers(created?.user?.id || selectedUserId);
+    } catch (error) {
+      setCreateState((current) => ({
+        ...current,
+        submitting: false,
+        error: error.message || 'failed to create user',
+      }));
+    }
+  };
+
+  const openQuotaModal = (user) => {
+    setQuotaState({
+      open: true,
+      userId: user.id,
+      email: user.email || '',
+      quotaMb: user.storage_quota_mb != null ? String(user.storage_quota_mb) : '',
+      submitting: false,
+      error: '',
+    });
+  };
+
+  const closeQuotaModal = () => {
+    setQuotaState({
+      open: false,
+      userId: '',
+      email: '',
+      quotaMb: '',
+      submitting: false,
+      error: '',
+    });
+  };
+
+  const handleSaveQuota = async (event) => {
+    event.preventDefault();
+    setQuotaState((current) => ({ ...current, submitting: true, error: '' }));
+
+    try {
+      await adminService.setStorageQuota(quotaState.userId, Number(quotaState.quotaMb));
+      closeQuotaModal();
+      await refreshUsers(quotaState.userId);
+    } catch (error) {
+      setQuotaState((current) => ({
+        ...current,
+        submitting: false,
+        error: error.message || 'failed to update quota',
+      }));
+    }
+  };
+
+  const handleResetQuota = async () => {
+    setQuotaState((current) => ({ ...current, submitting: true, error: '' }));
+
+    try {
+      await adminService.resetStorageQuota(quotaState.userId);
+      closeQuotaModal();
+      await refreshUsers(quotaState.userId);
+    } catch (error) {
+      setQuotaState((current) => ({
+        ...current,
+        submitting: false,
+        error: error.message || 'failed to reset quota',
+      }));
+    }
+  };
+
+  return (
+    <DashboardLayout>
+      <div className="users-page">
+        <div className="users-header">
+          <div>
+            <h1>users</h1>
+            <p>review student accounts, quotas, repos, and file metadata</p>
+          </div>
+          <div className="users-header-actions">
+            <span className="users-environment-pill">env: {environmentKey}</span>
+            <button type="button" className="users-primary-btn" onClick={openCreateModal}>
+              create student
             </button>
           </div>
-
-          <form onSubmit={handleSaveUser} className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {!editingUser && (
-              <>
-                <div>
-                  <label className="block text-sm font-medium mb-2">Email</label>
-                  <input
-                    name="email"
-                    type="email"
-                    value={formData.email}
-                    onChange={handleFormChange}
-                    className="w-full px-3 py-2 rounded-md bg-[--bg-primary] border border-[--border-color]"
-                    placeholder="student@university.edu"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium mb-2">Temporary Password</label>
-                  <input
-                    name="password"
-                    type="password"
-                    value={formData.password}
-                    onChange={handleFormChange}
-                    className="w-full px-3 py-2 rounded-md bg-[--bg-primary] border border-[--border-color]"
-                    placeholder="At least 6 characters"
-                  />
-                </div>
-              </>
-            )}
-
-            <div>
-              <label className="block text-sm font-medium mb-2">Display Name</label>
-              <input
-                name="display_name"
-                value={formData.display_name}
-                onChange={handleFormChange}
-                className="w-full px-3 py-2 rounded-md bg-[--bg-primary] border border-[--border-color]"
-                placeholder="Student Name"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium mb-2">Role</label>
-              <select
-                name="role"
-                value={formData.role}
-                onChange={handleFormChange}
-                className="w-full px-3 py-2 rounded-md bg-[--bg-primary] border border-[--border-color]"
-              >
-                <option value="student">student</option>
-                <option value="instructor">instructor</option>
-                <option value="admin">admin</option>
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium mb-2">Storage Quota (bytes)</label>
-              <input
-                name="storage_quota_bytes"
-                type="number"
-                min="0"
-                value={formData.storage_quota_bytes}
-                onChange={handleFormChange}
-                className="w-full px-3 py-2 rounded-md bg-[--bg-primary] border border-[--border-color]"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium mb-2">Storage Used (bytes)</label>
-              <input
-                name="storage_used_bytes"
-                type="number"
-                min="0"
-                value={formData.storage_used_bytes}
-                onChange={handleFormChange}
-                className="w-full px-3 py-2 rounded-md bg-[--bg-primary] border border-[--border-color]"
-              />
-            </div>
-
-            <div className="md:col-span-2">
-              <label className="block text-sm font-medium mb-2">Last Active</label>
-              <input
-                name="last_active_at"
-                type="datetime-local"
-                value={formData.last_active_at}
-                onChange={handleFormChange}
-                className="w-full px-3 py-2 rounded-md bg-[--bg-primary] border border-[--border-color]"
-              />
-            </div>
-
-            <div className="md:col-span-2 flex gap-3">
-              <button type="submit" className="btn btn-primary" disabled={saving}>
-                {saving ? "Saving..." : editingUser ? "Update User" : "Create User"}
-              </button>
-              <button type="button" className="btn" onClick={closeForm} disabled={saving}>
-                Cancel
-              </button>
-            </div>
-          </form>
-        </div>
-      )}
-
-      <div className="card">
-        <div className="p-4 border-b border-[--border-color] flex justify-between items-center bg-[--bg-secondary] gap-4 flex-wrap">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[--text-muted]" />
-            <input
-              type="text"
-              placeholder="Search users..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="pl-9 pr-4 py-2 rounded-md bg-[--bg-primary] border border-[--border-color] text-sm focus:outline-none focus:border-[--accent-primary]"
-            />
-          </div>
-
-          <div className="flex gap-2">
-            <span
-              className="text-sm text-[--text-secondary] flex items-center gap-1"
-              title="Total users shown"
-            >
-              <Users className="w-4 h-4" /> {filteredUsers.length} Users
-            </span>
-          </div>
         </div>
 
-        {pageError && (
-          <div className="p-4 text-sm text-red-400 border-b border-[--border-color]">
-            {pageError}
-          </div>
-        )}
+        <div className="users-grid">
+          <section className="users-panel users-list-panel">
+            <div className="users-panel-header">
+              <h2>students</h2>
+            </div>
 
-        {loading ? (
-          <div className="p-6 text-sm text-[--text-secondary]">Loading users...</div>
-        ) : (
-          <table className="w-full text-left">
-            <thead className="text-xs uppercase text-[--text-muted] bg-[--bg-tertiary]">
-              <tr>
-                <th className="px-6 py-3">User</th>
-                <th
-                  className="px-6 py-3 flex items-center gap-1 group cursor-help"
-                  title="Storage used compared to assigned quota"
-                >
-                  Storage
-                  <HelpCircle className="w-3 h-3 opacity-50 group-hover:opacity-100" />
-                </th>
-                <th className="px-6 py-3">Role</th>
-                <th className="px-6 py-3">Last Active</th>
-                <th className="px-6 py-3">Created</th>
-                <th className="px-6 py-3 text-right">Actions</th>
-              </tr>
-            </thead>
+            {loadingUsers ? <div className="users-empty">loading users...</div> : null}
+            {!loadingUsers && usersError ? <div className="users-error">{usersError}</div> : null}
+            {!loadingUsers && !usersError && users.length === 0 ? (
+              <div className="users-empty">no users found</div>
+            ) : null}
 
-            <tbody className="divide-y divide-[--border-color]">
-              {filteredUsers.length === 0 ? (
-                <tr>
-                  <td colSpan="6" className="px-6 py-8 text-center text-sm text-[--text-secondary]">
-                    No users found.
-                  </td>
-                </tr>
-              ) : (
-                filteredUsers.map((user) => {
-                  const used = Number(user.storage_used_bytes ?? 0);
-                  const quota = Number(user.storage_quota_bytes ?? 0);
-                  const usagePct = quota > 0 ? Math.min((used / quota) * 100, 100) : 0;
+            {!loadingUsers && !usersError && users.length > 0 ? (
+              <div className="users-list">
+                {users.map((user) => {
+                  const isSelected = user.id === selectedUserId;
+                  const isReady = Boolean(user.ready_for_review || user.has_review_request);
 
                   return (
-                    <tr key={user.user_id} className="hover:bg-[--bg-tertiary]/20">
-                      <td className="px-6 py-4">
-                        <div className="flex items-center gap-3">
-                          <div className="w-8 h-8 rounded-full bg-blue-500/20 text-blue-500 flex items-center justify-center font-bold text-xs">
-                            {(user.display_name || user.email || "?").charAt(0).toUpperCase()}
-                          </div>
-                          <div>
-                            <p className="font-medium text-sm">
-                              {user.display_name || "Unnamed User"}
-                            </p>
-                            <p className="text-xs text-[--text-secondary]">
-                              {user.email || "No email"}
-                            </p>
-                            <p className="text-xs text-[--text-muted]">{user.user_id}</p>
-                          </div>
-                        </div>
-                      </td>
-
-                      <td className="px-6 py-4">
-                        <div className="w-48">
-                          <div className="flex justify-between text-xs mb-1">
-                            <span>{formatBytes(used)}</span>
-                            <span className="text-[--text-muted]">
-                              of {formatBytes(quota)}
-                            </span>
-                          </div>
-                          <div className="h-1.5 w-full bg-[--bg-primary] rounded-full overflow-hidden">
-                            <div
-                              className={`h-full rounded-full ${
-                                quota > 0 && used / quota > 0.9
-                                  ? "bg-[--status-error]"
-                                  : "bg-[--accent-primary]"
-                              }`}
-                              style={{ width: `${usagePct}%` }}
-                            />
-                          </div>
-                        </div>
-                      </td>
-
-                      <td className="px-6 py-4 text-sm">{user.role || "unknown"}</td>
-
-                      <td className="px-6 py-4 text-sm text-[--text-secondary]">
-                        {formatDate(user.last_active_at)}
-                      </td>
-
-                      <td className="px-6 py-4 text-sm text-[--text-secondary]">
-                        {formatDate(user.created_at)}
-                      </td>
-
-                      <td className="px-6 py-4 text-right">
-                        <div className="flex justify-end gap-3">
-                          <button
-                            onClick={() => openEditForm(user)}
-                            className="text-sm hover:underline inline-flex items-center gap-1"
-                          >
-                            <Pencil className="w-4 h-4" />
-                            Edit
-                          </button>
-
-                          <button
-                            onClick={() => handleDeleteClick(user)}
-                            className="text-[--status-error] text-sm hover:underline hover:text-red-400 inline-flex items-center gap-1"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                            Delete
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
+                    <button
+                      key={user.id}
+                      type="button"
+                      className={`users-list-item${isSelected ? ' is-selected' : ''}${isReady ? ' is-ready' : ''}`}
+                      onClick={() => setSelectedUserId(user.id)}
+                    >
+                      <div className="users-list-item-top">
+                        <strong>{user.display_name || user.email || 'unnamed user'}</strong>
+                        {isReady ? <span className="users-ready-pill">ready for review</span> : null}
+                      </div>
+                      <div className="users-list-item-meta">{user.email}</div>
+                      <div className="users-list-item-meta">
+                        quota: {user.storage_quota_mb ?? 0} mb
+                      </div>
+                    </button>
                   );
-                })
-              )}
-            </tbody>
-          </table>
-        )}
-      </div>
+                })}
+              </div>
+            ) : null}
+          </section>
 
-      <ConfirmationModal
-        isOpen={isDeleteModalOpen}
-        onClose={() => {
-          if (!deleting) {
-            setIsDeleteModalOpen(false);
-            setSelectedUser(null);
-          }
-        }}
-        onConfirm={handleConfirmDelete}
-        title="Delete User?"
-        message={`Are you sure you want to delete ${
-          selectedUser?.display_name || selectedUser?.email || "this user"
-        }?`}
-        confirmText={deleting ? "Deleting..." : "Delete User"}
-        confirmStyle="danger"
-      />
-    </div>
+          <section className="users-panel users-detail-panel">
+            {!selectedUserId ? (
+              <div className="users-empty">select a user to see profile and repos</div>
+            ) : null}
+
+            {selectedUserId && loadingDetail ? <div className="users-empty">loading user details...</div> : null}
+            {selectedUserId && !loadingDetail && detailError ? <div className="users-error">{detailError}</div> : null}
+
+            {selectedUserId && !loadingDetail && !detailError && selectedUser ? (
+              <>
+                <div className="users-panel-header users-detail-header">
+                  <div>
+                    <h2>{selectedUser.profile?.display_name || selectedUser.profile?.email || 'user profile'}</h2>
+                    <p>{selectedUser.profile?.email || 'no email available'}</p>
+                  </div>
+                  {selectedUserSummary ? (
+                    <button
+                      type="button"
+                      className="users-secondary-btn"
+                      onClick={() => openQuotaModal(selectedUserSummary)}
+                    >
+                      set quota
+                    </button>
+                  ) : null}
+                </div>
+
+                <div className="users-profile-grid">
+                  <div className="users-stat-card">
+                    <span>quota</span>
+                    <strong>{selectedUser.profile?.storage_quota_mb ?? 0} mb</strong>
+                  </div>
+                  <div className="users-stat-card">
+                    <span>used</span>
+                    <strong>{formatBytes(selectedUser.profile?.storage_used_bytes ?? 0)}</strong>
+                  </div>
+                  <div className="users-stat-card">
+                    <span>created</span>
+                    <strong>{formatDate(selectedUser.profile?.created_at)}</strong>
+                  </div>
+                  <div className="users-stat-card">
+                    <span>review status</span>
+                    <strong>
+                      {selectedUser.profile?.ready_for_review || selectedUser.profile?.has_review_request
+                        ? 'ready'
+                        : 'not requested'}
+                    </strong>
+                  </div>
+                </div>
+
+                <div className="users-repos-section">
+                  <div className="users-section-heading">
+                    <h3>repositories</h3>
+                    <span>{selectedUser.repositories?.length || 0} total</span>
+                  </div>
+
+                  {selectedUser.repositories?.length ? (
+                    selectedUser.repositories.map((repo) => {
+                      const inspect = inspectState[repo.id] || {};
+                      const files = Array.isArray(repo.files) ? repo.files : [];
+
+                      return (
+                        <article key={repo.id} className="users-repo-card">
+                          <div className="users-repo-header">
+                            <div>
+                              <h4>{repo.name || 'untitled repo'}</h4>
+                              <p>{repo.description || 'no description'}</p>
+                            </div>
+                            <div className="users-repo-actions">
+                              <button
+                                type="button"
+                                className="users-secondary-btn"
+                                onClick={() => handleCopyCloneUrl(repo)}
+                              >
+                                {copiedRepoId === repo.id ? 'copied' : 'copy clone url'}
+                              </button>
+                              <button
+                                type="button"
+                                className="users-secondary-btn"
+                                onClick={() => handleInspectRepo(repo.id)}
+                              >
+                                inspect repo
+                              </button>
+                            </div>
+                          </div>
+
+                          <div className="users-repo-meta">
+                            <span>path: {normalizeGitPath(repo.repo_path || repo.path || '') || 'unknown'}</span>
+                            <span>updated: {formatDate(repo.updated_at)}</span>
+                            <span>files: {files.length}</span>
+                          </div>
+
+                          <RepoFilesTable files={files} />
+
+                          {inspect.loading ? <div className="users-empty-subtle">inspecting repo...</div> : null}
+                          {inspect.error ? <div className="users-error-subtle">{inspect.error}</div> : null}
+                          {inspect.data ? (
+                            <div className="users-inspect-box">
+                              <div>git path: {normalizeGitPath(inspect.data.repo_path || '') || 'unknown'}</div>
+                              <div>bare repo: {inspect.data.bare_exists ? 'yes' : 'no'}</div>
+                              <div>annex branch: {inspect.data.git_annex_exists ? 'yes' : 'no'}</div>
+                              <div>head ref: {inspect.data.head_ref || 'unknown'}</div>
+                            </div>
+                          ) : null}
+                        </article>
+                      );
+                    })
+                  ) : (
+                    <div className="users-empty-subtle">this user has no repositories yet</div>
+                  )}
+                </div>
+              </>
+            ) : null}
+          </section>
+        </div>
+
+        {createState.open ? (
+          <div className="users-modal-backdrop" role="presentation" onClick={closeCreateModal}>
+            <div className="users-modal" role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
+              <div className="users-modal-header">
+                <h2>create student</h2>
+                <button type="button" className="users-close-btn" onClick={closeCreateModal}>
+                  close
+                </button>
+              </div>
+
+              <form className="users-form" onSubmit={handleCreateUser}>
+                <label>
+                  <span>email</span>
+                  <input
+                    type="email"
+                    value={createState.email}
+                    onChange={(event) => setCreateState((current) => ({ ...current, email: event.target.value }))}
+                    required
+                  />
+                </label>
+
+                <label>
+                  <span>password</span>
+                  <input
+                    type="password"
+                    value={createState.password}
+                    onChange={(event) => setCreateState((current) => ({ ...current, password: event.target.value }))}
+                    required
+                  />
+                </label>
+
+                <label>
+                  <span>display name</span>
+                  <input
+                    type="text"
+                    value={createState.displayName}
+                    onChange={(event) => setCreateState((current) => ({ ...current, displayName: event.target.value }))}
+                  />
+                </label>
+
+                {createState.error ? <div className="users-error">{createState.error}</div> : null}
+
+                <div className="users-modal-actions">
+                  <button type="button" className="users-secondary-btn" onClick={closeCreateModal}>
+                    cancel
+                  </button>
+                  <button type="submit" className="users-primary-btn" disabled={createState.submitting}>
+                    {createState.submitting ? 'creating...' : 'create user'}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        ) : null}
+
+        {quotaState.open ? (
+          <div className="users-modal-backdrop" role="presentation" onClick={closeQuotaModal}>
+            <div className="users-modal" role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
+              <div className="users-modal-header">
+                <h2>update quota</h2>
+                <button type="button" className="users-close-btn" onClick={closeQuotaModal}>
+                  close
+                </button>
+              </div>
+
+              <form className="users-form" onSubmit={handleSaveQuota}>
+                <label>
+                  <span>student</span>
+                  <input type="text" value={quotaState.email} readOnly />
+                </label>
+
+                <label>
+                  <span>quota mb</span>
+                  <input
+                    type="number"
+                    min="0"
+                    step="1"
+                    value={quotaState.quotaMb}
+                    onChange={(event) => setQuotaState((current) => ({ ...current, quotaMb: event.target.value }))}
+                    required
+                  />
+                </label>
+
+                {quotaState.error ? <div className="users-error">{quotaState.error}</div> : null}
+
+                <div className="users-modal-actions">
+                  <button
+                    type="button"
+                    className="users-secondary-btn"
+                    onClick={handleResetQuota}
+                    disabled={quotaState.submitting}
+                  >
+                    reset
+                  </button>
+                  <button type="submit" className="users-primary-btn" disabled={quotaState.submitting}>
+                    {quotaState.submitting ? 'saving...' : 'save quota'}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        ) : null}
+      </div>
+    </DashboardLayout>
   );
 }
