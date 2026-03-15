@@ -184,6 +184,20 @@ pre {
 .users-repo-header h4,
 .users-modal-header h2 {
   margin: 0;
+  letter-spacing: -0.02em;
+  color: var(--text-primary);
+}
+
+.users-header h1 {
+  font-size: 2rem;
+  font-weight: 700;
+}
+
+.users-panel-header h2,
+.users-detail-header h2,
+.users-section-heading h3 {
+  font-size: 1.15rem;
+  font-weight: 650;
 }
 
 .users-header p,
@@ -195,6 +209,11 @@ pre {
 .users-repo-meta,
 .users-empty-subtle {
   color: var(--text-secondary);
+}
+
+.users-header p {
+  max-width: 42rem;
+  font-size: 0.98rem;
 }
 
 .users-grid {
@@ -263,6 +282,11 @@ pre {
   margin-bottom: 0.35rem;
 }
 
+.users-list-item strong {
+  font-size: 0.98rem;
+  color: var(--text-primary);
+}
+
 .users-ready-pill,
 .users-environment-pill {
   display: inline-flex;
@@ -282,6 +306,7 @@ pre {
   background: var(--bg-tertiary);
   color: var(--text-secondary);
   border: 1px solid var(--border-color);
+  font-weight: 600;
 }
 
 .users-empty,
@@ -340,7 +365,7 @@ pre {
 }
 
 .users-stat-card strong {
-  font-size: 1rem;
+  font-size: 1.05rem;
 }
 
 .users-repos-section {

@@ -449,13 +449,13 @@ export default function Users() {
       <div className="users-page">
         <div className="users-header">
           <div>
-            <h1>users</h1>
-            <p>review student accounts, quotas, repos, and file metadata</p>
+            <h1>Users</h1>
+            <p>Review student accounts, storage quotas, repositories, and file metadata.</p>
           </div>
           <div className="users-header-actions">
-            <span className="users-environment-pill">env: {environmentKey}</span>
+            <span className="users-environment-pill">Environment: {environmentKey}</span>
             <button type="button" className="users-primary-btn" onClick={openCreateModal}>
-              create student
+              Create Student
             </button>
           </div>
         </div>
@@ -463,20 +463,20 @@ export default function Users() {
         <div className="users-grid">
           <section className="users-panel users-list-panel">
             <div className="users-panel-header">
-              <h2>students</h2>
+              <h2>Students</h2>
               <input
                 type="text"
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
                 className="users-search-input"
-                placeholder="search users..."
+                placeholder="Search users..."
               />
             </div>
 
-            {loadingUsers ? <div className="users-empty">loading users...</div> : null}
+            {loadingUsers ? <div className="users-empty">Loading users...</div> : null}
             {!loadingUsers && usersError ? <div className="users-error">{usersError}</div> : null}
             {!loadingUsers && !usersError && users.length === 0 ? (
-              <div className="users-empty">no users found</div>
+              <div className="users-empty">No users found.</div>
             ) : null}
 
             {!loadingUsers && !usersError && filteredUsers.length > 0 ? (
@@ -493,12 +493,12 @@ export default function Users() {
                       onClick={() => setSelectedUserId(user.id)}
                     >
                       <div className="users-list-item-top">
-                        <strong>{user.display_name || user.email || 'unnamed user'}</strong>
-                        {isReady ? <span className="users-ready-pill">ready for review</span> : null}
+                        <strong>{user.display_name || user.email || 'Unnamed User'}</strong>
+                        {isReady ? <span className="users-ready-pill">Ready for Review</span> : null}
                       </div>
                       <div className="users-list-item-meta">{user.email}</div>
                       <div className="users-list-item-meta">
-                        quota: {user.storage_quota_mb ?? 0} mb
+                        Quota: {user.storage_quota_mb ?? 0} MB
                       </div>
                     </button>
                   );
@@ -509,18 +509,18 @@ export default function Users() {
 
           <section className="users-panel users-detail-panel">
             {!selectedUserId ? (
-              <div className="users-empty">select a user to see profile and repos</div>
+              <div className="users-empty">Select a user to view profile details and repositories.</div>
             ) : null}
 
-            {selectedUserId && loadingDetail ? <div className="users-empty">loading user details...</div> : null}
+            {selectedUserId && loadingDetail ? <div className="users-empty">Loading user details...</div> : null}
             {selectedUserId && !loadingDetail && detailError ? <div className="users-error">{detailError}</div> : null}
 
             {selectedUserId && !loadingDetail && !detailError && selectedUser ? (
               <>
                 <div className="users-panel-header users-detail-header">
                   <div>
-                    <h2>{selectedUser.profile?.display_name || selectedUser.profile?.email || 'user profile'}</h2>
-                    <p>{selectedUser.profile?.email || 'no email available'}</p>
+                    <h2>{selectedUser.profile?.display_name || selectedUser.profile?.email || 'User Profile'}</h2>
+                    <p>{selectedUser.profile?.email || 'No email available'}</p>
                   </div>
                   <div className="users-detail-actions">
                     {selectedUserSummary ? (
@@ -530,21 +530,21 @@ export default function Users() {
                           className="users-secondary-btn"
                           onClick={() => openEditModal(selectedUserSummary)}
                         >
-                          edit user
+                          Edit User
                         </button>
                         <button
                           type="button"
                           className="users-secondary-btn"
                           onClick={() => openQuotaModal(selectedUserSummary)}
                         >
-                          set quota
+                          Set Quota
                         </button>
                         <button
                           type="button"
                           className="users-secondary-btn users-danger-btn"
                           onClick={() => openDeleteModal(selectedUserSummary)}
                         >
-                          delete user
+                          Delete User
                         </button>
                       </>
                     ) : null}
@@ -553,30 +553,30 @@ export default function Users() {
 
                 <div className="users-profile-grid">
                   <div className="users-stat-card">
-                    <span>quota</span>
-                    <strong>{selectedUser.profile?.storage_quota_mb ?? 0} mb</strong>
+                    <span>Quota</span>
+                    <strong>{selectedUser.profile?.storage_quota_mb ?? 0} MB</strong>
                   </div>
                   <div className="users-stat-card">
-                    <span>used</span>
+                    <span>Used</span>
                     <strong>{formatBytes(selectedUser.profile?.storage_used_bytes ?? 0)}</strong>
                   </div>
                   <div className="users-stat-card">
-                    <span>created</span>
+                    <span>Created</span>
                     <strong>{formatDate(selectedUser.profile?.created_at)}</strong>
                   </div>
                   <div className="users-stat-card">
-                    <span>review status</span>
+                    <span>Review Status</span>
                     <strong>
                       {selectedUser.profile?.ready_for_review || selectedUser.profile?.has_review_request
-                        ? 'ready'
-                        : 'not requested'}
+                        ? 'Ready'
+                        : 'Not Requested'}
                     </strong>
                   </div>
                 </div>
 
                 <div className="users-repos-section">
                   <div className="users-section-heading">
-                    <h3>repositories</h3>
+                    <h3>Repositories</h3>
                     <span>{selectedUser.repositories?.length || 0} total</span>
                   </div>
 
@@ -589,8 +589,8 @@ export default function Users() {
                         <article key={repo.id} className="users-repo-card">
                           <div className="users-repo-header">
                             <div>
-                              <h4>{repo.name || 'untitled repo'}</h4>
-                              <p>{repo.description || 'no description'}</p>
+                              <h4>{repo.name || 'Untitled Repository'}</h4>
+                              <p>{repo.description || 'No description provided.'}</p>
                             </div>
                             <div className="users-repo-actions">
                               <button
@@ -598,41 +598,41 @@ export default function Users() {
                                 className="users-secondary-btn"
                                 onClick={() => handleCopyCloneUrl(repo)}
                               >
-                                {copiedRepoId === repo.id ? 'copied' : 'copy clone url'}
+                                {copiedRepoId === repo.id ? 'Copied' : 'Copy Clone URL'}
                               </button>
                               <button
                                 type="button"
                                 className="users-secondary-btn"
                                 onClick={() => handleInspectRepo(repo.id)}
                               >
-                                inspect repo
+                                Inspect Repository
                               </button>
                             </div>
                           </div>
 
                           <div className="users-repo-meta">
-                            <span>path: {normalizeGitPath(repo.repo_path || repo.path || '') || 'unknown'}</span>
-                            <span>updated: {formatDate(repo.updated_at)}</span>
-                            <span>files: {files.length}</span>
+                            <span>Path: {normalizeGitPath(repo.repo_path || repo.path || '') || 'Unknown'}</span>
+                            <span>Updated: {formatDate(repo.updated_at)}</span>
+                            <span>Files: {files.length}</span>
                           </div>
 
                           <RepoFilesTable files={files} />
 
-                          {inspect.loading ? <div className="users-empty-subtle">inspecting repo...</div> : null}
+                          {inspect.loading ? <div className="users-empty-subtle">Inspecting repository...</div> : null}
                           {inspect.error ? <div className="users-error-subtle">{inspect.error}</div> : null}
                           {inspect.data ? (
                             <div className="users-inspect-box">
-                              <div>git path: {normalizeGitPath(inspect.data.repo_path || '') || 'unknown'}</div>
-                              <div>bare repo: {inspect.data.bare_exists ? 'yes' : 'no'}</div>
-                              <div>annex branch: {inspect.data.git_annex_exists ? 'yes' : 'no'}</div>
-                              <div>head ref: {inspect.data.head_ref || 'unknown'}</div>
+                              <div>Git Path: {normalizeGitPath(inspect.data.repo_path || '') || 'Unknown'}</div>
+                              <div>Bare Repo: {inspect.data.bare_exists ? 'Yes' : 'No'}</div>
+                              <div>Annex Branch: {inspect.data.git_annex_exists ? 'Yes' : 'No'}</div>
+                              <div>HEAD Ref: {inspect.data.head_ref || 'Unknown'}</div>
                             </div>
                           ) : null}
                         </article>
                       );
                     })
                   ) : (
-                    <div className="users-empty-subtle">this user has no repositories yet</div>
+                    <div className="users-empty-subtle">This user does not have any repositories yet.</div>
                   )}
                 </div>
               </>
@@ -644,15 +644,15 @@ export default function Users() {
           <div className="users-modal-backdrop" role="presentation" onClick={closeCreateModal}>
             <div className="users-modal" role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
               <div className="users-modal-header">
-                <h2>create student</h2>
+                <h2>Create Student</h2>
                 <button type="button" className="users-close-btn" onClick={closeCreateModal}>
-                  close
+                  Close
                 </button>
               </div>
 
               <form className="users-form" onSubmit={handleCreateUser}>
                 <label>
-                  <span>email</span>
+                  <span>Email</span>
                   <input
                     type="email"
                     value={createState.email}
@@ -662,7 +662,7 @@ export default function Users() {
                 </label>
 
                 <label>
-                  <span>password</span>
+                  <span>Password</span>
                   <input
                     type="password"
                     value={createState.password}
@@ -672,7 +672,7 @@ export default function Users() {
                 </label>
 
                 <label>
-                  <span>display name</span>
+                  <span>Display Name</span>
                   <input
                     type="text"
                     value={createState.displayName}
@@ -681,19 +681,19 @@ export default function Users() {
                 </label>
 
                 <label>
-                  <span>role</span>
+                  <span>Role</span>
                   <select
                     value={createState.role}
                     onChange={(event) => setCreateState((current) => ({ ...current, role: event.target.value }))}
                   >
-                    <option value="student">student</option>
-                    <option value="instructor">instructor</option>
-                    <option value="admin">admin</option>
+                    <option value="student">Student</option>
+                    <option value="instructor">Instructor</option>
+                    <option value="admin">Admin</option>
                   </select>
                 </label>
 
                 <label>
-                  <span>quota mb</span>
+                  <span>Quota (MB)</span>
                   <input
                     type="number"
                     min="0"
@@ -707,10 +707,10 @@ export default function Users() {
 
                 <div className="users-modal-actions">
                   <button type="button" className="users-secondary-btn" onClick={closeCreateModal}>
-                    cancel
+                    Cancel
                   </button>
                   <button type="submit" className="users-primary-btn" disabled={createState.submitting}>
-                    {createState.submitting ? 'creating...' : 'create user'}
+                    {createState.submitting ? 'Creating...' : 'Create User'}
                   </button>
                 </div>
               </form>
@@ -722,20 +722,20 @@ export default function Users() {
           <div className="users-modal-backdrop" role="presentation" onClick={closeEditModal}>
             <div className="users-modal" role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
               <div className="users-modal-header">
-                <h2>edit user</h2>
+                <h2>Edit User</h2>
                 <button type="button" className="users-close-btn" onClick={closeEditModal}>
-                  close
+                  Close
                 </button>
               </div>
 
               <form className="users-form" onSubmit={handleEditUser}>
                 <label>
-                  <span>email</span>
+                  <span>Email</span>
                   <input type="text" value={editState.email} readOnly />
                 </label>
 
                 <label>
-                  <span>display name</span>
+                  <span>Display Name</span>
                   <input
                     type="text"
                     value={editState.displayName}
@@ -744,19 +744,19 @@ export default function Users() {
                 </label>
 
                 <label>
-                  <span>role</span>
+                  <span>Role</span>
                   <select
                     value={editState.role}
                     onChange={(event) => setEditState((current) => ({ ...current, role: event.target.value }))}
                   >
-                    <option value="student">student</option>
-                    <option value="instructor">instructor</option>
-                    <option value="admin">admin</option>
+                    <option value="student">Student</option>
+                    <option value="instructor">Instructor</option>
+                    <option value="admin">Admin</option>
                   </select>
                 </label>
 
                 <label>
-                  <span>quota mb</span>
+                  <span>Quota (MB)</span>
                   <input
                     type="number"
                     min="0"
@@ -767,7 +767,7 @@ export default function Users() {
                 </label>
 
                 <label>
-                  <span>used bytes</span>
+                  <span>Used Bytes</span>
                   <input
                     type="number"
                     min="0"
@@ -778,7 +778,7 @@ export default function Users() {
                 </label>
 
                 <label>
-                  <span>last active</span>
+                  <span>Last Active</span>
                   <input
                     type="datetime-local"
                     value={editState.lastActiveAt}
@@ -790,10 +790,10 @@ export default function Users() {
 
                 <div className="users-modal-actions">
                   <button type="button" className="users-secondary-btn" onClick={closeEditModal}>
-                    cancel
+                    Cancel
                   </button>
                   <button type="submit" className="users-primary-btn" disabled={editState.submitting}>
-                    {editState.submitting ? 'saving...' : 'save user'}
+                    {editState.submitting ? 'Saving...' : 'Save User'}
                   </button>
                 </div>
               </form>
@@ -805,20 +805,20 @@ export default function Users() {
           <div className="users-modal-backdrop" role="presentation" onClick={closeQuotaModal}>
             <div className="users-modal" role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
               <div className="users-modal-header">
-                <h2>update quota</h2>
+                <h2>Update Quota</h2>
                 <button type="button" className="users-close-btn" onClick={closeQuotaModal}>
-                  close
+                  Close
                 </button>
               </div>
 
               <form className="users-form" onSubmit={handleSaveQuota}>
                 <label>
-                  <span>student</span>
+                  <span>Student</span>
                   <input type="text" value={quotaState.email} readOnly />
                 </label>
 
                 <label>
-                  <span>quota mb</span>
+                  <span>Quota (MB)</span>
                   <input
                     type="number"
                     min="0"
@@ -838,10 +838,10 @@ export default function Users() {
                     onClick={handleResetQuota}
                     disabled={quotaState.submitting}
                   >
-                    reset
+                    Reset
                   </button>
                   <button type="submit" className="users-primary-btn" disabled={quotaState.submitting}>
-                    {quotaState.submitting ? 'saving...' : 'save quota'}
+                    {quotaState.submitting ? 'Saving...' : 'Save Quota'}
                   </button>
                 </div>
               </form>
@@ -853,17 +853,17 @@ export default function Users() {
           <div className="users-modal-backdrop" role="presentation" onClick={closeDeleteModal}>
             <div className="users-modal" role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
               <div className="users-modal-header">
-                <h2>delete user</h2>
+                <h2>Delete User</h2>
                 <button type="button" className="users-close-btn" onClick={closeDeleteModal}>
-                  close
+                  Close
                 </button>
               </div>
               <div className="users-form">
-                <p>are you sure you want to delete {deleteState.label}?</p>
+                <p>Are you sure you want to delete {deleteState.label}?</p>
                 {deleteState.error ? <div className="users-error">{deleteState.error}</div> : null}
                 <div className="users-modal-actions">
                   <button type="button" className="users-secondary-btn" onClick={closeDeleteModal}>
-                    cancel
+                    Cancel
                   </button>
                   <button
                     type="button"
@@ -871,7 +871,7 @@ export default function Users() {
                     disabled={deleteState.deleting}
                     onClick={handleDeleteUser}
                   >
-                    {deleteState.deleting ? 'deleting...' : 'delete user'}
+                    {deleteState.deleting ? 'Deleting...' : 'Delete User'}
                   </button>
                 </div>
               </div>
@@ -881,3 +881,6 @@ export default function Users() {
       </div>
   );
 }
+
+
+
