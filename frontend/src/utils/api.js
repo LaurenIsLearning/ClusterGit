@@ -3,7 +3,7 @@ export function getApiBaseUrl() {
 
   // sends local dev to the local backend
   if (host === "localhost" || host === "127.0.0.1" || host === "::1") {
-    return "http://localhost:3000";
+    return "http://localhost:8080";
   }
 
   // maps each pages preview to the matching cluster preview backend

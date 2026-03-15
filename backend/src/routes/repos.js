@@ -31,6 +31,8 @@ async function resolveUserByEmailPrefix(username) {
 
     const user = users.find(u => u.email && u.email.split('@')[0] === username);
     return user ? user.id : null;
+}
+
 async function getUserQuotaBytes(userId) {
     // fetches the signed in user's storage quota from supabase
     const { data, error } = await supabase
@@ -295,15 +297,6 @@ router.get("/my", authMiddleware, async (req, res) => {
             const protocol = req.protocol === 'https' || req.get('x-forwarded-proto') === 'https' ? 'https' : 'http';
             const host = req.get('host');
             const gitUrl = await gitService.getGitUrl(ownerId, project.name, host, protocol);
-
-            // Format for frontend expectations
-            // Frontend expects: repo, size, updated
-            let size = 0;
-            try {
-                size = await gitService.getRepoSize(repoPath);
-            } catch (err) {
-                console.warn("Repo path missing:", repoPath);
-            const gitUrl = gitService.getGitUrl(ownerId, project.name);
 
             // Prefer authoritative metadata size from Supabase; fallback to filesystem if missing.
             let size = sizeByRepoId.get(project.id) || 0;
@@ -832,6 +825,8 @@ router.all([/\/clone\/([^/]+)\/([^/]+)\.git(.*)/, /\/([^/]+)\/([^/]+)\.git(.*)/]
             console.error(`git-http-backend exited with code ${code}`);
         }
     });
+});
+
 router.delete("/:repoId/files/:fileId", authMiddleware, async (req, res) => {
     const ownerId = req.user.id;
     const { repoId, fileId } = req.params;

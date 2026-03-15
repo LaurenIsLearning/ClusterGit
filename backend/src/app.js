@@ -9,6 +9,9 @@ import adminRoutes from "./routes/admin.js";
 
 const app = express();
 
+// Trust proxy for correct protocol detection (e.g. https) behind Cloudflare/Load Balancers
+app.set("trust proxy", true);
+
 app.use(cors({
   origin: function (origin, callback) {
     if (!origin) return callback(null, true);
@@ -28,7 +31,17 @@ app.use(cors({
   credentials: true
 }));
 
-app.use(express.json());
+app.use((req, res, next) => {
+  // Pass Git HTTP requests to repo handler WITHOUT body parsing
+  if (req.path.includes('.git')) {
+    next();
+  } else {
+    express.json()(req, res, next);
+  }
+});
+
+// Mount at root for professional URLs (e.g. /username/repo.git)
+app.use("/", repoRoutes);
 
 app.get("/", (req, res) => {
   res.send("ClusterGit backend is alive");
