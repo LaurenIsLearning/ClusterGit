@@ -18,7 +18,8 @@ app.use(cors({
     if (!origin) return callback(null, true);
     const allowedOrigins = [
       "https://clustergit.com",
-      "http://localhost:5173"
+      "http://localhost:5173",
+      "http://10.27.12.244:5173"
     ];
     if (
       allowedOrigins.includes(origin) ||
