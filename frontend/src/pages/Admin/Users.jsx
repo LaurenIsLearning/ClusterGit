@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from 'react';
-import DashboardLayout from '../../layouts/DashboardLayout';
 import adminService from '../../services/adminService';
 import { userService } from '../../services/userService';
 
@@ -447,7 +446,6 @@ export default function Users() {
   };
 
   return (
-    <DashboardLayout>
       <div className="users-page">
         <div className="users-header">
           <div>
@@ -881,6 +879,5 @@ export default function Users() {
           </div>
         ) : null}
       </div>
-    </DashboardLayout>
   );
 }
