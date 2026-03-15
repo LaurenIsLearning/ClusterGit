@@ -160,10 +160,8 @@ async function prepareReadOnlyClone(bareRepoPath, tempWorkingPath) {
  * Get Git clone URL
  */
 export function getGitUrl(userId, projectName) {
-    const repoPath = getRepoPath(userId, projectName);
-    // builds the ssh clone string shown in the ui
-    const host = '10.27.12.244'; // adjust if needed
-    return `git@${host}:${repoPath}`;
+    const host = process.env.GIT_HTTP_HOST || 'clustergit.com';
+    return `https://${host}/git/${userId}/${projectName}.git`;
 }
 
 /**
