@@ -1,0 +1,23 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: clustergit-node-sync
+  namespace: storage
+spec:
+  schedule: "*/1 * * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 2
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          restartPolicy: OnFailure
+          containers:
+            - name: node-sync
+              image: ghcr.io/laurenislearning/clustergit-backend:develop
+              imagePullPolicy: Always
+              command: ["npm", "run", "sync:nodes"]
+              envFrom:
+                - secretRef:
+                    name: clustergit-backend-env
