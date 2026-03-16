@@ -112,6 +112,7 @@ PORT=3000
 REPO_BASE_PATH=./local-repos
 SUPABASE_URL=your_supabase_url
 SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
+PROMETHEUS_URL=your_prometheus_url
 ```
 
 Backend runs at http://localhost:3000
