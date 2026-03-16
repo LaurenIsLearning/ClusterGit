@@ -2,6 +2,22 @@ import { useState, useEffect } from 'react';
 import { adminService } from '../../services/adminService';
 import { Server, HardDrive, Cpu, Thermometer, AlertTriangle } from 'lucide-react';
 
+function formatBytes(bytes) {
+    const value = Number(bytes) || 0;
+    if (value >= 1024 ** 4) return `${(value / (1024 ** 4)).toFixed(2)} TB`;
+    if (value >= 1024 ** 3) return `${(value / (1024 ** 3)).toFixed(2)} GB`;
+    if (value >= 1024 ** 2) return `${(value / (1024 ** 2)).toFixed(1)} MB`;
+    if (value >= 1024) return `${(value / 1024).toFixed(1)} KB`;
+    return `${value} B`;
+}
+
+function formatHeartbeat(value) {
+    if (!value) return 'No recent heartbeat';
+    const timestamp = new Date(value);
+    if (Number.isNaN(timestamp.getTime())) return 'Unknown heartbeat';
+    return timestamp.toLocaleString();
+}
+
 export default function AdminNodes() {
     const [nodes, setNodes] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -103,13 +119,16 @@ function NodeCard({ node }) {
                             <span className="flex items-center gap-1 text-[--text-secondary]">
                                 <HardDrive className="w-3 h-3" /> Storage
                             </span>
-                            <span className="font-mono text-xs">{node.storage.used}%</span>
-                        </div>
-                        <div className="h-2 w-full bg-[--bg-primary] rounded-full overflow-hidden">
-                            <div
+                        <span className="font-mono text-xs">{node.storageUsedPercent}%</span>
+                    </div>
+                    <div className="h-2 w-full bg-[--bg-primary] rounded-full overflow-hidden">
+                        <div
                                 className="h-full bg-purple-500"
-                                style={{ width: `${node.storage.used}%` }}
+                                style={{ width: `${node.storageUsedPercent}%` }}
                             />
+                        </div>
+                        <div className="mt-2 text-xs text-[--text-muted]">
+                            {formatBytes(node.storageUsedBytes)} of {formatBytes(node.storageTotalBytes)}
                         </div>
                     </div>
 
@@ -117,21 +136,21 @@ function NodeCard({ node }) {
                         <div className="flex items-center gap-2">
                             <Cpu className="w-4 h-4 text-[--text-secondary]" />
                             <div>
-                                <p className="text-xs text-[--text-secondary]">Load</p>
-                                <p className="font-mono font-medium">{node.cpu}%</p>
+                                <p className="text-xs text-[--text-secondary]">CPU</p>
+                                <p className="font-mono font-medium">{node.cpuPercent.toFixed(1)}%</p>
                             </div>
                         </div>
                         <div className="flex items-center gap-2">
-                            <Thermometer className={`w-4 h-4 ${node.temp > 50 ? 'text-[--status-warning]' : 'text-[--text-secondary]'}`} />
+                            <Thermometer className={`w-4 h-4 ${node.temperatureC > 50 ? 'text-[--status-warning]' : 'text-[--text-secondary]'}`} />
                             <div>
-                                <p className="text-xs text-[--text-secondary]">Temp</p>
-                                <p className="font-mono font-medium">{node.temp}°C</p>
+                                <p className="text-xs text-[--text-secondary]">Temperature</p>
+                                <p className="font-mono font-medium">{node.temperatureC.toFixed(1)}°C</p>
                             </div>
                         </div>
                     </div>
 
                     <div className="text-xs text-[--text-muted] pt-2 border-t border-[--border-color] mt-2">
-                        Uptime: {node.uptime}
+                        {node.uptimeLabel ? `Uptime: ${node.uptimeLabel}` : `Last heartbeat: ${formatHeartbeat(node.heartbeatAt)}`}
                     </div>
                 </div>
             ) : (
