@@ -77,7 +77,9 @@ function normalizeNodeTelemetry(node) {
         ip: node?.ip || '',
         status: node?.status || 'unknown',
         cpuPercent: Number(node?.cpu ?? node?.cpuPercent ?? 0) || 0,
-        temperatureC: Number(node?.temp ?? node?.temp_c ?? node?.temperatureC ?? 0) || 0,
+        temperatureC: node?.temp == null && node?.temp_c == null && node?.temperatureC == null
+            ? null
+            : Number(node?.temp ?? node?.temp_c ?? node?.temperatureC ?? 0),
         heartbeatAt: node?.heartbeat_at || node?.heartbeatAt || null,
         uptimeLabel: node?.uptime || null,
         storageUsedPercent,

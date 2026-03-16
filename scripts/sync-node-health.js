@@ -51,6 +51,16 @@ async function queryPrometheus(promql) {
   return payload.data?.result || [];
 }
 
+async function queryPrometheusFirstAvailable(promqlQueries) {
+  for (const promql of promqlQueries) {
+    const result = await queryPrometheus(promql);
+    if (result.length > 0) {
+      return result;
+    }
+  }
+  return [];
+}
+
 function metricValue(sample) {
   return Number(sample?.value?.[1] || 0);
 }
@@ -87,7 +97,11 @@ async function collectNodeSnapshots() {
     queryPrometheus('100 * (1 - avg by (instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])))'),
     queryPrometheus('sum by (instance) (node_filesystem_avail_bytes{fstype!~"tmpfs|overlay",mountpoint="/"})'),
     queryPrometheus('sum by (instance) (node_filesystem_size_bytes{fstype!~"tmpfs|overlay",mountpoint="/"})'),
-    queryPrometheus('max by (instance) (node_thermal_zone_temp / 1000)'),
+    queryPrometheusFirstAvailable([
+      'max by (instance) (node_thermal_zone_temp / 1000)',
+      'max by (instance) (node_hwmon_temp_celsius)',
+      'max by (instance) (node_hwmon_temp_celsius{chip!=""})',
+    ]),
   ]);
 
   const nodeByInstance = new Map();
@@ -155,7 +169,9 @@ async function collectNodeSnapshots() {
       ip_address: ipAddress,
       status: inferNodeStatus(readyValue),
       cpu_percent: Number((cpuByNode.get(nodeKey) || 0).toFixed(2)),
-      temp_c: Number((tempByNode.get(nodeKey) || 0).toFixed(2)),
+      temp_c: tempByNode.has(nodeKey)
+        ? Number((tempByNode.get(nodeKey) || 0).toFixed(2))
+        : null,
       storage_used_bytes: usedBytes,
       storage_total_bytes: totalBytes,
       heartbeat_at: now,

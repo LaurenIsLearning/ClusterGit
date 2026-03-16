@@ -18,27 +18,48 @@ function formatHeartbeat(value) {
     return timestamp.toLocaleString();
 }
 
+function formatTemperature(value) {
+    if (value == null || Number.isNaN(Number(value))) return 'N/A';
+    return `${Number(value).toFixed(1)}°C`;
+}
+
 export default function AdminNodes() {
     const [nodes, setNodes] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
 
-    // Initial load
     useEffect(() => {
+        let isMounted = true;
+
         const load = async () => {
-            setLoading(true);
-            setError('');
+            if (isMounted) {
+                setLoading(true);
+                setError('');
+            }
+
             try {
                 const data = await adminService.getNodes();
-                setNodes(data || []);
+                if (isMounted) {
+                    setNodes(data || []);
+                }
             } catch (err) {
-                setError(err.message || 'Failed to load node telemetry');
+                if (isMounted) {
+                    setError(err.message || 'Failed to load node telemetry');
+                }
             } finally {
-                setLoading(false);
+                if (isMounted) {
+                    setLoading(false);
+                }
             }
         };
 
         load();
+        const interval = setInterval(load, 15000);
+
+        return () => {
+            isMounted = false;
+            clearInterval(interval);
+        };
     }, []);
 
     if (loading) return <div className="p-10 text-center">Loading node telemetry...</div>;
@@ -141,10 +162,10 @@ function NodeCard({ node }) {
                             </div>
                         </div>
                         <div className="flex items-center gap-2">
-                            <Thermometer className={`w-4 h-4 ${node.temperatureC > 50 ? 'text-[--status-warning]' : 'text-[--text-secondary]'}`} />
+                            <Thermometer className={`w-4 h-4 ${node.temperatureC != null && node.temperatureC > 50 ? 'text-[--status-warning]' : 'text-[--text-secondary]'}`} />
                             <div>
                                 <p className="text-xs text-[--text-secondary]">Temperature</p>
-                                <p className="font-mono font-medium">{node.temperatureC.toFixed(1)}°C</p>
+                                <p className="font-mono font-medium">{formatTemperature(node.temperatureC)}</p>
                             </div>
                         </div>
                     </div>

@@ -1002,7 +1002,7 @@ router.get("/nodes", async (_req, res) => {
                 ip: row.ip_address || "",
                 status: row.status || "unknown",
                 cpu: Number(row.cpu_percent) || 0,
-                temp: Number(row.temp_c) || 0,
+                temp: row.temp_c == null ? null : Number(row.temp_c),
                 heartbeat_at: row.heartbeat_at || null,
                 storage: {
                     used: usedPercent,
