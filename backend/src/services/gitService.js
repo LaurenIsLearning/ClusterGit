@@ -160,10 +160,8 @@ async function prepareReadOnlyClone(bareRepoPath, tempWorkingPath) {
  * Get Git clone URL
  */
 export function getGitUrl(userId, projectName) {
-    const repoPath = getRepoPath(userId, projectName);
-    // builds the ssh clone string shown in the ui
-    const host = '10.27.12.244'; // adjust if needed
-    return `git@${host}:${repoPath}`;
+    const host = process.env.GIT_HTTP_HOST || 'clustergit.com';
+    return `https://${host}/git/${userId}/${projectName}.git`;
 }
 
 /**
@@ -191,53 +189,53 @@ export async function getAnnexUuid(repoPath) {
  * Create a bare Git repository
  */
 export async function createRepository(userId, projectName, description = '') {
-  const repoPath = getRepoPath(userId, projectName);
-  await fs.mkdir(path.dirname(repoPath), { recursive: true });
-  await fs.mkdir(repoPath);
+    const repoPath = getRepoPath(userId, projectName);
+    await fs.mkdir(path.dirname(repoPath), { recursive: true });
+    await fs.mkdir(repoPath);
 
-  const tempInit = path.join(os.tmpdir(), `clustergit-init-${Date.now()}`);
-  await fs.mkdir(tempInit);
+    const tempInit = path.join(os.tmpdir(), `clustergit-init-${Date.now()}`);
+    await fs.mkdir(tempInit);
 
-  // 1. init bare
-  await execAsync(GIT_BIN, ["init", "--bare"], { cwd: repoPath });
-  await execAsync(GIT_BIN, ["symbolic-ref", "HEAD", "refs/heads/main"], { cwd: repoPath });
+    // 1. init bare
+    await execAsync(GIT_BIN, ["init", "--bare"], { cwd: repoPath });
+    await execAsync(GIT_BIN, ["symbolic-ref", "HEAD", "refs/heads/main"], { cwd: repoPath });
 
-  // 2. clone to temp working copy
-  await execAsync(GIT_BIN, ["clone", repoPath, "."], { cwd: tempInit });
-  await execAsync(GIT_BIN, ["checkout", "-B", "main"], { cwd: tempInit });
+    // 2. clone to temp working copy
+    await execAsync(GIT_BIN, ["clone", repoPath, "."], { cwd: tempInit });
+    await execAsync(GIT_BIN, ["checkout", "-B", "main"], { cwd: tempInit });
 
-  // 3. identity
-  await execAsync(GIT_BIN, ["config", "user.name", "ClusterGit"], { cwd: tempInit });
-  await execAsync(GIT_BIN, ["config", "user.email", "system@clustergit.local"], { cwd: tempInit });
+    // 3. identity
+    await execAsync(GIT_BIN, ["config", "user.name", "ClusterGit"], { cwd: tempInit });
+    await execAsync(GIT_BIN, ["config", "user.email", "system@clustergit.local"], { cwd: tempInit });
 
-  // 4. README commit
-  await fs.writeFile(path.join(tempInit, "README.md"), "# ClusterGit Repository\n");
-  await execAsync(GIT_BIN, ["add", "."], { cwd: tempInit });
-  await execAsync(GIT_BIN, ["commit", "-m", "Initial commit"], { cwd: tempInit });
+    // 4. README commit
+    await fs.writeFile(path.join(tempInit, "README.md"), "# ClusterGit Repository\n");
+    await execAsync(GIT_BIN, ["add", "."], { cwd: tempInit });
+    await execAsync(GIT_BIN, ["commit", "-m", "Initial commit"], { cwd: tempInit });
 
-  // 5. git-annex init + placeholder
-  // keeps the git-annex branch alive right from repo creation
-  await execAsync(GIT_BIN, ["annex", "init"], { cwd: tempInit });
-  const annexPlaceholder = path.join(tempInit, ".annex-placeholder");
-  await fs.writeFile(annexPlaceholder, "This file anchors the git-annex branch");
-  await execAsync(GIT_BIN, ["add", "."], { cwd: tempInit });
-  await execAsync(GIT_BIN, ["commit", "-m", "Initialize git-annex with placeholder"], { cwd: tempInit });
+    // 5. git-annex init + placeholder
+    // keeps the git-annex branch alive right from repo creation
+    await execAsync(GIT_BIN, ["annex", "init"], { cwd: tempInit });
+    const annexPlaceholder = path.join(tempInit, ".annex-placeholder");
+    await fs.writeFile(annexPlaceholder, "This file anchors the git-annex branch");
+    await execAsync(GIT_BIN, ["add", "."], { cwd: tempInit });
+    await execAsync(GIT_BIN, ["commit", "-m", "Initialize git-annex with placeholder"], { cwd: tempInit });
 
-  // 6. push branches back to bare
-  await execAsync(GIT_BIN, ["push", "origin", "main"], { cwd: tempInit });
-  await execAsync(GIT_BIN, ["push", "origin", "git-annex"], { cwd: tempInit });
+    // 6. push branches back to bare
+    await execAsync(GIT_BIN, ["push", "origin", "main"], { cwd: tempInit });
+    await execAsync(GIT_BIN, ["push", "origin", "git-annex"], { cwd: tempInit });
 
-  // 7. get annex UUID from working clone (not bare)
-  const annexUuid = await getAnnexUuid(tempInit);
+    // 7. get annex UUID from working clone (not bare)
+    const annexUuid = await getAnnexUuid(tempInit);
 
-  // 8. cleanup
-  await fs.rm(tempInit, { recursive: true, force: true });
+    // 8. cleanup
+    await fs.rm(tempInit, { recursive: true, force: true });
 
-  if (description) {
-    await fs.writeFile(path.join(repoPath, 'description'), description);
-  }
+    if (description) {
+        await fs.writeFile(path.join(repoPath, 'description'), description);
+    }
 
-  return { repoPath, userId, annexUuid };
+    return { repoPath, userId, annexUuid };
 }
 
 
@@ -304,7 +302,7 @@ export async function addFileToProject(userId, projectName, filePath, originalNa
         // unlocks existing annexed files so re-uploads can overwrite cleanly
         try {
             await execAsync(GIT_BIN, ["annex", "unlock", originalName], { cwd: tempWorkingPath });
-        } catch {}
+        } catch { }
 
         await execAsync(GIT_BIN, ["annex", "add", originalName], { cwd: tempWorkingPath });
 
@@ -344,7 +342,7 @@ export async function addFileToProject(userId, projectName, filePath, originalNa
         console.error("Upload failed:", err);
         throw new Error(`Failed to add file to repository: ${err.message}`);
     } finally {
-        try { await fs.rm(tempWorkingPath, { recursive: true, force: true }); } catch {}
+        try { await fs.rm(tempWorkingPath, { recursive: true, force: true }); } catch { }
     }
 }
 
@@ -384,7 +382,7 @@ export async function deleteFileFromProject(userId, projectName, filePath) {
         console.error("Delete file failed:", error);
         throw new Error(`Failed to delete file from repository: ${error.message}`);
     } finally {
-        try { await fs.rm(tempWorkingPath, { recursive: true, force: true }); } catch {}
+        try { await fs.rm(tempWorkingPath, { recursive: true, force: true }); } catch { }
     }
 }
 
@@ -468,7 +466,7 @@ export async function inspectProjectRepository(userId, projectName) {
             files
         };
     } finally {
-        try { await fs.rm(tempWorkingPath, { recursive: true, force: true }); } catch {}
+        try { await fs.rm(tempWorkingPath, { recursive: true, force: true }); } catch { }
     }
 }
 
@@ -506,7 +504,7 @@ export async function getProjectFileBuffer(userId, projectName, filePath) {
             path: targetPath
         };
     } finally {
-        try { await fs.rm(tempWorkingPath, { recursive: true, force: true }); } catch {}
+        try { await fs.rm(tempWorkingPath, { recursive: true, force: true }); } catch { }
     }
 }
 
