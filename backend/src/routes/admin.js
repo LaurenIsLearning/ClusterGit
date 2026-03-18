@@ -3,6 +3,7 @@ import { supabase } from "../utils/supabase.js";
 import authMiddleware from "../middleware/authMiddleware.js";
 import { applyEnvironmentFilter, getEnvironmentKey } from "../utils/environment.js";
 import gitService from "../services/gitService.js";
+import { loadLatestNodeSnapshots } from "../utils/nodeTelemetry.js";
 
 const router = express.Router();
 const DEFAULT_STORAGE_QUOTA_BYTES = 20 * 1024 * 1024 * 1024;
@@ -974,44 +975,7 @@ router.get("/repos/:repoId/files/download", async (req, res) => {
 
 router.get("/nodes", async (_req, res) => {
     try {
-        // returns the latest node snapshot rows if node_health has been populated
-        const { data, error } = await supabase
-            .from("node_health")
-            .select("node_key, ip_address, status, cpu_percent, temp_c, storage_used_bytes, storage_total_bytes, heartbeat_at")
-            .order("heartbeat_at", { ascending: false });
-
-        if (error) {
-            console.error("Node telemetry fallback:", error);
-            return res.json({ nodes: [] });
-        }
-
-        const latestNodeByKey = new Map();
-        for (const row of data || []) {
-            if (!latestNodeByKey.has(row.node_key)) {
-                latestNodeByKey.set(row.node_key, row);
-            }
-        }
-
-        const nodes = [...latestNodeByKey.values()].map((row) => {
-            const usedBytes = Number(row.storage_used_bytes) || 0;
-            const totalBytes = Number(row.storage_total_bytes) || 0;
-            const usedPercent = totalBytes > 0 ? Math.min(100, Math.round((usedBytes / totalBytes) * 100)) : 0;
-
-            return {
-                id: row.node_key,
-                ip: row.ip_address || "",
-                status: row.status || "unknown",
-                cpu: Number(row.cpu_percent) || 0,
-                temp: row.temp_c == null ? null : Number(row.temp_c),
-                heartbeat_at: row.heartbeat_at || null,
-                storage: {
-                    used: usedPercent,
-                    used_bytes: usedBytes,
-                    total_bytes: totalBytes
-                }
-            };
-        });
-
+        const nodes = await loadLatestNodeSnapshots();
         return res.json({ nodes });
     } catch (error) {
         console.error("Admin nodes error:", error);
