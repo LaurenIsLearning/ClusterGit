@@ -38,7 +38,6 @@ const QUOTA = {
 const NODES = [
   {
     id: 'pi5-server',
-    ip: '10.27.12.244',
     status: 'online',
     uptime: '31d',
     storage: {
@@ -51,7 +50,6 @@ const NODES = [
   },
   {
     id: 'pi5-worker1',
-    ip: '10.27.12.235',
     status: 'online',
     uptime: '29d',
     storage: {
@@ -64,7 +62,6 @@ const NODES = [
   },
   {
     id: 'pi5-worker2',
-    ip: '10.27.12.238',
     status: 'warning',
     uptime: '28d',
     storage: {
@@ -77,7 +74,6 @@ const NODES = [
   },
   {
     id: 'pi5-worker3',
-    ip: '10.27.12.234',
     status: 'online',
     uptime: '30d',
     storage: {
@@ -90,7 +86,6 @@ const NODES = [
   },
   {
     id: 'pi5-worker4',
-    ip: '10.27.12.233',
     status: 'offline',
     uptime: '27d',
     storage: {
