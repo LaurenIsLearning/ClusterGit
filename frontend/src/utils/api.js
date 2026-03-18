@@ -6,7 +6,7 @@ export function getApiBaseUrl() {
     return "http://localhost:3000";
   }
 
-  if (host === "10.27.12.244:5173") {
+  if (host === "10.27.12.244") {
     return "http://10.27.12.244:3000"
   }
 
