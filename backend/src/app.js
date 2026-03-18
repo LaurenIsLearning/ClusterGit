@@ -6,6 +6,7 @@ import authRoutes from "./routes/auth.js";
 import repoRoutes from "./routes/repos.js";
 import commitRoutes from "./routes/commits.js";
 import adminRoutes from "./routes/admin.js";
+import publicRoutes from "./routes/public.js";
 import gitHttpRoutes from "./routes/gitHttp.js";
 
 const app = express();
@@ -41,6 +42,7 @@ app.get("/", (req, res) => {
 app.use("/api/auth", authRoutes);
 app.use("/api/repos", repoRoutes);
 app.use("/api/commits", commitRoutes);
+app.use("/api/public", publicRoutes);
 app.use("/api/admin", adminRoutes);
 
 app.use((err, req, res, next) => {

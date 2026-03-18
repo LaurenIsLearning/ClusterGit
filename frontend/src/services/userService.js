@@ -28,7 +28,7 @@ async function parseJson(response) {
 export const userService = {
   async listUsers() {
     const headers = await getAuthHeaders();
-    const response = await fetch(`${API_BASE}/api/admin/users`, {
+    const response = await fetch(`${API_BASE}/api/admin/manage-users`, {
       method: "GET",
       headers,
     });
@@ -37,7 +37,7 @@ export const userService = {
 
   async createUser(payload) {
     const headers = await getAuthHeaders();
-    const response = await fetch(`${API_BASE}/api/admin/users`, {
+    const response = await fetch(`${API_BASE}/api/admin/manage-users`, {
       method: "POST",
       headers,
       body: JSON.stringify(payload),
@@ -47,7 +47,7 @@ export const userService = {
 
   async updateUser(userId, updates) {
     const headers = await getAuthHeaders();
-    const response = await fetch(`${API_BASE}/api/admin/users/${userId}`, {
+    const response = await fetch(`${API_BASE}/api/admin/manage-users/${userId}`, {
       method: "PATCH",
       headers,
       body: JSON.stringify(updates),
@@ -57,7 +57,7 @@ export const userService = {
 
   async deleteUser(userId) {
     const headers = await getAuthHeaders();
-    const response = await fetch(`${API_BASE}/api/admin/users/${userId}`, {
+    const response = await fetch(`${API_BASE}/api/admin/manage-users/${userId}`, {
       method: "DELETE",
       headers,
     });
