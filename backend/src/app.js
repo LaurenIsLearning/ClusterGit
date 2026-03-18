@@ -7,8 +7,11 @@ import repoRoutes from "./routes/repos.js";
 import commitRoutes from "./routes/commits.js";
 import adminRoutes from "./routes/admin.js";
 import publicRoutes from "./routes/public.js";
+import gitHttpRoutes from "./routes/gitHttp.js";
 
 const app = express();
+
+app.use("/git", gitHttpRoutes);
 
 app.use(cors({
   origin: function (origin, callback) {
