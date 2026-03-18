@@ -2,15 +2,45 @@ import express from "express";
 import { supabase } from "../utils/supabase.js";
 import authMiddleware from "../middleware/authMiddleware.js";
 import gitService from "../services/gitService.js";
-import multer from "multer";
+import busboy from "busboy";
+import { createWriteStream } from "fs";
+import fs from "fs/promises";
 import os from "os";
 import path from "path";
 import { applyEnvironmentFilter, getEnvironmentKey } from "../utils/environment.js";
 
 const router = express.Router();
 
-// Configure multer for temporary file storage
-const upload = multer({ dest: path.join(os.tmpdir(), 'clustergit-uploads') });
+function receiveUpload(req) {
+    return new Promise((resolve, reject) => {
+        let bb;
+        try {
+            bb = busboy({ headers: req.headers });
+        } catch {
+            return reject(new Error('Invalid multipart/form-data request'));
+        }
+
+        const tmpPath = path.join(os.tmpdir(), `clustergit-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+        let fileStarted = false;
+
+        bb.on('file', (_fieldname, stream, info) => {
+            fileStarted = true;
+            const ws = createWriteStream(tmpPath);
+            stream.pipe(ws);
+            ws.on('finish', () => resolve({
+                path: tmpPath,
+                originalname: info.filename || 'upload',
+                mimetype: info.mimeType || null,
+            }));
+            ws.on('error', reject);
+        });
+
+        bb.on('error', reject);
+        bb.on('close', () => { if (!fileStarted) resolve(null); });
+
+        req.pipe(bb);
+    });
+}
 
 async function getUserQuotaBytes(userId) {
     // fetches the signed in user's storage quota from supabase
@@ -518,17 +548,48 @@ router.get("/:id/files", authMiddleware, async (req, res) => {
 });
 
 // UPLOAD FILE TO REPOSITORY
-router.post("/:id/upload", upload.single('file'), authMiddleware, async (req, res) => {
-    const ownerId = req.user.id;
+router.post("/:id/upload", async (req, res) => {
     const repoId = req.params.id;
-    const file = req.file;
-    const environmentKey = getEnvironmentKey(req);
 
-    if (!file) {
-        return res.status(400).json({
-            error: { message: "No file uploaded" }
-        });
+    // Drain the body immediately (parallel with auth) to prevent TCP abort
+    const filePromise = receiveUpload(req);
+
+    const authHeader = req.headers.authorization || '';
+    const [scheme, token] = authHeader.split(' ');
+    if (scheme !== 'Bearer' || !token) {
+        filePromise.catch(() => {});
+        return res.status(401).json({ error: { message: 'Missing or invalid Authorization header' } });
     }
+
+    let user, fileData;
+    try {
+        const [authResult, received] = await Promise.all([
+            supabase.auth.getUser(token),
+            filePromise,
+        ]);
+        if (authResult.error || !authResult.data?.user) {
+            if (received?.path) await fs.unlink(received.path).catch(() => {});
+            return res.status(401).json({ error: { message: authResult.error?.message || 'Invalid or expired session' } });
+        }
+        user = authResult.data.user;
+        fileData = received;
+    } catch (err) {
+        return res.status(500).json({ error: { message: err.message || 'Failed to receive upload' } });
+    }
+
+    if (!fileData) {
+        return res.status(400).json({ error: { message: 'No file uploaded' } });
+    }
+
+    const ownerId = user.id;
+    const environmentKey = getEnvironmentKey(req);
+    const fileStat = await fs.stat(fileData.path).catch(() => ({ size: 0 }));
+    const file = {
+        path: fileData.path,
+        originalname: fileData.originalname,
+        mimetype: fileData.mimetype,
+        size: fileStat.size,
+    };
 
     try {
         // 1. Get repository info from database

@@ -106,6 +106,13 @@ async function mergeRemoteGitAnnex(cwd) {
     await execAsync(GIT_BIN, ["checkout", "git-annex"], { cwd });
     try {
         await execAsync(GIT_BIN, ["merge", "--no-edit", "origin/git-annex"], { cwd });
+    } catch {
+        // Abort the failed merge to clear the index before retrying or checking out
+        await execAsync(GIT_BIN, ["merge", "--abort"], { cwd }).catch(() =>
+            execAsync(GIT_BIN, ["reset", "--hard"], { cwd }).catch(() => {})
+        );
+        // Retry allowing unrelated histories (first-upload case where branches diverge)
+        await execAsync(GIT_BIN, ["merge", "--no-edit", "--allow-unrelated-histories", "origin/git-annex"], { cwd }).catch(() => {});
     } finally {
         await execAsync(GIT_BIN, ["checkout", originalBranch], { cwd });
     }
@@ -139,6 +146,13 @@ async function prepareWorkingClone(bareRepoPath, tempWorkingPath) {
     await execAsync(GIT_BIN, ["clone", bareRepoPath, "."], { cwd: tempWorkingPath });
     await syncRemoteBranches(tempWorkingPath);
     await execAsync(GIT_BIN, ["checkout", "-B", "main", "origin/main"], { cwd: tempWorkingPath });
+
+    // Ensure the local git-annex branch starts from origin/git-annex so git annex add
+    // never creates an unrelated history that causes merge failures on first upload
+    const hasRemoteGitAnnex = await refExists(tempWorkingPath, "origin/git-annex");
+    if (hasRemoteGitAnnex) {
+        await execAsync(GIT_BIN, ["branch", "-f", "git-annex", "origin/git-annex"], { cwd: tempWorkingPath }).catch(() => {});
+    }
 
     await execAsync(GIT_BIN, ["config", "user.name", "ClusterGit"], { cwd: tempWorkingPath });
     await execAsync(GIT_BIN, ["config", "user.email", "system@clustergit.local"], { cwd: tempWorkingPath });
