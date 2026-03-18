@@ -518,7 +518,7 @@ router.get("/:id/files", authMiddleware, async (req, res) => {
 });
 
 // UPLOAD FILE TO REPOSITORY
-router.post("/:id/upload", authMiddleware, upload.single('file'), async (req, res) => {
+router.post("/:id/upload", upload.single('file'), authMiddleware, async (req, res) => {
     const ownerId = req.user.id;
     const repoId = req.params.id;
     const file = req.file;
