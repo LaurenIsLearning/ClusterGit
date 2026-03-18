@@ -199,7 +199,7 @@ function LandingNodeCard({ node }) {
             <div className="flex items-start justify-between gap-3 mb-4">
                 <div>
                     <h3 className="text-base font-semibold text-slate-900">{node.id}</h3>
-                    <p className="text-xs font-mono text-slate-500">{node.ip || 'No IP available'}</p>
+                    <p className="text-xs text-slate-500">Cluster node status</p>
                 </div>
                 <span className={`px-2.5 py-1 rounded-full text-[11px] font-semibold uppercase border ${statusTone}`}>
                     {node.status}
