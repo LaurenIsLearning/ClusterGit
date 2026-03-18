@@ -6,12 +6,21 @@ const router = express.Router();
 
 const GIT_BIN = process.platform === "win32" ? "git" : "/usr/bin/git";
 
+/**
+ * Resolve the bare repo path from the URL params.
+ * Strips trailing .git and looks up the real path on disk.
+ */
 async function resolveRepo(req) {
     const { userId, repo } = req.params;
     const projectName = repo.replace(/\.git$/, "");
     return resolveExistingRepoPath(userId, projectName);
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /:userId/:repo/info/refs?service=git-upload-pack|git-receive-pack
+//
+// Smart ref advertisement — Git clients hit this first during clone/fetch/push.
+// ─────────────────────────────────────────────────────────────────────────────
 router.get("/:userId/:repo/info/refs", async (req, res) => {
     const service = req.query.service;
 
@@ -24,10 +33,11 @@ router.get("/:userId/:repo/info/refs", async (req, res) => {
     res.setHeader("Content-Type", `application/x-${service}-advertisement`);
     res.setHeader("Cache-Control", "no-cache");
 
+    // Smart HTTP preamble packet
     const serverAdvert = `# service=${service}\n`;
     const pktLen = (serverAdvert.length + 4).toString(16).padStart(4, "0");
     res.write(pktLen + serverAdvert);
-    res.write("0000");
+    res.write("0000"); // flush-pkt
 
     const gitProcess = spawn(GIT_BIN, [
         service.replace("git-", ""),
@@ -56,6 +66,9 @@ router.get("/:userId/:repo/info/refs", async (req, res) => {
     });
 });
 
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /:userId/:repo/git-upload-pack   (clone / fetch)
+// ─────────────────────────────────────────────────────────────────────────────
 router.post("/:userId/:repo/git-upload-pack", async (req, res) => {
     const repoPath = await resolveRepo(req);
 
@@ -89,6 +102,9 @@ router.post("/:userId/:repo/git-upload-pack", async (req, res) => {
     });
 });
 
+// ─────────────────────────────────────────────────────────────────────────────
+// POST /:userId/:repo/git-receive-pack   (push)
+// ─────────────────────────────────────────────────────────────────────────────
 router.post("/:userId/:repo/git-receive-pack", async (req, res) => {
     const repoPath = await resolveRepo(req);
 

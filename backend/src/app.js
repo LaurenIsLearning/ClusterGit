@@ -11,6 +11,7 @@ import gitHttpRoutes from "./routes/gitHttp.js";
 
 const app = express();
 
+// Git Smart HTTP routes BEFORE body parsers — they exchange raw binary streams
 app.use("/git", gitHttpRoutes);
 
 app.use(cors({
