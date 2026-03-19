@@ -74,7 +74,14 @@ export async function resolveExistingRepoPath(userId, projectName) {
     ];
 
     for (const candidate of candidates) {
-        if (await pathExists(candidate)) return candidate;
+        if (await pathExists(candidate)) {
+            // Lazily install the post-receive hook on existing repos that predate it.
+            const hookPath = path.join(candidate, '.git', 'hooks', 'post-receive');
+            if (!(await pathExists(hookPath))) {
+                await installPostReceiveHook(candidate).catch(() => {});
+            }
+            return candidate;
+        }
     }
 
     return configured;
@@ -218,6 +225,25 @@ export async function getAnnexUuid(repoPath) {
 /**
  * Create a Git repository as a plain project folder
  */
+/**
+ * Install (or overwrite) the post-receive hook in a repo.
+ * The hook runs `git annex sync --no-push --no-pull` after every push so that
+ * synced/main is automatically merged into main without needing to contact any
+ * remote.  Safe to call on existing repos — just overwrites the hook file.
+ */
+export async function installPostReceiveHook(repoPath) {
+    const hooksDir = path.join(repoPath, '.git', 'hooks');
+    await fs.mkdir(hooksDir, { recursive: true });
+    const hookPath = path.join(hooksDir, 'post-receive');
+    const script = [
+        '#!/bin/sh',
+        '# Installed by ClusterGit — merges synced/main into main after every push.',
+        'git annex sync --no-push --no-pull 2>/dev/null || true',
+        '',
+    ].join('\n');
+    await fs.writeFile(hookPath, script, { mode: 0o755 });
+}
+
 export async function createRepository(userId, projectName, description = '') {
     const repoPath = getRepoPath(userId, projectName);
     await fs.mkdir(path.dirname(repoPath), { recursive: true });
@@ -245,7 +271,10 @@ export async function createRepository(userId, projectName, description = '') {
     await execAsync(GIT_BIN, ["add", "."], { cwd: repoPath });
     await execAsync(GIT_BIN, ["commit", "-m", "Initialize git-annex with placeholder"], { cwd: repoPath });
 
-    // 5. get annex UUID
+    // 5. post-receive hook so every push auto-merges synced/main → main
+    await installPostReceiveHook(repoPath);
+
+    // 6. get annex UUID
     const annexUuid = await getAnnexUuid(repoPath);
 
     if (description) {
@@ -567,30 +596,19 @@ export async function readRepoStateForSync(repoPath) {
         throw err;
     }
 
-    // If synced/main is ahead of main (fast-forward case), advance main so that
-    // future temp-clone web uploads don't lose the CLI-pushed commits.
-    let headHash = mainHash || syncedHash;
+    // synced/main is always the authoritative content branch for CLI pushes —
+    // git annex push deposits commits here.  Always prefer it when it exists.
+    // Attempt a fast-forward of main so web uploads keep seeing the latest state,
+    // but never let that attempt change which commit we actually read files from.
+    const headHash = syncedHash || mainHash;
     if (syncedHash && syncedHash !== mainHash) {
         try {
-            // Check if mainHash is an ancestor of syncedHash (clean fast-forward)
             if (mainHash) {
                 await execAsync(GIT_BIN, ['--git-dir', gitDir, 'merge-base', '--is-ancestor', mainHash, syncedHash]);
             }
-            // Fast-forward: update the ref only (working tree stays put — the server
-            // repo is non-bare but used for serving, not editing)
             await execAsync(GIT_BIN, ['--git-dir', gitDir, 'update-ref', 'refs/heads/main', syncedHash]);
-            headHash = syncedHash;
         } catch {
-            // Not a clean fast-forward — use whichever ref is more recent
-            if (mainHash) {
-                const ts = async (h) => {
-                    const { stdout } = await execAsync(GIT_BIN, ['--git-dir', gitDir, 'log', '-1', '--pretty=%ct', h]);
-                    return Number(stdout.trim());
-                };
-                headHash = (await ts(syncedHash)) >= (await ts(mainHash)) ? syncedHash : mainHash;
-            } else {
-                headHash = syncedHash;
-            }
+            // Not a clean fast-forward — fine, we still read from synced/main
         }
     }
 
@@ -652,5 +670,6 @@ export default {
     getRepoSize,
     getGitUrl,
     addFileToProject,
-    readRepoStateForSync
+    readRepoStateForSync,
+    installPostReceiveHook,
 };
