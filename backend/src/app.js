@@ -7,13 +7,11 @@ import repoRoutes from "./routes/repos.js";
 import commitRoutes from "./routes/commits.js";
 import adminRoutes from "./routes/admin.js";
 import gitHttpRoutes from "./routes/gitHttp.js";
-import webdavRoutes from "./routes/webdav.js";
 
 const app = express();
 
-// Git Smart HTTP + WebDAV routes BEFORE body parsers — they exchange raw binary streams
+// Git Smart HTTP routes BEFORE body parsers — they exchange raw binary streams
 app.use("/git", gitHttpRoutes);
-app.use("/webdav", webdavRoutes);
 
 app.use(cors({
   origin: function (origin, callback) {
