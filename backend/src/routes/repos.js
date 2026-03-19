@@ -368,7 +368,7 @@ router.get("/:id/files", authMiddleware, async (req, res) => {
     try {
         let projectQuery = supabase
             .from("repositories")
-            .select("id, owner_id")
+            .select("id, name, owner_id")
             .eq("id", repoId);
 
         projectQuery = applyEnvironmentFilter(projectQuery, environmentKey);
@@ -388,102 +388,60 @@ router.get("/:id/files", authMiddleware, async (req, res) => {
             });
         }
 
-        const { data: repoFiles, error: repoFilesError } = await supabase
-            .from("repo_files")
-            .select("id, latest_commit_id, original_name, file_path, mime_type, size_bytes, status, uploaded_at, annex_key")
-            .eq("repo_id", repoId);
-
-        if (repoFilesError) {
-            console.error("Failed to fetch repo_files metadata:", repoFilesError);
-            return res.status(500).json({
-                error: { message: repoFilesError.message || "Failed to load file metadata" }
-            });
-        }
-
         // keeps the ui labels decent even when all we have is a filename
         const inferType = (fileName) => {
             const lower = String(fileName || "").toLowerCase();
-            if (/\.(mp4|mov|avi|mkv|webm)$/.test(lower)) return "video";
-            if (/\.(zip|rar|7z|tar|gz)$/.test(lower)) return "archive";
+            if (/\.(mp4|mov|avi|mkv|webm|m4v)$/.test(lower)) return "video";
+            if (/\.(zip|rar|7z|tar|gz|bz2|xz)$/.test(lower)) return "archive";
             if (/\.(onnx|pt|pth|h5|ckpt|bin|safetensors)$/.test(lower)) return "model";
-            return "unknown";
+            if (/\.(jpg|jpeg|png|gif|webp|svg|bmp|tiff?)$/.test(lower)) return "image";
+            if (/\.(js|ts|jsx|tsx|py|go|rs|java|c|cpp|h|cs|rb|php|sh|json|yaml|yml|toml|xml|html|css)$/.test(lower)) return "code";
+            if (/\.(pdf|doc|docx|xls|xlsx|ppt|pptx|txt|md)$/.test(lower)) return "document";
+            return "file";
         };
 
-        // uses the new repo_files table first if it exists for this repo
-        if ((repoFiles || []).length > 0) {
-            return res.json((repoFiles || []).map((fileRow) => ({
-                id: fileRow.id,
-                name: fileRow.original_name || path.basename(fileRow.file_path || ""),
-                path: fileRow.file_path || fileRow.original_name || "",
-                size_bytes: Number(fileRow.size_bytes) || 0,
-                annex_key: fileRow.annex_key || null,
-                git_commit_hash: null,
-                branch: "main",
-                type: inferType(fileRow.original_name || fileRow.file_path),
-                status: fileRow.status || "synced",
-                uploaded_at: fileRow.uploaded_at || null,
-                mime_type: fileRow.mime_type || null,
-                latest_commit_id: fileRow.latest_commit_id || null,
-            })));
-        }
-
-        // falls back to parsing upload commits for older repos that do not have repo_files rows yet
-        let { data: commits, error: commitError } = await supabase
-            .from("commits")
-            .select("id, message, annex_key, git_commit_hash, branch, committed_at, created_at")
-            .eq("repo_id", repoId)
-            .order("committed_at", { ascending: false });
-
-        if (commitError && String(commitError.message || '').toLowerCase().includes('committed_at')) {
-            const fallback = await supabase
-                .from("commits")
-                .select("id, message, annex_key, git_commit_hash, branch, created_at")
-                .eq("repo_id", repoId)
-                .order("created_at", { ascending: false });
-            commits = fallback.data;
-            commitError = fallback.error;
-        }
-
-        if (commitError) {
-            console.error("Failed to fetch commits for files endpoint:", commitError);
-            return res.status(500).json({
-                error: { message: commitError.message || "Failed to load project commits" }
-            });
-        }
-
-        const { data: annexObjects, error: annexError } = await supabase
-            .from("annex_objects")
-            .select("annex_key, size_bytes")
+        // Fetch Supabase metadata for enrichment (status, upload time, etc.)
+        const { data: repoFiles } = await supabase
+            .from("repo_files")
+            .select("file_path, original_name, mime_type, size_bytes, status, uploaded_at, annex_key, latest_commit_id, id")
             .eq("repo_id", repoId);
 
-        if (annexError) {
-            console.error("Failed to fetch annex metadata for fallback files endpoint:", annexError);
-            return res.status(500).json({
-                error: { message: annexError.message || "Failed to load annex metadata" }
-            });
+        const metaByPath = new Map((repoFiles || []).map((f) => [f.file_path, f]));
+
+        // Read all files directly from the git tree
+        const repoPath = await gitService.resolveExistingRepoPath(ownerId, project.name);
+        let gitFiles;
+        try {
+            const state = await gitService.readRepoStateForSync(repoPath);
+            gitFiles = state.files;
+        } catch (err) {
+            if (err.name === "NoBranchError") {
+                return res.json([]); // empty repo, no commits yet
+            }
+            throw err;
         }
 
-        const sizeByAnnexKey = new Map(
-            (annexObjects || []).map((obj) => [obj.annex_key, Number(obj.size_bytes) || 0])
-        );
+        const SKIP = new Set([".gitattributes", ".gitignore", ".annex-placeholder"]);
 
-        return res.json((commits || [])
-            .filter((commit) => typeof commit.message === "string" && commit.message.startsWith("Upload "))
-            .map((commit) => {
-                const name = commit.message.replace(/^Upload\s+/, "").trim() || "unknown-file";
-                return {
-                    id: commit.id,
-                    name,
-                    path: name,
-                    size_bytes: commit.annex_key ? (sizeByAnnexKey.get(commit.annex_key) || 0) : 0,
-                    annex_key: commit.annex_key || null,
-                    git_commit_hash: commit.git_commit_hash || null,
-                    branch: commit.branch || "main",
-                    type: inferType(name),
-                    status: "synced",
-                    uploaded_at: commit.committed_at || commit.created_at || null
-                };
-            }));
+        return res.json(
+            gitFiles
+                .filter((f) => !SKIP.has(f.name))
+                .map((f, idx) => {
+                    const meta = metaByPath.get(f.path);
+                    return {
+                        id: meta?.id ?? `git-${idx}`,
+                        name: f.name,
+                        path: f.path,
+                        size_bytes: f.sizeBytes || Number(meta?.size_bytes) || 0,
+                        annex_key: f.annexKey || meta?.annex_key || null,
+                        type: inferType(f.name),
+                        status: meta?.status || "synced",
+                        uploaded_at: meta?.uploaded_at || null,
+                        mime_type: meta?.mime_type || null,
+                        latest_commit_id: meta?.latest_commit_id || null,
+                    };
+                })
+        );
     } catch (error) {
         console.error("Error listing repository files:", error);
         return res.status(500).json({

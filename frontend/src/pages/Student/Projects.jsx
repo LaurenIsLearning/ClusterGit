@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { projectService } from '../../services/projectService';
-import { FolderGit2, FileCode, Film, Database, HardDrive, Plus, MoreVertical, Github, Copy, Check } from 'lucide-react';
+import { FolderGit2, FileCode, Film, Database, HardDrive, Plus, MoreVertical, Github, Copy, Check, Image, FileText, File } from 'lucide-react';
 import UploadModal from '../../components/UploadModal';
 import NewProjectModal from '../../components/NewProjectModal';
 import ConfirmationModal from '../../components/ConfirmationModal';
@@ -298,7 +298,7 @@ export default function StudentProjects() {
                                     {currentProject.name}
                                     <span className="text-xs px-2 py-1 rounded bg-[--bg-tertiary] text-[--text-muted] font-normal">Active</span>
                                 </h2>
-                                <p className="text-sm text-[--text-secondary] mt-1">{files.length} large files stored</p>
+                                <p className="text-sm text-[--text-secondary] mt-1">{files.length} file{files.length !== 1 ? 's' : ''}</p>
                             </div>
                             <div className="flex gap-3">
                                 <button
@@ -377,7 +377,7 @@ export default function StudentProjects() {
                                     {files.length === 0 && (
                                         <tr>
                                             <td colSpan="5" className="py-12 text-center text-[--text-muted]">
-                                                No large files in this repository yet.
+                                                No files in this repository yet.
                                             </td>
                                         </tr>
                                     )}
@@ -399,5 +399,8 @@ function FileIcon({ type }) {
     if (type === 'video') return <Film className="w-5 h-5 text-purple-400" />;
     if (type === 'archive') return <HardDrive className="w-5 h-5 text-yellow-400" />;
     if (type === 'model') return <Database className="w-5 h-5 text-blue-400" />;
-    return <FileCode className="w-5 h-5 text-[--text-secondary]" />;
+    if (type === 'image') return <Image className="w-5 h-5 text-green-400" />;
+    if (type === 'document') return <FileText className="w-5 h-5 text-orange-400" />;
+    if (type === 'code') return <FileCode className="w-5 h-5 text-cyan-400" />;
+    return <File className="w-5 h-5 text-[--text-secondary]" />;
 }
