@@ -1,6 +1,6 @@
 import express from "express";
 import { spawn } from "child_process";
-import { resolveExistingRepoPath } from "../services/gitService.js";
+import { resolveExistingRepoPath, getAnnexUuid } from "../services/gitService.js";
 import { syncPushMetadata } from "../services/syncService.js";
 
 const router = express.Router();
@@ -16,6 +16,27 @@ async function resolveRepo(req) {
     const projectName = repo.replace(/\.git$/, "");
     return resolveExistingRepoPath(userId, projectName);
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /:userId/:repo/config
+//
+// git-annex probes this URL to discover the remote's annex UUID before deciding
+// whether to mark the remote as annex-ignore.  We return a minimal git config
+// fragment containing the annex.uuid so git-annex can use the remote for
+// content transfer via the regular git HTTP protocol.
+// ─────────────────────────────────────────────────────────────────────────────
+router.get("/:userId/:repo/config", async (req, res) => {
+    try {
+        const repoPath = await resolveRepo(req);
+        const uuid = await getAnnexUuid(repoPath);
+        if (!uuid) return res.status(404).end("Not Found\n");
+
+        res.setHeader("Content-Type", "text/plain");
+        res.end(`[annex]\n\tuuid = ${uuid}\n`);
+    } catch {
+        res.status(500).end("Internal server error\n");
+    }
+});
 
 // ─────────────────────────────────────────────────────────────────────────────
 // GET /:userId/:repo/info/refs?service=git-upload-pack|git-receive-pack

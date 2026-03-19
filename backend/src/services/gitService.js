@@ -550,19 +550,48 @@ export async function getRepoSize(repoPath) {
 export async function readRepoStateForSync(repoPath) {
     const gitDir = await getGitDir(repoPath);
 
-    // Find the main branch (try main, then synced/main as git-annex push uses synced/*)
-    let headHash;
-    for (const ref of ['refs/heads/main', 'refs/heads/synced/main']) {
+    // Resolve both refs — git-annex push deposits commits on synced/main, not main
+    const resolve = async (ref) => {
         try {
             const { stdout } = await execAsync(GIT_BIN, ['--git-dir', gitDir, 'rev-parse', '--verify', ref]);
-            headHash = stdout.trim();
-            break;
-        } catch {}
-    }
-    if (!headHash) {
+            return stdout.trim();
+        } catch { return null; }
+    };
+
+    const mainHash   = await resolve('refs/heads/main');
+    const syncedHash = await resolve('refs/heads/synced/main');
+
+    if (!mainHash && !syncedHash) {
         const err = new Error('No main branch found');
         err.name = 'NoBranchError';
         throw err;
+    }
+
+    // If synced/main is ahead of main (fast-forward case), advance main so that
+    // future temp-clone web uploads don't lose the CLI-pushed commits.
+    let headHash = mainHash || syncedHash;
+    if (syncedHash && syncedHash !== mainHash) {
+        try {
+            // Check if mainHash is an ancestor of syncedHash (clean fast-forward)
+            if (mainHash) {
+                await execAsync(GIT_BIN, ['--git-dir', gitDir, 'merge-base', '--is-ancestor', mainHash, syncedHash]);
+            }
+            // Fast-forward: update the ref only (working tree stays put — the server
+            // repo is non-bare but used for serving, not editing)
+            await execAsync(GIT_BIN, ['--git-dir', gitDir, 'update-ref', 'refs/heads/main', syncedHash]);
+            headHash = syncedHash;
+        } catch {
+            // Not a clean fast-forward — use whichever ref is more recent
+            if (mainHash) {
+                const ts = async (h) => {
+                    const { stdout } = await execAsync(GIT_BIN, ['--git-dir', gitDir, 'log', '-1', '--pretty=%ct', h]);
+                    return Number(stdout.trim());
+                };
+                headHash = (await ts(syncedHash)) >= (await ts(mainHash)) ? syncedHash : mainHash;
+            } else {
+                headHash = syncedHash;
+            }
+        }
     }
 
     // Commit metadata — use \x1f (unit separator) to avoid conflicts with names/messages

@@ -33,3 +33,4 @@ backend/clustergit-repos/
 .lh
 
 local-repos
+.DS_Store
