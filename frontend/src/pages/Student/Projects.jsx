@@ -47,12 +47,13 @@ export default function StudentProjects() {
 
     // Load files when project changes
     useEffect(() => {
-        const loadFiles = async () => {
-            if (!selectedProject) {
-                setFiles([]);
-                return;
-            }
+        if (!selectedProject) {
+            setFiles([]);
+            return;
+        }
 
+        let isFirstLoad = true;
+        const loadFiles = async () => {
             try {
                 const data = await projectService.getProjectFiles(selectedProject);
                 const normalized = (data || []).map((file) => ({
@@ -66,12 +67,18 @@ export default function StudentProjects() {
                 setFiles(normalized);
             } catch (error) {
                 console.error('Failed to load files:', error);
-                addToast(error.message || 'Failed to load project files', 'error');
-                setFiles([]);
+                if (isFirstLoad) {
+                    addToast(error.message || 'Failed to load project files', 'error');
+                    setFiles([]);
+                }
+            } finally {
+                isFirstLoad = false;
             }
         };
 
         loadFiles();
+        const intervalId = setInterval(loadFiles, 10_000);
+        return () => clearInterval(intervalId);
     }, [selectedProject, addToast]);
 
     const handleUploadComplete = async () => {

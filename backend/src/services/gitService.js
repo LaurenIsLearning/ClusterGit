@@ -543,6 +543,71 @@ export async function getRepoSize(repoPath) {
     try { return await getDirectorySize(repoPath); } catch { return 0; }
 }
 
+/**
+ * Read the current HEAD state of a repo for metadata sync purposes.
+ * Works against both bare and non-bare repos with no temp clone.
+ */
+export async function readRepoStateForSync(repoPath) {
+    const gitDir = await getGitDir(repoPath);
+
+    // Find the main branch (try main, then synced/main as git-annex push uses synced/*)
+    let headHash;
+    for (const ref of ['refs/heads/main', 'refs/heads/synced/main']) {
+        try {
+            const { stdout } = await execAsync(GIT_BIN, ['--git-dir', gitDir, 'rev-parse', '--verify', ref]);
+            headHash = stdout.trim();
+            break;
+        } catch {}
+    }
+    if (!headHash) {
+        const err = new Error('No main branch found');
+        err.name = 'NoBranchError';
+        throw err;
+    }
+
+    // Commit metadata — use \x1f (unit separator) to avoid conflicts with names/messages
+    const { stdout: logOut } = await execAsync(GIT_BIN, [
+        '--git-dir', gitDir, 'log', '-1',
+        `--pretty=format:%H\x1f%an\x1f%aI\x1f%s`, headHash
+    ]);
+    const [commitHash, authorName, timestamp, message] = logOut.trim().split('\x1f');
+
+    // Full recursive file tree
+    const { stdout: treeOut } = await execAsync(GIT_BIN, [
+        '--git-dir', gitDir, 'ls-tree', '-r', '--long', headHash
+    ]);
+
+    const files = [];
+    for (const line of treeOut.trim().split('\n').filter(Boolean)) {
+        const match = line.match(/^(\d{6}) \w+ ([a-f0-9]+)\s+(\d+|-)\t(.+)$/);
+        if (!match) continue;
+        const [, mode, blobHash, rawSizeStr, filePath] = match;
+
+        let annexKey = null;
+        let sizeBytes = rawSizeStr === '-' ? 0 : Number(rawSizeStr);
+
+        if (mode === '120000') {
+            // Annex pointer symlink — read blob content to extract key and real size
+            try {
+                const { stdout: blob } = await execAsync(GIT_BIN, [
+                    '--git-dir', gitDir, 'cat-file', 'blob', blobHash
+                ]);
+                // e.g. "../../.git/annex/objects/.../SHA256E-s12345--abc.iso/SHA256E-s12345--abc.iso"
+                const keyMatch = blob.trim().match(/([A-Z0-9]+-s\d+--[^/\s]+)$/);
+                if (keyMatch) {
+                    annexKey = keyMatch[1];
+                    const sizeMatch = annexKey.match(/-s(\d+)-/);
+                    if (sizeMatch) sizeBytes = Number(sizeMatch[1]);
+                }
+            } catch {}
+        }
+
+        files.push({ path: filePath, name: path.basename(filePath), mode, blobHash, annexKey, sizeBytes });
+    }
+
+    return { commitHash, authorName, timestamp, message, files };
+}
+
 export default {
     validateProjectName,
     createRepository,
@@ -557,5 +622,6 @@ export default {
     getRepoPath,
     getRepoSize,
     getGitUrl,
-    addFileToProject
+    addFileToProject,
+    readRepoStateForSync
 };

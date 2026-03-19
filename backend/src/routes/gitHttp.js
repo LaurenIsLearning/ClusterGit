@@ -1,6 +1,7 @@
 import express from "express";
 import { spawn } from "child_process";
 import { resolveExistingRepoPath } from "../services/gitService.js";
+import { syncPushMetadata } from "../services/syncService.js";
 
 const router = express.Router();
 
@@ -134,6 +135,15 @@ router.post("/:userId/:repo/git-receive-pack", async (req, res) => {
     gitProcess.on("close", (code) => {
         if (code !== 0 && !res.headersSent) {
             res.status(500).end("Git process failed\n");
+            return;
+        }
+
+        if (code === 0) {
+            // Fire-and-forget: sync file metadata into Supabase so the frontend
+            // reflects files pushed from the CLI (git annex push, git push, etc.)
+            const projectName = req.params.repo.replace(/\.git$/, "");
+            syncPushMetadata(req.params.userId, projectName)
+                .catch(err => console.error('[gitHttp] syncPushMetadata threw:', err));
         }
     });
 });

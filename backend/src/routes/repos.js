@@ -8,6 +8,7 @@ import fs from "fs/promises";
 import os from "os";
 import path from "path";
 import { applyEnvironmentFilter, getEnvironmentKey } from "../utils/environment.js";
+import { insertPushEventWithFallback, insertAnnexObjectWithFallback, insertActivityLogWithFallback } from "../services/syncService.js";
 
 const router = express.Router();
 
@@ -55,62 +56,6 @@ async function getUserQuotaBytes(userId) {
     }
 
     return Number(data?.storage_quota_bytes) || 0;
-}
-
-async function insertPushEventWithFallback(payload) {
-    // backfills older push_events schemas that may not have every new column yet
-    // Fallback for environments with stricter/different push_events schema.
-    const { error: fallbackError } = await supabase
-        .from("push_events")
-        .insert({
-            repo_id: payload.repo_id,
-            pusher_id: payload.pusher_id,
-            from_ref: payload.from_ref,
-            to_ref: payload.to_ref,
-            commit_count: payload.commit_count
-        });
-
-    return fallbackError || null;
-}
-
-async function insertAnnexObjectWithFallback(payload) {
-    // keeps annex object metadata idempotent if the same upload logic retries
-    // Prefer upsert so repeated uploads/metadata retries don't fail on duplicate keys.
-    const { error: upsertError } = await supabase
-        .from("annex_objects")
-        .upsert(payload, { onConflict: "repo_id,annex_key" });
-
-    if (!upsertError) return null;
-
-    const { error: fallbackError } = await supabase
-        .from("annex_objects")
-        .insert({
-            repo_id: payload.repo_id,
-            annex_key: payload.annex_key,
-            size_bytes: payload.size_bytes
-        });
-
-    return fallbackError || upsertError;
-}
-
-async function insertActivityLogWithFallback(payload) {
-    // tries a few event names so activity logging still works against older schemas
-    const attempts = [
-        payload,
-        { ...payload, event_type: "commit_recorded" },
-        { ...payload, event_type: "upload" }
-    ];
-
-    let lastError = null;
-    for (const attempt of attempts) {
-        const { error } = await supabase
-            .from("activity_log")
-            .insert(attempt);
-        if (!error) return null;
-        lastError = error;
-    }
-
-    return lastError;
 }
 
 // load one repo scoped to the current environment so preview/local metadata cannot mix.
