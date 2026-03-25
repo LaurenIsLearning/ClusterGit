@@ -19,6 +19,7 @@ const {
   SUPABASE_URL,
   SUPABASE_SERVICE_ROLE_KEY,
   PROMETHEUS_URL,
+  PROMETHEUS_STORAGE_MOUNTPOINTS,
 } = process.env;
 
 if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
@@ -81,6 +82,23 @@ function inferNodeStatus(readyValue) {
   return "offline";
 }
 
+function parseStorageMountpoints(rawValue) {
+  return String(rawValue || "/")
+    .split(",")
+    .map((value) => value.trim())
+    .filter(Boolean);
+}
+
+function escapePrometheusRegex(value) {
+  return String(value).replace(/[|\\{}()[\]^$+*?.-]/g, "\\$&");
+}
+
+function buildFilesystemQuery(metricName) {
+  const mountpoints = parseStorageMountpoints(PROMETHEUS_STORAGE_MOUNTPOINTS);
+  const mountpointRegex = mountpoints.map(escapePrometheusRegex).join("|");
+  return `sum by (instance) (${metricName}{fstype!~"tmpfs|overlay",mountpoint=~"${mountpointRegex}"})`;
+}
+
 async function collectNodeSnapshots() {
   const [
     readySamples,
@@ -93,8 +111,8 @@ async function collectNodeSnapshots() {
     queryPrometheus('max by (node) (kube_node_status_condition{condition="Ready",status="true"})'),
     queryPrometheus("node_uname_info"),
     queryPrometheus('100 * (1 - avg by (instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])))'),
-    queryPrometheus('sum by (instance) (node_filesystem_avail_bytes{fstype!~"tmpfs|overlay",mountpoint="/"})'),
-    queryPrometheus('sum by (instance) (node_filesystem_size_bytes{fstype!~"tmpfs|overlay",mountpoint="/"})'),
+    queryPrometheus(buildFilesystemQuery("node_filesystem_avail_bytes")),
+    queryPrometheus(buildFilesystemQuery("node_filesystem_size_bytes")),
     queryPrometheusFirstAvailable([
       'max by (instance) (node_thermal_zone_temp / 1000)',
       'max by (instance) (node_hwmon_temp_celsius)',
@@ -167,7 +185,7 @@ async function collectNodeSnapshots() {
       ip_address: ipAddress,
       status: inferNodeStatus(readyValue),
       cpu_percent: Number((cpuByNode.get(nodeKey) || 0).toFixed(2)),
-      temp_c: tempByNode.has(nodeKey)
+      temp_c: tempByNode.has(nodeKey) && Number(tempByNode.get(nodeKey) || 0) > 0
         ? Number((tempByNode.get(nodeKey) || 0).toFixed(2))
         : null,
       storage_used_bytes: usedBytes,
@@ -203,7 +221,9 @@ async function main() {
     throw new Error(`Failed to write node_health rows: ${error.message}`);
   }
 
-  console.log(`Inserted ${rows.length} node_health rows at ${new Date().toISOString()} from ${prometheusBaseUrl}`);
+  console.log(
+    `Inserted ${rows.length} node_health rows at ${new Date().toISOString()} from ${prometheusBaseUrl} using mountpoints: ${parseStorageMountpoints(PROMETHEUS_STORAGE_MOUNTPOINTS).join(", ")}`
+  );
 }
 
 main().catch((error) => {
