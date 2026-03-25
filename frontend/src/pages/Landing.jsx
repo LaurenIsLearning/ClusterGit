@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { GitBranch, HardDrive, Shield, ArrowRight, Github, Cpu, Thermometer, Activity } from 'lucide-react';
 import { publicService } from '../services/publicService';
+import { NODE_TELEMETRY_REFRESH_MS } from '../utils/nodeTelemetry';
 
 function formatBytes(bytes) {
     const value = Number(bytes) || 0;
@@ -43,7 +44,7 @@ export default function Landing() {
         };
 
         loadNodes();
-        const interval = setInterval(loadNodes, 15000);
+        const interval = setInterval(loadNodes, NODE_TELEMETRY_REFRESH_MS);
 
         return () => {
             isMounted = false;

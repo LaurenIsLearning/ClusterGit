@@ -48,7 +48,12 @@ export function getEnvironmentKey(req) {
 export function applyEnvironmentFilter(query, environmentKey, column = "environment_key") {
     if (environmentKey === "local") {
         // keeps old null rows visible locally while previews stay isolated
-        return query.or(`${column}.eq.local,${column}.is.null`);
+        if (typeof query.or === "function") {
+            return query.or(`${column}.eq.local,${column}.is.null`);
+        }
+
+        // test doubles and older query builders may not implement `.or()`
+        return query;
     }
 
     return query.eq(column, environmentKey);

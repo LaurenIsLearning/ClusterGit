@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { adminService } from '../../services/adminService';
 import { Server, HardDrive, Cpu, Thermometer, AlertTriangle } from 'lucide-react';
+import { NODE_TELEMETRY_REFRESH_MS } from '../../utils/nodeTelemetry';
 
 function formatBytes(bytes) {
     const value = Number(bytes) || 0;
@@ -54,7 +55,7 @@ export default function AdminNodes() {
         };
 
         load();
-        const interval = setInterval(load, 15000);
+        const interval = setInterval(load, NODE_TELEMETRY_REFRESH_MS);
 
         return () => {
             isMounted = false;
