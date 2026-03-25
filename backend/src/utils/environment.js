@@ -21,7 +21,7 @@ export function getRequestHost(req) {
 export function getEnvironmentKey(req) {
     const host = getRequestHost(req);
 
-    if (!host || host === "localhost" || host === "127.0.0.1" || host === "::1") {
+    if (!host || host === "localhost" || host === "127.0.0.1" || host === "::1" || host === "10.27.12.244") {
         return "local";
     }
 
