@@ -197,7 +197,7 @@ async function prepareReadOnlyClone(bareRepoPath, tempWorkingPath) {
  * Get Git clone URL
  */
 export function getGitUrl(userId, projectName) {
-    const host = process.env.GIT_HTTP_HOST || 'clustergit.com';
+    const host = process.env.GIT_HTTP_HOST || 'develop.clustergit.com';
     return `https://${host}/git/${userId}/${projectName}.git`;
 }
 
