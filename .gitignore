@@ -31,3 +31,6 @@ backend/clustergit-repos/
 
 # VS Code Local History
 .lh
+
+local-repos
+.DS_Store

@@ -290,3 +290,29 @@ kubectl rollout status deployment clustergit-backend -n preview-<branch>
 kubectl rollout restart deployment clustergit-backend -n storage
 kubectl rollout status deployment clustergit-backend -n storage
 ```
+
+### Full workflow for use of backend
+
+Navigate to student dashboard and create a project.
+Select clone link option and open a terminal
+Navigate to a folder where you want to store your project
+In desired folder run 
+
+```bash
+git clone <clone_link>
+```
+
+After cloning, put large files into this folder
+for small files follow normal git workflow of
+```bash
+git add <file>
+git commit -m "<commit message>"
+git push
+```
+
+for larger files use git-annex
+
+```bash
+git annex add <large-file>
+git annex push origin main
+```

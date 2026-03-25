@@ -3,7 +3,11 @@ export function getApiBaseUrl() {
 
   // sends local dev to the local backend
   if (host === "localhost" || host === "127.0.0.1" || host === "::1") {
-      return "http://localhost:8080"; //TODO: Make pull the PORT env var
+    return "http://localhost:3001";
+  }
+
+  if (host === "10.27.12.244") {
+    return "http://10.27.12.244:3001"
   }
 
   // maps each pages preview to the matching cluster preview backend
