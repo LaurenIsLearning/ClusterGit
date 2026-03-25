@@ -2,8 +2,9 @@ name: Preview Deploy
 
 on:
   push:
-    branches:
-      - "**"
+    branches-ignore:
+      - develop
+      - main
     create:
 
 jobs:

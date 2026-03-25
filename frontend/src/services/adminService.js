@@ -53,7 +53,76 @@ function bytesToGiB(bytes) {
     return Number(((Number(bytes) || 0) / (1024 ** 3)).toFixed(2));
 }
 
+function normalizeNodeTelemetry(node) {
+    const storageUsedPercent = Number(
+        node?.storage?.used
+        ?? node?.storage_used_percent
+        ?? 0
+    ) || 0;
+
+    const storageUsedBytes = Number(
+        node?.storage?.used_bytes
+        ?? node?.storageUsedBytes
+        ?? 0
+    ) || 0;
+
+    const storageTotalBytes = Number(
+        node?.storage?.total_bytes
+        ?? node?.storageTotalBytes
+        ?? 0
+    ) || 0;
+
+    return {
+        id: node?.id || 'unknown-node',
+        ip: node?.ip || '',
+        status: node?.status || 'unknown',
+        cpuPercent: Number(node?.cpu ?? node?.cpuPercent ?? 0) || 0,
+        temperatureC: node?.temp == null && node?.temp_c == null && node?.temperatureC == null
+            ? null
+            : Number(node?.temp ?? node?.temp_c ?? node?.temperatureC ?? 0),
+        heartbeatAt: node?.heartbeat_at || node?.heartbeatAt || null,
+        uptimeLabel: node?.uptime || null,
+        storageUsedPercent,
+        storageUsedBytes,
+        storageTotalBytes,
+    };
+}
+
 export const adminService = {
+    async listUsers() {
+        const headers = await getAuthHeaders();
+        const response = await fetch(`${API_BASE_URL}/admin/users`, { method: 'GET', headers });
+        const data = await safeParseJson(response);
+
+        if (!response.ok && isMissingRoute(response, data)) {
+            throw new Error('Admin API not deployed for this environment (/api/admin/users missing)');
+        }
+
+        if (!response.ok) {
+            throw new Error(data.error?.message || data._raw || 'Failed to fetch admin users');
+        }
+
+        return {
+            environment_key: data.environment_key || null,
+            users: (data.users || []).map((user) => ({
+                id: user.id,
+                display_name: user.name || 'Unknown',
+                name: user.name || 'Unknown',
+                email: user.email || '',
+                storage_quota_bytes: Number(user.quota_bytes) || 0,
+                storage_quota_mb: Math.round((Number(user.quota_bytes) || 0) / (1024 ** 2)),
+                storage_used_bytes: Number(user.used_bytes) || 0,
+                repo_count: Number(user.repo_count) || 0,
+                is_admin_created: Boolean(user.is_admin_created),
+                has_review_request: Boolean(user.has_review_request),
+                review_requested_at: user.review_requested_at || null,
+                review_detail: user.review_detail || '',
+                review_repo_id: user.review_repo_id || null,
+                last_active_at: user.last_active_at || null,
+            })),
+        };
+    },
+
     async getSummary() {
         const headers = await getAuthHeaders();
         const response = await fetch(`${API_BASE_URL}/admin/summary`, { method: 'GET', headers });
@@ -71,29 +140,17 @@ export const adminService = {
     },
 
     async getUsers() {
-        const headers = await getAuthHeaders();
-        const response = await fetch(`${API_BASE_URL}/admin/users`, { method: 'GET', headers });
-        const data = await safeParseJson(response);
-
-        if (!response.ok && isMissingRoute(response, data)) {
-            throw new Error('Admin API not deployed for this environment (/api/admin/users missing)');
-        }
-
-        if (!response.ok) {
-            throw new Error(data.error?.message || data._raw || 'Failed to fetch admin users');
-        }
-
-        // keeps the environment label with the user payload so the ui knows what storage view it is in
+        const data = await this.listUsers();
         return {
             environmentKey: data.environment_key || null,
             users: (data.users || []).map((user) => ({
                 id: user.id,
-                name: user.name || 'Unknown',
+                name: user.name || user.display_name || 'Unknown',
                 email: user.email || '',
-                used: bytesToGiB(user.used_bytes),
-                quota: bytesToGiB(user.quota_bytes),
-                usedBytes: Number(user.used_bytes) || 0,
-                quotaBytes: Number(user.quota_bytes) || 0,
+                used: bytesToGiB(user.storage_used_bytes),
+                quota: bytesToGiB(user.storage_quota_bytes),
+                usedBytes: Number(user.storage_used_bytes) || 0,
+                quotaBytes: Number(user.storage_quota_bytes) || 0,
                 repoCount: Number(user.repo_count) || 0,
                 isAdminCreated: Boolean(user.is_admin_created),
                 hasReviewRequest: Boolean(user.has_review_request),
@@ -106,7 +163,7 @@ export const adminService = {
         };
     },
 
-    async createStudent({ email, password, displayName, storageQuotaBytes }) {
+    async createStudent({ email, password, displayName, display_name, storageQuotaBytes }) {
         const headers = await getAuthHeaders();
         const response = await fetch(`${API_BASE_URL}/admin/users`, {
             method: 'POST',
@@ -114,7 +171,7 @@ export const adminService = {
             body: JSON.stringify({
                 email,
                 password,
-                display_name: displayName,
+                display_name: displayName || display_name,
                 storage_quota_bytes: storageQuotaBytes,
             }),
         });
@@ -125,6 +182,39 @@ export const adminService = {
         }
 
         return data;
+    },
+
+    async getUserDetail(userId) {
+        const usersPayload = await this.listUsers();
+        const profile = (usersPayload.users || []).find((user) => user.id === userId);
+
+        if (!profile) {
+            throw new Error('Student not found');
+        }
+
+        const reposPayload = await this.getUserRepos(userId);
+        const repositories = await Promise.all((reposPayload.repos || []).map(async (repo) => {
+            const filesPayload = await this.getRepoFiles(repo.id);
+            return {
+                id: repo.id,
+                name: repo.name,
+                description: repo.reviewDetail || '',
+                clone_url: repo.gitUrl || '',
+                repo_path: '',
+                updated_at: repo.lastActivityAt || repo.createdAt || null,
+                files: (filesPayload.files || []).map((file) => ({
+                    id: file.id,
+                    path: file.path || file.name || '',
+                    size_bytes: file.sizeBytes || 0,
+                    last_modified: file.uploadedAt || null,
+                })),
+            };
+        }));
+
+        return {
+            profile,
+            repositories,
+        };
     },
 
     async updateUserQuota(userId, storageQuotaBytes) {
@@ -143,6 +233,11 @@ export const adminService = {
         return data;
     },
 
+    async setStorageQuota(userId, storageQuotaMb) {
+        const bytes = Math.round(Number(storageQuotaMb || 0) * 1024 * 1024);
+        return this.updateUserQuota(userId, bytes);
+    },
+
     async resetUserQuota(userId) {
         const headers = await getAuthHeaders();
         const response = await fetch(`${API_BASE_URL}/admin/users/${userId}/reset-quota`, {
@@ -156,6 +251,10 @@ export const adminService = {
         }
 
         return data;
+    },
+
+    async resetStorageQuota(userId) {
+        return this.resetUserQuota(userId);
     },
 
     async getUserRepos(userId) {
@@ -293,12 +392,12 @@ export const adminService = {
         }
 
         if (Array.isArray(data?.nodes) && data.nodes.length > 0) {
-            return data.nodes;
+            return data.nodes.map(normalizeNodeTelemetry);
         }
 
         // falls back to mock nodes only when real node_health data is not there yet
         const mock = await mockService.getClusterStatus();
-        return mock.nodes;
+        return (mock.nodes || []).map(normalizeNodeTelemetry);
     },
 };
 
