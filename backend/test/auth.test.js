@@ -221,6 +221,16 @@ describe('Auth Routes', function () {
                     'Should return a descriptive error message');
             });
 
+            it('should return 400 when email is not a valid school email', async function () {
+                const res = await request(app)
+                    .post('/api/auth/register')
+                    .send({ email: 'someone@gmail.com', password: 'Password123!' })
+                    .set('Content-Type', 'application/json');
+
+                assert.equal(res.status, 400);
+                assert.match(res.body.error?.message || '', /school email/i);
+            });
+
             it('should return 400 when password is missing', async function () {
                 const res = await request(app)
                     .post('/api/auth/register')
@@ -229,6 +239,16 @@ describe('Auth Routes', function () {
 
                 assert.equal(res.status, 400);
                 assert.ok(res.body.error?.message);
+            });
+
+            it('should return 400 when password is shorter than 6 characters', async function () {
+                const res = await request(app)
+                    .post('/api/auth/register')
+                    .send({ email: 'someone@university.edu', password: '12345' })
+                    .set('Content-Type', 'application/json');
+
+                assert.equal(res.status, 400);
+                assert.match(res.body.error?.message || '', /at least 6/i);
             });
 
             it('should return 400 when Supabase reports a registration error', async function () {
@@ -332,6 +352,16 @@ describe('Auth Routes', function () {
                 assert.ok(res.body.error?.message);
             });
 
+            it('should return 400 when email is not a valid school email', async function () {
+                const res = await request(app)
+                    .post('/api/auth/login')
+                    .send({ email: 'someone@gmail.com', password: 'Password123!' })
+                    .set('Content-Type', 'application/json');
+
+                assert.equal(res.status, 400);
+                assert.match(res.body.error?.message || '', /school email/i);
+            });
+
             it('should return 400 when password is missing', async function () {
                 const res = await request(app)
                     .post('/api/auth/login')
@@ -365,7 +395,7 @@ describe('Auth Routes', function () {
 
                 const res = await request(app)
                     .post('/api/auth/login')
-                    .send({ email: 'nobody@nowhere.com', password: 'Password123!' })
+                    .send({ email: 'nobody@university.edu', password: 'Password123!' })
                     .set('Content-Type', 'application/json');
 
                 assert.equal(res.status, 401);

@@ -4,6 +4,7 @@ import { useNavigate } from "react-router-dom";
 import { User, Mail, Lock, AlertCircle } from "lucide-react";
 import { useToast } from "../context/ToastContext";
 import { useAuth } from "../context/AuthContext";
+import { validatePasswordAuthEmail } from "../utils/authValidation";
 
 export default function Login() {
   const { signIn, signUp, signInWithGitHub, user, role } = useAuth();
@@ -13,6 +14,7 @@ export default function Login() {
   const [isRegisterMode, setIsRegisterMode] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState("");
 
   // Local-only submit state. This is the important fix.
@@ -27,8 +29,11 @@ export default function Login() {
   }, [user, role, navigate]);
 
   const validate = () => {
-    if (!email || !password) return "Please fill in all fields";
+    const emailError = validatePasswordAuthEmail(email);
+    if (emailError) return emailError;
+    if (!password) return "Please fill in all fields";
     if (password.length < 6) return "Password must be at least 6 characters";
+    if (isRegisterMode && password !== confirmPassword) return "Passwords do not match";
     return "";
   };
 
@@ -144,9 +149,27 @@ export default function Login() {
                 />
               </div>
               {isRegisterMode && (
-                <p className="text-xs text-[--text-muted] mt-1">Must be at least 6 characters</p>
+                <p className="text-xs text-[--text-muted] mt-1">Use your school email and a password with at least 6 characters</p>
               )}
             </div>
+
+            {isRegisterMode && (
+              <div>
+                <label className="block text-sm font-medium mb-2">Confirm Password</label>
+                <div className="relative">
+                  <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-[--text-muted]" />
+                  <input
+                    type="password"
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    placeholder="••••••••"
+                    className="w-full pl-10 pr-4 py-2.5 rounded-lg border border-[--border-color] bg-[--bg-tertiary] focus:outline-none focus:ring-2 focus:ring-[--accent-primary]"
+                    disabled={disableUI}
+                    autoComplete="new-password"
+                  />
+                </div>
+              </div>
+            )}
 
             <button type="submit" disabled={disableUI} className="btn btn-primary w-full">
               {isSubmitting ? "Processing..." : isRegisterMode ? "Create Account" : "Sign In"}
@@ -183,6 +206,7 @@ export default function Login() {
                 setError("");
                 setEmail("");
                 setPassword("");
+                setConfirmPassword("");
               }}
               className="text-sm text-[--accent-primary] hover:underline"
               disabled={disableUI}

@@ -1,20 +1,35 @@
 import express from "express";
 import { supabase } from "../utils/supabase.js";
 import authMiddleware from "../middleware/authMiddleware.js";
+import { normalizeEmail, validatePasswordAuthEmail } from "../utils/authValidation.js";
 const router = express.Router();
 
 // REGISTER
 router.post("/register", async (req, res) => {
-    const { email, password, display_name, role } = req.body;
+    const normalizedEmail = normalizeEmail(req.body?.email);
+    const { password, display_name, role } = req.body;
+    const emailError = validatePasswordAuthEmail(normalizedEmail);
 
-    if (!email || !password) {
+    if (emailError) {
+        return res.status(400).json({
+            error: { message: emailError }
+        });
+    }
+
+    if (!password) {
         return res.status(400).json({
             error: { message: "Email and password are required" }
         });
     }
 
+    if (String(password).length < 6) {
+        return res.status(400).json({
+            error: { message: "Password must be at least 6 characters" }
+        });
+    }
+
     const { data, error } = await supabase.auth.signUp({
-        email,
+        email: normalizedEmail,
         password,
     });
 
@@ -26,7 +41,7 @@ router.post("/register", async (req, res) => {
 
     const userId = data?.user?.id;
     if (userId) {
-        const fallbackDisplayName = email?.split("@")?.[0] || "user";
+        const fallbackDisplayName = normalizedEmail?.split("@")?.[0] || "user";
         const { error: profileError } = await supabase
             .from("user_profiles")
             .upsert({
@@ -44,7 +59,7 @@ router.post("/register", async (req, res) => {
             .insert({
                 user_id: userId,
                 event_type: "user_registered",
-                detail: `User registered with email ${email}`
+                detail: `User registered with email ${normalizedEmail}`
             });
 
         if (activityError) {
@@ -57,16 +72,24 @@ router.post("/register", async (req, res) => {
 
 // LOGIN
 router.post("/login", async (req, res) => {
-    const { email, password } = req.body;
+    const normalizedEmail = normalizeEmail(req.body?.email);
+    const { password } = req.body;
+    const emailError = validatePasswordAuthEmail(normalizedEmail);
 
-    if (!email || !password) {
+    if (emailError) {
+        return res.status(400).json({
+            error: { message: emailError }
+        });
+    }
+
+    if (!password) {
         return res.status(400).json({
             error: { message: "Email and password are required" }
         });
     }
 
     const { data, error } = await supabase.auth.signInWithPassword({
-        email,
+        email: normalizedEmail,
         password,
     });
 

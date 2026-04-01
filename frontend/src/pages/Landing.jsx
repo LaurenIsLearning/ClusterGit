@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { GitBranch, HardDrive, Shield, ArrowRight, Github, Cpu, Thermometer, Activity } from 'lucide-react';
 import { publicService } from '../services/publicService';
+import { NODE_TELEMETRY_REFRESH_MS } from '../utils/nodeTelemetry';
 
 function formatBytes(bytes) {
     const value = Number(bytes) || 0;
@@ -43,7 +44,7 @@ export default function Landing() {
         };
 
         loadNodes();
-        const interval = setInterval(loadNodes, 15000);
+        const interval = setInterval(loadNodes, NODE_TELEMETRY_REFRESH_MS);
 
         return () => {
             isMounted = false;
@@ -228,7 +229,7 @@ function LandingNodeCard({ node }) {
                     <div className="rounded-xl bg-slate-50 p-3">
                         <div className="inline-flex items-center gap-2 text-xs text-slate-500 mb-1">
                             <Cpu className="w-4 h-4" />
-                            CPU
+                            % CPU
                         </div>
                         <div className="font-mono text-sm font-semibold text-slate-900">
                             {node.cpuPercent.toFixed(1)}%
@@ -247,7 +248,7 @@ function LandingNodeCard({ node }) {
 
                 <div className="inline-flex items-center gap-2 text-xs text-slate-500 pt-1">
                     <Activity className="w-4 h-4" />
-                    Last heartbeat: {node.uptimeLabel || formatHeartbeat(node.heartbeatAt)}
+                    Last heartbeat: {formatHeartbeat(node.heartbeatAt)}
                 </div>
             </div>
         </div>

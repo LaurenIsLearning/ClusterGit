@@ -74,7 +74,6 @@ function normalizeNodeTelemetry(node) {
 
     return {
         id: node?.id || 'unknown-node',
-        ip: node?.ip || '',
         status: node?.status || 'unknown',
         cpuPercent: Number(node?.cpu ?? node?.cpuPercent ?? 0) || 0,
         temperatureC: node?.temp == null && node?.temp_c == null && node?.temperatureC == null

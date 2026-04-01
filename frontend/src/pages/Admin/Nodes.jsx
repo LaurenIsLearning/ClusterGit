@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { adminService } from '../../services/adminService';
 import { Server, HardDrive, Cpu, Thermometer, AlertTriangle } from 'lucide-react';
+import { NODE_TELEMETRY_REFRESH_MS } from '../../utils/nodeTelemetry';
 
 function formatBytes(bytes) {
     const value = Number(bytes) || 0;
@@ -54,7 +55,7 @@ export default function AdminNodes() {
         };
 
         load();
-        const interval = setInterval(load, 15000);
+        const interval = setInterval(load, NODE_TELEMETRY_REFRESH_MS);
 
         return () => {
             isMounted = false;
@@ -74,7 +75,7 @@ export default function AdminNodes() {
             <div className="flex justify-between items-center">
                 <div>
                     <h1 className="text-3xl font-bold">Cluster Nodes</h1>
-                    <p className="text-[--text-secondary]">Real-time telemetry from all distributed units.</p>
+                    <p className="text-[--text-secondary]">Real-time telemetry from all cluster nodes.</p>
                 </div>
                 <div className="flex gap-4">
                     {/* Summary Stats */}
@@ -121,7 +122,7 @@ function NodeCard({ node }) {
                     </div>
                     <div>
                         <h3 className="font-bold font-mono text-lg">{node.id}</h3>
-                        <p className="text-xs text-[--text-muted] font-mono">{node.ip}</p>
+                        <p className="text-xs text-[--text-muted]">Cluster node status</p>
                     </div>
                 </div>
                 <span className={`px-2 py-1 rounded text-xs font-bold uppercase ${isOnline ? 'bg-emerald-500/10 text-emerald-500' :
@@ -132,54 +133,53 @@ function NodeCard({ node }) {
                 </span>
             </div>
 
-            {node.status !== 'offline' ? (
-                <div className="space-y-4">
-                    {/* Storage */}
-                    <div>
-                        <div className="flex justify-between text-sm mb-1">
-                            <span className="flex items-center gap-1 text-[--text-secondary]">
-                                <HardDrive className="w-3 h-3" /> Storage
-                            </span>
+            <div className="space-y-4">
+                <div>
+                    <div className="flex justify-between text-sm mb-1">
+                        <span className="flex items-center gap-1 text-[--text-secondary]">
+                            <HardDrive className="w-3 h-3" /> Storage
+                        </span>
                         <span className="font-mono text-xs">{node.storageUsedPercent}%</span>
                     </div>
                     <div className="h-2 w-full bg-[--bg-primary] rounded-full overflow-hidden">
                         <div
-                                className="h-full bg-purple-500"
-                                style={{ width: `${node.storageUsedPercent}%` }}
-                            />
-                        </div>
-                        <div className="mt-2 text-xs text-[--text-muted]">
-                            {formatBytes(node.storageUsedBytes)} of {formatBytes(node.storageTotalBytes)}
-                        </div>
+                            className={`h-full ${isWarning ? 'bg-amber-500' : !isOnline ? 'bg-red-500' : 'bg-purple-500'}`}
+                            style={{ width: `${node.storageUsedPercent}%` }}
+                        />
                     </div>
-
-                    <div className="grid grid-cols-2 gap-4 pt-2">
-                        <div className="flex items-center gap-2">
-                            <Cpu className="w-4 h-4 text-[--text-secondary]" />
-                            <div>
-                                <p className="text-xs text-[--text-secondary]">CPU</p>
-                                <p className="font-mono font-medium">{node.cpuPercent.toFixed(1)}%</p>
-                            </div>
-                        </div>
-                        <div className="flex items-center gap-2">
-                            <Thermometer className={`w-4 h-4 ${node.temperatureC != null && node.temperatureC > 50 ? 'text-[--status-warning]' : 'text-[--text-secondary]'}`} />
-                            <div>
-                                <p className="text-xs text-[--text-secondary]">Temperature</p>
-                                <p className="font-mono font-medium">{formatTemperature(node.temperatureC)}</p>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div className="text-xs text-[--text-muted] pt-2 border-t border-[--border-color] mt-2">
-                        {node.uptimeLabel ? `Uptime: ${node.uptimeLabel}` : `Last heartbeat: ${formatHeartbeat(node.heartbeatAt)}`}
+                    <div className="mt-2 text-xs text-[--text-muted]">
+                        {formatBytes(node.storageUsedBytes)} of {formatBytes(node.storageTotalBytes)}
                     </div>
                 </div>
-            ) : (
-                <div className="h-32 flex flex-col items-center justify-center text-[--status-error] gap-2 opacity-70">
-                    <AlertTriangle className="w-8 h-8" />
-                    <span className="font-medium">Connection Lost</span>
+
+                <div className="grid grid-cols-2 gap-4 pt-2">
+                    <div className="flex items-center gap-2">
+                        <Cpu className="w-4 h-4 text-[--text-secondary]" />
+                        <div>
+                            <p className="text-xs text-[--text-secondary]">% CPU</p>
+                            <p className="font-mono font-medium">{node.cpuPercent.toFixed(1)}%</p>
+                        </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <Thermometer className={`w-4 h-4 ${node.temperatureC != null && node.temperatureC > 50 ? 'text-[--status-warning]' : 'text-[--text-secondary]'}`} />
+                        <div>
+                            <p className="text-xs text-[--text-secondary]">Temperature</p>
+                            <p className="font-mono font-medium">{formatTemperature(node.temperatureC)}</p>
+                        </div>
+                    </div>
                 </div>
-            )}
+
+                {!isOnline ? (
+                    <div className="flex items-center gap-2 text-xs text-[--status-error] pt-1">
+                        <AlertTriangle className="w-4 h-4" />
+                        <span>Node status requires attention.</span>
+                    </div>
+                ) : null}
+
+                <div className="text-xs text-[--text-muted] pt-2 border-t border-[--border-color] mt-2">
+                    Last heartbeat: {formatHeartbeat(node.heartbeatAt)}
+                </div>
+            </div>
         </div>
     );
 }

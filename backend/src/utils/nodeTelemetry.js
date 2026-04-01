@@ -3,7 +3,7 @@ import { supabase } from "./supabase.js";
 export async function loadLatestNodeSnapshots() {
   const { data, error } = await supabase
     .from("node_health")
-    .select("node_key, ip_address, status, cpu_percent, temp_c, storage_used_bytes, storage_total_bytes, heartbeat_at")
+    .select("node_key, status, cpu_percent, temp_c, storage_used_bytes, storage_total_bytes, heartbeat_at")
     .order("heartbeat_at", { ascending: false });
 
   if (error) {
@@ -24,7 +24,6 @@ export async function loadLatestNodeSnapshots() {
 
     return {
       id: row.node_key,
-      ip: row.ip_address || "",
       status: row.status || "unknown",
       cpu: Number(row.cpu_percent) || 0,
       temp: row.temp_c == null ? null : Number(row.temp_c),

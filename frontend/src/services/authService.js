@@ -1,5 +1,6 @@
 import { supabase } from "./supabaseClient";
 import { getApiBaseUrl } from "../utils/api";
+import { normalizeEmail, validatePasswordAuthEmail } from "../utils/authValidation";
 
 const rawApiUrl = getApiBaseUrl();
 const normalizedApiUrl = rawApiUrl.replace(/\/+$/, '');
@@ -33,15 +34,56 @@ function isMissingRoute(response, data) {
 
 export const authService = {
   async signUp(email, password) {
-    const { data, error } = await supabase.auth.signUp({ email, password });
-    if (error) throw error;
+    const normalizedEmail = normalizeEmail(email);
+    const emailError = validatePasswordAuthEmail(normalizedEmail);
+    if (emailError) throw new Error(emailError);
+
+    const response = await fetch(`${API_BASE_URL}/auth/register`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ email: normalizedEmail, password, role: "student" }),
+    });
+
+    const data = await safeParseJson(response);
+    if (!response.ok) {
+      throw new Error(data.error?.message || data._raw || "Registration failed");
+    }
+
     return data;
   },
 
   async signIn(email, password) {
-    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+    const normalizedEmail = normalizeEmail(email);
+    const emailError = validatePasswordAuthEmail(normalizedEmail);
+    if (emailError) throw new Error(emailError);
+
+    const response = await fetch(`${API_BASE_URL}/auth/login`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ email: normalizedEmail, password }),
+    });
+
+    const data = await safeParseJson(response);
+    if (!response.ok) {
+      throw new Error(data.error?.message || data._raw || "Authentication failed");
+    }
+
+    const session = data?.session;
+    if (!session?.access_token || !session?.refresh_token) {
+      throw new Error("Login succeeded but no session was returned");
+    }
+
+    const { data: sessionData, error } = await supabase.auth.setSession({
+      access_token: session.access_token,
+      refresh_token: session.refresh_token,
+    });
+
     if (error) throw error;
-    return data;
+    return sessionData;
   },
 
   async signOut() {

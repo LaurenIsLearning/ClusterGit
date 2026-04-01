@@ -1,3 +1,5 @@
+import { validatePasswordAuthEmail } from "./authValidation.js";
+
 export const ALLOWED_ROLES = ["student", "instructor", "admin"];
 export const DEFAULT_STORAGE_QUOTA_BYTES = 21474836480;
 
@@ -33,6 +35,9 @@ export function validateCreateUserPayload(body) {
 
   if (!email) throw new Error("Email is required");
   if (!password) throw new Error("Password is required");
+  const emailError = validatePasswordAuthEmail(email);
+  if (emailError) throw new Error(emailError);
+  if (password.length < 6) throw new Error("Password must be at least 6 characters");
 
   if (!ALLOWED_ROLES.includes(role)) {
     throw new Error("Invalid role");
@@ -61,7 +66,12 @@ export function validateUpdateUserPayload(body) {
   const updates = {};
 
   if ("email" in body) {
-    updates.email = normalizeOptionalString(body.email)?.toLowerCase() ?? null;
+    const normalizedEmail = normalizeOptionalString(body.email)?.toLowerCase() ?? null;
+    if (normalizedEmail) {
+      const emailError = validatePasswordAuthEmail(normalizedEmail);
+      if (emailError) throw new Error(emailError);
+    }
+    updates.email = normalizedEmail;
   }
 
   if ("display_name" in body) {

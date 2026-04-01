@@ -976,9 +976,11 @@ router.get("/repos/:repoId/files/download", async (req, res) => {
 router.get("/nodes", async (_req, res) => {
     try {
         const nodes = await loadLatestNodeSnapshots();
+        res.set("Cache-Control", "no-store");
         return res.json({ nodes });
     } catch (error) {
         console.error("Admin nodes error:", error);
+        res.set("Cache-Control", "no-store");
         return res.json({ nodes: [] });
     }
 });
