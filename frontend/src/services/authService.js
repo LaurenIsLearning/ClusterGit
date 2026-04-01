@@ -44,11 +44,6 @@ async function safeParseJson(response) {
   }
 }
 
-function isMissingRoute(response, data) {
-  const raw = String(data?._raw || "");
-  return response.status === 404 || raw.includes("Cannot GET");
-}
-
 export const authService = {
   async signUp(email, password) {
     const normalizedEmail = normalizeEmail(email);
@@ -115,38 +110,16 @@ export const authService = {
   },
 
   async getProfile() {
-    // prefers the backend profile route but can fall back to direct supabase reads in older deployments
+    // keep profile lookups on the backend path so the browser does not read RLS-protected tables directly
     const token = await getAccessToken();
-    let response = await fetch(`${API_BASE_URL}/auth/profile`, {
+    const response = await fetch(`${API_BASE_URL}/auth/profile`, {
       method: "GET",
       headers: {
         Authorization: `Bearer ${token}`,
       },
     });
 
-    let data = await safeParseJson(response);
-
-    if (!response.ok && isMissingRoute(response, data)) {
-      // Backward-compatible fallback: read directly from Supabase user_profiles.
-      const session = await this.getSession();
-      const user = session?.user;
-      if (!user) throw new Error("Not authenticated");
-
-      const { data: profile, error } = await supabase
-        .from("user_profiles")
-        .select("display_name, role")
-        .eq("user_id", user.id)
-        .maybeSingle();
-
-      if (error) throw error;
-
-      return {
-        user_id: user.id,
-        email: user.email,
-        display_name: profile?.display_name || null,
-        role: profile?.role || null,
-      };
-    }
+    const data = await safeParseJson(response);
 
     if (!response.ok) {
       throw new Error(data.error?.message || data._raw || "Failed to load profile");
@@ -155,9 +128,9 @@ export const authService = {
   },
 
   async updateDisplayName(displayName) {
-    // updates profile through the backend first and falls back to direct supabase upsert if needed
+    // keep profile writes on the backend path so the browser does not write RLS-protected tables directly
     const token = await getAccessToken();
-    let response = await fetch(`${API_BASE_URL}/auth/profile`, {
+    const response = await fetch(`${API_BASE_URL}/auth/profile`, {
       method: "PATCH",
       headers: {
         "Content-Type": "application/json",
@@ -166,44 +139,7 @@ export const authService = {
       body: JSON.stringify({ display_name: displayName }),
     });
 
-    let data = await safeParseJson(response);
-
-    if (!response.ok && isMissingRoute(response, data)) {
-      // Backward-compatible fallback: write directly to user_profiles.
-      const session = await this.getSession();
-      const user = session?.user;
-      if (!user) throw new Error("Not authenticated");
-
-      const { data: existing } = await supabase
-        .from("user_profiles")
-        .select("role")
-        .eq("user_id", user.id)
-        .maybeSingle();
-
-      const resolvedRole = existing?.role || "student";
-
-      const { data: updated, error } = await supabase
-        .from("user_profiles")
-        .upsert(
-          {
-            user_id: user.id,
-            display_name: displayName,
-            role: resolvedRole,
-          },
-          { onConflict: "user_id" }
-        )
-        .select("display_name, role")
-        .single();
-
-      if (error) throw error;
-
-      return {
-        user_id: user.id,
-        email: user.email,
-        display_name: updated?.display_name || displayName,
-        role: updated?.role || resolvedRole,
-      };
-    }
+    const data = await safeParseJson(response);
 
     if (!response.ok) {
       throw new Error(data.error?.message || data._raw || "Failed to update display name");

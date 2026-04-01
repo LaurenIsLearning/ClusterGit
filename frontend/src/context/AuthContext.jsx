@@ -1,6 +1,5 @@
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import { authService } from "../services/authService";
-import { supabase } from "../services/supabaseClient";
 
 const AuthContext = createContext(null);
 
@@ -76,7 +75,7 @@ export function AuthProvider({ children }) {
 
     bootstrapAuth();
 
-    const { data } = supabase.auth.onAuthStateChange(async (_event, session) => {
+    const { data } = authService.onAuthStateChange(async (_event, session) => {
       const sessionUser = session?.user ?? null;
 
       if (!isMounted) return;
