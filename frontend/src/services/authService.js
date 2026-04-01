@@ -76,35 +76,24 @@ export const authService = {
     const emailError = validatePasswordAuthEmail(normalizedEmail);
     if (emailError) throw new Error(emailError);
 
-    const response = await fetch(`${API_BASE_URL}/auth/login`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ email: normalizedEmail, password }),
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email: normalizedEmail,
+      password,
     });
 
-    const data = await safeParseJson(response);
-    if (!response.ok) {
-      throw new Error(data.error?.message || data._raw || "Authentication failed");
+    if (error) {
+      throw new Error(error.message || "Authentication failed");
     }
 
-    const session = data?.session;
-    if (!session?.access_token || !session?.refresh_token) {
+    if (!data?.session?.access_token) {
       throw new Error("Login succeeded but no session was returned");
     }
 
-    const { data: sessionData, error } = await supabase.auth.setSession({
-      access_token: session.access_token,
-      refresh_token: session.refresh_token,
-    });
-
-    if (error) throw error;
-    return sessionData;
+    return data;
   },
 
   async signOut() {
-    const { error } = await supabase.auth.signOut();
+    const { error } = await supabase.auth.signOut({ scope: "local" });
     if (error) throw error;
   },
 
