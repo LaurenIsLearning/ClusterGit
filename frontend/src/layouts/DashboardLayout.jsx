@@ -70,7 +70,7 @@ export default function DashboardLayout() {
               <NavItem to="/projects" icon={FolderGit2} label="Projects" />
               <NavItem to="/settings" icon={Settings} label="Settings" />
             </>
-          ) : role === "admin" ? (
+          ) : !loading ? (
             <>
               <NavItem to="/admin" icon={LayoutDashboard} label="Cluster Health" />
               <NavItem to="/admin/nodes" icon={Server} label="Nodes" />

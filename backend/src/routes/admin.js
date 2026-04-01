@@ -8,31 +8,7 @@ import { loadLatestNodeSnapshots } from "../utils/nodeTelemetry.js";
 const router = express.Router();
 const DEFAULT_STORAGE_QUOTA_BYTES = 20 * 1024 * 1024 * 1024;
 
-async function requireAdmin(req, res, next) {
-    // checks if the signed in user is actually an admin before letting them use admin routes
-    const userId = req.user?.id;
-    if (!userId) {
-        return res.status(401).json({ error: { message: "Authentication required" } });
-    }
-
-    const { data, error } = await supabase
-        .from("user_profiles")
-        .select("role")
-        .eq("user_id", userId)
-        .maybeSingle();
-
-    if (error) {
-        return res.status(500).json({ error: { message: error.message || "Failed to verify role" } });
-    }
-
-    if (data?.role !== "admin") {
-        return res.status(403).json({ error: { message: "Admin access required" } });
-    }
-
-    next();
-}
-
-router.use(authMiddleware, requireAdmin);
+router.use(authMiddleware);
 
 function formatFallbackUserName(authUser, profile) {
     // gives the admin ui a name even if the profile row is missing display_name
