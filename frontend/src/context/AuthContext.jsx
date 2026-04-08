@@ -4,7 +4,11 @@ import { authService } from "../services/authService";
 const AuthContext = createContext(null);
 
 function getRoleFromUser(user) {
-  return user?.app_metadata?.role ?? user?.user_metadata?.role ?? null;
+  return (
+    user?.app_metadata?.role ??
+    user?.user_metadata?.role ??
+    null
+  );
 }
 
 async function fetchProfileRole() {

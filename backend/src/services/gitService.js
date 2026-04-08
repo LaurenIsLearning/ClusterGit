@@ -41,7 +41,7 @@ export function validateProjectName(name) {
  * Get repository path for a user's project
  */
 export function getRepoPath(userId, projectName) {
-    return path.join(REPO_BASE_PATH, userId, `${projectName}.git`);
+    return path.join(REPO_BASE_PATH, userId, projectName);
 }
 
 async function pathExists(targetPath) {
@@ -53,12 +53,20 @@ async function pathExists(targetPath) {
     }
 }
 
+// Returns the .git directory for both bare repos (the path itself) and
+// non-bare repos (path/.git), so --git-dir works with either layout.
+async function getGitDir(repoPath) {
+    const dotGit = path.join(repoPath, '.git');
+    return (await pathExists(dotGit)) ? dotGit : repoPath;
+}
+
 export async function resolveExistingRepoPath(userId, projectName) {
     const repoDirName = `${projectName}.git`;
     const configured = getRepoPath(userId, projectName);
-    // tries legacy local repo paths too so old environments still work while storage is being cleaned up
+    // tries legacy bare-repo paths (.git suffix) and old local repo paths so existing repos keep working
     const candidates = [
         configured,
+        path.join(path.dirname(configured), repoDirName),
         path.resolve(process.cwd(), 'local-repos', userId, repoDirName),
         path.resolve(process.cwd(), 'clustergit-repos', userId, repoDirName),
         path.resolve(process.cwd(), 'backend', 'local-repos', userId, repoDirName),
@@ -66,7 +74,14 @@ export async function resolveExistingRepoPath(userId, projectName) {
     ];
 
     for (const candidate of candidates) {
-        if (await pathExists(candidate)) return candidate;
+        if (await pathExists(candidate)) {
+            // Lazily install the post-receive hook on existing repos that predate it.
+            const hookPath = path.join(candidate, '.git', 'hooks', 'post-receive');
+            if (!(await pathExists(hookPath))) {
+                await installPostReceiveHook(candidate).catch(() => {});
+            }
+            return candidate;
+        }
     }
 
     return configured;
@@ -106,6 +121,20 @@ async function mergeRemoteGitAnnex(cwd) {
     await execAsync(GIT_BIN, ["checkout", "git-annex"], { cwd });
     try {
         await execAsync(GIT_BIN, ["merge", "--no-edit", "origin/git-annex"], { cwd });
+    } catch {
+        // Abort the failed merge to clear the index before retrying or checking out
+        await execAsync(GIT_BIN, ["merge", "--abort"], { cwd }).catch(() =>
+            execAsync(GIT_BIN, ["reset", "--hard"], { cwd }).catch(() => {})
+        );
+        // Retry allowing unrelated histories (first-upload case where branches diverge)
+        try {
+            await execAsync(GIT_BIN, ["merge", "--no-edit", "--allow-unrelated-histories", "origin/git-annex"], { cwd });
+        } catch {
+            // If the retry also fails (e.g. uuid.log conflict), force-reset so the
+            // finally block can checkout the original branch without hitting
+            // "you need to resolve your current index first"
+            await execAsync(GIT_BIN, ["reset", "--hard"], { cwd }).catch(() => {});
+        }
     } finally {
         await execAsync(GIT_BIN, ["checkout", originalBranch], { cwd });
     }
@@ -140,11 +169,19 @@ async function prepareWorkingClone(bareRepoPath, tempWorkingPath) {
     await syncRemoteBranches(tempWorkingPath);
     await execAsync(GIT_BIN, ["checkout", "-B", "main", "origin/main"], { cwd: tempWorkingPath });
 
+    // Ensure the local git-annex branch starts from origin/git-annex so git annex add
+    // never creates an unrelated history that causes merge failures on first upload
+    const hasRemoteGitAnnex = await refExists(tempWorkingPath, "origin/git-annex");
+    if (hasRemoteGitAnnex) {
+        await execAsync(GIT_BIN, ["branch", "-f", "git-annex", "origin/git-annex"], { cwd: tempWorkingPath }).catch(() => {});
+    }
+
     await execAsync(GIT_BIN, ["config", "user.name", "ClusterGit"], { cwd: tempWorkingPath });
     await execAsync(GIT_BIN, ["config", "user.email", "system@clustergit.local"], { cwd: tempWorkingPath });
 
-    await execAsync(GIT_BIN, ["--git-dir", bareRepoPath, "config", "user.name", "ClusterGit"]);
-    await execAsync(GIT_BIN, ["--git-dir", bareRepoPath, "config", "user.email", "system@clustergit.local"]);
+    const gitDir = await getGitDir(bareRepoPath);
+    await execAsync(GIT_BIN, ["--git-dir", gitDir, "config", "user.name", "ClusterGit"]);
+    await execAsync(GIT_BIN, ["--git-dir", gitDir, "config", "user.email", "system@clustergit.local"]);
 }
 
 // clone the repo read-only into a temp dir so admin inspection can look at real git state.
@@ -160,7 +197,7 @@ async function prepareReadOnlyClone(bareRepoPath, tempWorkingPath) {
  * Get Git clone URL
  */
 export function getGitUrl(userId, projectName) {
-    const host = process.env.GIT_HTTP_HOST || 'clustergit.com';
+    const host = process.env.GIT_HTTP_HOST || 'develop.clustergit.com';
     return `https://${host}/git/${userId}/${projectName}.git`;
 }
 
@@ -186,53 +223,62 @@ export async function getAnnexUuid(repoPath) {
 }
 
 /**
- * Create a bare Git repository
+ * Create a Git repository as a plain project folder
  */
+/**
+ * Install (or overwrite) the post-receive hook in a repo.
+ * The hook runs `git annex sync --no-push --no-pull` after every push so that
+ * synced/main is automatically merged into main without needing to contact any
+ * remote.  Safe to call on existing repos — just overwrites the hook file.
+ */
+export async function installPostReceiveHook(repoPath) {
+    const hooksDir = path.join(repoPath, '.git', 'hooks');
+    await fs.mkdir(hooksDir, { recursive: true });
+    const hookPath = path.join(hooksDir, 'post-receive');
+    const script = [
+        '#!/bin/sh',
+        '# Installed by ClusterGit — merges synced/main into main after every push.',
+        'git annex sync --no-push --no-pull 2>/dev/null || true',
+        '',
+    ].join('\n');
+    await fs.writeFile(hookPath, script, { mode: 0o755 });
+}
+
 export async function createRepository(userId, projectName, description = '') {
     const repoPath = getRepoPath(userId, projectName);
     await fs.mkdir(path.dirname(repoPath), { recursive: true });
     await fs.mkdir(repoPath);
 
-    const tempInit = path.join(os.tmpdir(), `clustergit-init-${Date.now()}`);
-    await fs.mkdir(tempInit);
-
-    // 1. init bare
-    await execAsync(GIT_BIN, ["init", "--bare"], { cwd: repoPath });
+    // 1. init non-bare repo directly in the project folder
+    await execAsync(GIT_BIN, ["init"], { cwd: repoPath });
     await execAsync(GIT_BIN, ["symbolic-ref", "HEAD", "refs/heads/main"], { cwd: repoPath });
 
-    // 2. clone to temp working copy
-    await execAsync(GIT_BIN, ["clone", repoPath, "."], { cwd: tempInit });
-    await execAsync(GIT_BIN, ["checkout", "-B", "main"], { cwd: tempInit });
+    // allow temp clones to push back into this non-bare repo
+    await execAsync(GIT_BIN, ["config", "receive.denyCurrentBranch", "updateInstead"], { cwd: repoPath });
 
-    // 3. identity
-    await execAsync(GIT_BIN, ["config", "user.name", "ClusterGit"], { cwd: tempInit });
-    await execAsync(GIT_BIN, ["config", "user.email", "system@clustergit.local"], { cwd: tempInit });
+    // 2. identity
+    await execAsync(GIT_BIN, ["config", "user.name", "ClusterGit"], { cwd: repoPath });
+    await execAsync(GIT_BIN, ["config", "user.email", "system@clustergit.local"], { cwd: repoPath });
 
-    // 4. README commit
-    await fs.writeFile(path.join(tempInit, "README.md"), "# ClusterGit Repository\n");
-    await execAsync(GIT_BIN, ["add", "."], { cwd: tempInit });
-    await execAsync(GIT_BIN, ["commit", "-m", "Initial commit"], { cwd: tempInit });
+    // 3. README commit
+    await fs.writeFile(path.join(repoPath, "README.md"), "# ClusterGit Repository\n");
+    await execAsync(GIT_BIN, ["add", "."], { cwd: repoPath });
+    await execAsync(GIT_BIN, ["commit", "-m", "Initial commit"], { cwd: repoPath });
 
-    // 5. git-annex init + placeholder
-    // keeps the git-annex branch alive right from repo creation
-    await execAsync(GIT_BIN, ["annex", "init"], { cwd: tempInit });
-    const annexPlaceholder = path.join(tempInit, ".annex-placeholder");
-    await fs.writeFile(annexPlaceholder, "This file anchors the git-annex branch");
-    await execAsync(GIT_BIN, ["add", "."], { cwd: tempInit });
-    await execAsync(GIT_BIN, ["commit", "-m", "Initialize git-annex with placeholder"], { cwd: tempInit });
+    // 4. git-annex init + placeholder to keep the git-annex branch alive from creation
+    await execAsync(GIT_BIN, ["annex", "init"], { cwd: repoPath });
+    await fs.writeFile(path.join(repoPath, ".annex-placeholder"), "This file anchors the git-annex branch");
+    await execAsync(GIT_BIN, ["add", "."], { cwd: repoPath });
+    await execAsync(GIT_BIN, ["commit", "-m", "Initialize git-annex with placeholder"], { cwd: repoPath });
 
-    // 6. push branches back to bare
-    await execAsync(GIT_BIN, ["push", "origin", "main"], { cwd: tempInit });
-    await execAsync(GIT_BIN, ["push", "origin", "git-annex"], { cwd: tempInit });
+    // 5. post-receive hook so every push auto-merges synced/main → main
+    await installPostReceiveHook(repoPath);
 
-    // 7. get annex UUID from working clone (not bare)
-    const annexUuid = await getAnnexUuid(tempInit);
-
-    // 8. cleanup
-    await fs.rm(tempInit, { recursive: true, force: true });
+    // 6. get annex UUID
+    const annexUuid = await getAnnexUuid(repoPath);
 
     if (description) {
-        await fs.writeFile(path.join(repoPath, 'description'), description);
+        await fs.writeFile(path.join(repoPath, '.git', 'description'), description);
     }
 
     return { repoPath, userId, annexUuid };
@@ -526,6 +572,89 @@ export async function getRepoSize(repoPath) {
     try { return await getDirectorySize(repoPath); } catch { return 0; }
 }
 
+/**
+ * Read the current HEAD state of a repo for metadata sync purposes.
+ * Works against both bare and non-bare repos with no temp clone.
+ */
+export async function readRepoStateForSync(repoPath) {
+    const gitDir = await getGitDir(repoPath);
+
+    // Resolve both refs — git-annex push deposits commits on synced/main, not main
+    const resolve = async (ref) => {
+        try {
+            const { stdout } = await execAsync(GIT_BIN, ['--git-dir', gitDir, 'rev-parse', '--verify', ref]);
+            return stdout.trim();
+        } catch { return null; }
+    };
+
+    const mainHash   = await resolve('refs/heads/main');
+    const syncedHash = await resolve('refs/heads/synced/main');
+
+    if (!mainHash && !syncedHash) {
+        const err = new Error('No main branch found');
+        err.name = 'NoBranchError';
+        throw err;
+    }
+
+    // synced/main is always the authoritative content branch for CLI pushes —
+    // git annex push deposits commits here.  Always prefer it when it exists.
+    // Attempt a fast-forward of main so web uploads keep seeing the latest state,
+    // but never let that attempt change which commit we actually read files from.
+    const headHash = syncedHash || mainHash;
+    if (syncedHash && syncedHash !== mainHash) {
+        try {
+            if (mainHash) {
+                await execAsync(GIT_BIN, ['--git-dir', gitDir, 'merge-base', '--is-ancestor', mainHash, syncedHash]);
+            }
+            await execAsync(GIT_BIN, ['--git-dir', gitDir, 'update-ref', 'refs/heads/main', syncedHash]);
+        } catch {
+            // Not a clean fast-forward — fine, we still read from synced/main
+        }
+    }
+
+    // Commit metadata — use \x1f (unit separator) to avoid conflicts with names/messages
+    const { stdout: logOut } = await execAsync(GIT_BIN, [
+        '--git-dir', gitDir, 'log', '-1',
+        `--pretty=format:%H\x1f%an\x1f%aI\x1f%s`, headHash
+    ]);
+    const [commitHash, authorName, timestamp, message] = logOut.trim().split('\x1f');
+
+    // Full recursive file tree
+    const { stdout: treeOut } = await execAsync(GIT_BIN, [
+        '--git-dir', gitDir, 'ls-tree', '-r', '--long', headHash
+    ]);
+
+    const files = [];
+    for (const line of treeOut.trim().split('\n').filter(Boolean)) {
+        const match = line.match(/^(\d{6}) \w+ ([a-f0-9]+)\s+(\d+|-)\t(.+)$/);
+        if (!match) continue;
+        const [, mode, blobHash, rawSizeStr, filePath] = match;
+
+        let annexKey = null;
+        let sizeBytes = rawSizeStr === '-' ? 0 : Number(rawSizeStr);
+
+        if (mode === '120000') {
+            // Annex pointer symlink — read blob content to extract key and real size
+            try {
+                const { stdout: blob } = await execAsync(GIT_BIN, [
+                    '--git-dir', gitDir, 'cat-file', 'blob', blobHash
+                ]);
+                // e.g. "../../.git/annex/objects/.../SHA256E-s12345--abc.iso/SHA256E-s12345--abc.iso"
+                const keyMatch = blob.trim().match(/([A-Z0-9]+-s\d+--[^/\s]+)$/);
+                if (keyMatch) {
+                    annexKey = keyMatch[1];
+                    const sizeMatch = annexKey.match(/-s(\d+)-/);
+                    if (sizeMatch) sizeBytes = Number(sizeMatch[1]);
+                }
+            } catch {}
+        }
+
+        files.push({ path: filePath, name: path.basename(filePath), mode, blobHash, annexKey, sizeBytes });
+    }
+
+    return { commitHash, authorName, timestamp, message, files };
+}
+
 export default {
     validateProjectName,
     createRepository,
@@ -540,5 +669,7 @@ export default {
     getRepoPath,
     getRepoSize,
     getGitUrl,
-    addFileToProject
+    addFileToProject,
+    readRepoStateForSync,
+    installPostReceiveHook,
 };

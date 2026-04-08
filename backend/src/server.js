@@ -1,5 +1,7 @@
 import app from "./app.js";
 
+
+//logging to watch Node
 process.on("uncaughtException", (err) => {
   console.error("Uncaught Exception:", err);
 });
@@ -7,7 +9,11 @@ process.on("unhandledRejection", (err) => {
   console.error("Unhandled Rejection:", err);
 });
 
-const PORT = process.env.PORT || 8080;
+const PORT = process.env.PORT || 3000;
+
 app.listen(PORT, () => {
   console.log(`ClusterGit API running on port ${PORT}`);
-});
+}).on('error', (err) => {
+  console.error('Listen error:', err);
+  process.exit(1);
+})
