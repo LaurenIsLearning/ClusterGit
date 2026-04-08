@@ -6,6 +6,10 @@ export function getApiBaseUrl() {
       return "http://localhost:8080"; //TODO: Make pull the PORT env var
   }
 
+  if (host === "10.27.12.244") {
+    return "http://10.27.12.244:3001";
+  }
+
   // maps each pages preview to the matching cluster preview backend
   if (host.endsWith(".clustergit.pages.dev")) {
     const branch = host.split(".")[0].replace(/[^a-z0-9-]/gi, '').toLowerCase();

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { adminService } from '../../services/adminService';
 import { Activity, Server, HardDrive, Users, Archive } from 'lucide-react';
+import { NODE_TELEMETRY_REFRESH_MS } from '../../utils/nodeTelemetry';
 
 export default function AdminDashboard() {
     const [summary, setSummary] = useState(null);
@@ -8,20 +9,31 @@ export default function AdminDashboard() {
     const [error, setError] = useState('');
 
     useEffect(() => {
+        let isMounted = true;
+
         const load = async () => {
             try {
                 const [summaryData, nodeData] = await Promise.all([
                     adminService.getSummary(),
                     adminService.getNodes()
                 ]);
+                if (!isMounted) return;
                 setSummary(summaryData);
                 setNodes(nodeData || []);
+                setError('');
             } catch (err) {
+                if (!isMounted) return;
                 setError(err.message || 'Failed to load admin dashboard');
             }
         };
 
         load();
+        const interval = setInterval(load, NODE_TELEMETRY_REFRESH_MS);
+
+        return () => {
+            isMounted = false;
+            clearInterval(interval);
+        };
     }, []);
 
     if (!summary && !error) return <div className="p-10 text-center">Loading cluster status...</div>;
@@ -37,8 +49,10 @@ export default function AdminDashboard() {
 
     const onlineNodes = nodes.filter(n => n.status === 'online').length;
     const totalNodes = nodes.length;
-    const storageUsed = formatBytes(summary?.used_storage_bytes || 0);
-    const storageTotal = formatBytes(summary?.total_storage_bytes || 0);
+    const totalStorageBytes = nodes.reduce((sum, node) => sum + (Number(node.storageTotalBytes) || 0), 0);
+    const usedStorageBytes = nodes.reduce((sum, node) => sum + (Number(node.storageUsedBytes) || 0), 0);
+    const storageUsed = formatBytes(usedStorageBytes);
+    const storageTotal = formatBytes(totalStorageBytes);
     const archivedRepos = summary?.archived_repositories || [];
 
     return (
@@ -84,7 +98,7 @@ export default function AdminDashboard() {
                             />
                             <Server className="w-8 h-8 text-[--text-muted] mb-2" />
                             <span className="font-mono text-sm">{node.id}</span>
-                            <span className="text-xs text-[--text-secondary] mt-1">{node.cpu}% CPU</span>
+                            <span className="text-xs text-[--text-secondary] mt-1">{node.cpuPercent?.toFixed(1) || '0.0'}% CPU</span>
                         </div>
                     ))}
                 </div>
