@@ -9,11 +9,28 @@ const API_BASE_URL = normalizedApiUrl.endsWith('/api')
 
 async function getAccessToken() {
   // grabs the current supabase jwt for backend-authenticated routes
-  const { data, error } = await supabase.auth.getSession();
-  if (error) throw error;
-  const token = data?.session?.access_token;
+  const session = await waitForSession();
+  const token = session?.access_token;
   if (!token) throw new Error("Not authenticated");
   return token;
+}
+
+async function waitForSession({ timeoutMs = 8000, intervalMs = 200 } = {}) {
+  const deadline = Date.now() + timeoutMs;
+
+  while (Date.now() <= deadline) {
+    const { data, error } = await supabase.auth.getSession();
+    if (error) throw error;
+
+    const session = data?.session ?? null;
+    if (session?.access_token) {
+      return session;
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, intervalMs));
+  }
+
+  return null;
 }
 
 async function safeParseJson(response) {
@@ -45,14 +62,12 @@ export const authService = {
   },
 
   async signOut() {
-    const { error } = await supabase.auth.signOut();
+    const { error } = await supabase.auth.signOut({ scope: "local" });
     if (error) throw error;
   },
 
   async getSession() {
-    const { data, error } = await supabase.auth.getSession();
-    if (error) throw error;
-    return data?.session ?? null;
+    return waitForSession();
   },
 
   onAuthStateChange(callback) {
