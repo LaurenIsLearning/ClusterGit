@@ -9,33 +9,17 @@ function getRoleFromUser(user) {
 }
 
 async function fetchRole(userId) {
-  console.log("[fetchRole] called with:", userId);
-
   if (!userId) {
-    console.log("[fetchRole] no userId provided");
     return null;
   }
 
-  const { data, error } = await supabase
-    .from("user_profiles")
-    .select("role")
-    .eq("user_id", userId)
-    .maybeSingle();
-
-  console.log("[fetchRole] response:", { data, error });
-
-  if (error) {
-    console.error("[fetchRole] ERROR:", error);
+  try {
+    const profile = await authService.getProfile();
+    return profile?.role ?? null;
+  } catch (error) {
+    console.error("[fetchRole] failed:", error);
     return null;
   }
-
-  if (!data) {
-    console.warn("[fetchRole] no row found for user");
-    return null;
-  }
-
-  console.log("[fetchRole] resolved role:", data.role);
-  return data.role ?? null;
 }
 
 export function AuthProvider({ children }) {

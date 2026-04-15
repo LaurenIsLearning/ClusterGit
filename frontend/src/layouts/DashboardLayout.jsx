@@ -59,7 +59,7 @@ export default function DashboardLayout() {
           </Link>
 
           <span className="ml-auto px-2 py-0.5 rounded text-xs bg-[--bg-tertiary] text-[--text-muted] uppercase">
-            {role ?? "unknown"}
+            {loading ? "loading" : role ?? "unknown"}
           </span>
         </div>
 
