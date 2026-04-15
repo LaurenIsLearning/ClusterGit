@@ -1,23 +1,38 @@
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
+import { supabase } from "../services/supabaseClient";
 import { authService } from "../services/authService";
+
 
 const AuthContext = createContext(null);
 
-function getRoleFromUser(user) {
-  return (
-    user?.app_metadata?.role ??
-    user?.user_metadata?.role ??
-    null
-  );
-}
+async function fetchRole(userId) {
+  console.log("[fetchRole] called with:", userId);
 
-async function fetchProfileRole() {
-  try {
-    const profile = await authService.getProfile();
-    return profile?.role ?? null;
-  } catch {
+  if (!userId) {
+    console.log("[fetchRole] no userId provided");
     return null;
   }
+
+  const { data, error } = await supabase
+    .from("user_profiles")
+    .select("role")
+    .eq("user_id", userId)
+    .maybeSingle();
+
+  console.log("[fetchRole] response:", { data, error });
+
+  if (error) {
+    console.error("[fetchRole] ERROR:", error);
+    return null;
+  }
+
+  if (!data) {
+    console.warn("[fetchRole] no row found for user");
+    return null;
+  }
+
+  console.log("[fetchRole] resolved role:", data.role);
+  return data.role ?? null;
 }
 
 export function AuthProvider({ children }) {
@@ -27,89 +42,47 @@ export function AuthProvider({ children }) {
   const [authError, setAuthError] = useState(null);
 
   async function refreshRole(uid) {
-    if (!uid) {
-      setRole(null);
-      return;
-    }
-
-    const session = await authService.getSession();
-    const fallbackRole = getRoleFromUser(session?.user);
-    const r = (await fetchProfileRole()) ?? fallbackRole;
+    const r = await fetchRole(uid);
     setRole(r);
   }
 
   useEffect(() => {
-    let isMounted = true;
+    console.log("[AUTH] effect mounted");
+    setLoading(true);
 
-    async function bootstrapAuth() {
-      setLoading(true);
-      try {
-        const session = await authService.getSession();
-        if (!isMounted) return;
+    const { data } = supabase.auth.onAuthStateChange((event, session) => {
+      console.log("[AUTH EVENT]", event);
 
-        const sessionUser = session?.user ?? null;
-        setUser(sessionUser);
-
-        if (!sessionUser) {
-          setRole(null);
-          return;
-        }
-
-        const fallbackRole = getRoleFromUser(sessionUser);
-        setRole(fallbackRole);
-
-        const resolvedRole = (await fetchProfileRole()) ?? fallbackRole;
-        if (!isMounted) return;
-        setRole(resolvedRole);
-      } catch (error) {
-        if (!isMounted) return;
-        setAuthError(error);
-        setUser(null);
-        setRole(null);
-      } finally {
-        if (isMounted) {
-          setLoading(false);
-        }
-      }
-    }
-
-    bootstrapAuth();
-
-    const { data } = authService.onAuthStateChange(async (_event, session) => {
       const sessionUser = session?.user ?? null;
 
-      if (!isMounted) return;
-
       setUser(sessionUser);
+      setLoading(false);
 
+      // Clear role if signed out
       if (!sessionUser) {
         setRole(null);
-        setLoading(false);
         return;
       }
 
-      setLoading(true);
-      const fallbackRole = getRoleFromUser(sessionUser);
-      setRole(fallbackRole);
+      console.log("[AUTH] scheduling role fetch (setTimeout 0)");
 
-      try {
-        const resolvedRole = (await fetchProfileRole()) ?? fallbackRole;
-        if (!isMounted) return;
-        setRole(resolvedRole);
-      } catch (error) {
-        if (!isMounted) return;
-        setAuthError(error);
-      } finally {
-        if (isMounted) {
-          setLoading(false);
+      setTimeout(async () => {
+        console.log("[AUTH] role fetch start (delayed)");
+        try {
+          const r = await fetchRole(sessionUser.id);
+          console.log("[AUTH] role fetch done (delayed):", r);
+          setRole(r);
+        } catch (e) {
+          console.error("[AUTH] role fetch failed (delayed):", e);
+          setRole(null);
         }
-      }
+      }, 0);
     });
 
     const subscription = data?.subscription;
 
     return () => {
-      isMounted = false;
+      console.log("[AUTH] effect cleanup");
       subscription?.unsubscribe();
     };
   }, []);
