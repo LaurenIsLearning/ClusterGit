@@ -1,5 +1,7 @@
 import express from "express";
 import { spawn } from "child_process";
+import fs from "fs/promises";
+import path from "path";
 import { resolveExistingRepoPath } from "../services/gitService.js";
 
 const router = express.Router();
@@ -16,6 +18,32 @@ async function resolveRepo(req) {
     return resolveExistingRepoPath(userId, projectName);
 }
 
+async function isBareGitRepo(repoPath) {
+    try {
+        const [headStat, objectsStat, refsStat] = await Promise.all([
+            fs.stat(path.join(repoPath, "HEAD")),
+            fs.stat(path.join(repoPath, "objects")),
+            fs.stat(path.join(repoPath, "refs")),
+        ]);
+
+        return headStat.isFile() && objectsStat.isDirectory() && refsStat.isDirectory();
+    } catch {
+        return false;
+    }
+}
+
+async function ensureRepoOrRespond(req, res) {
+    const repoPath = await resolveRepo(req);
+    const exists = await isBareGitRepo(repoPath);
+
+    if (!exists) {
+        res.status(404).type("text/plain").end("Repository not found\n");
+        return null;
+    }
+
+    return repoPath;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // GET /:userId/:repo/info/refs?service=git-upload-pack|git-receive-pack
 //
@@ -28,7 +56,8 @@ router.get("/:userId/:repo/info/refs", async (req, res) => {
         return res.status(403).end("Invalid service\n");
     }
 
-    const repoPath = await resolveRepo(req);
+    const repoPath = await ensureRepoOrRespond(req, res);
+    if (!repoPath) return;
 
     res.setHeader("Content-Type", `application/x-${service}-advertisement`);
     res.setHeader("Cache-Control", "no-cache");
@@ -70,7 +99,8 @@ router.get("/:userId/:repo/info/refs", async (req, res) => {
 // POST /:userId/:repo/git-upload-pack   (clone / fetch)
 // ─────────────────────────────────────────────────────────────────────────────
 router.post("/:userId/:repo/git-upload-pack", async (req, res) => {
-    const repoPath = await resolveRepo(req);
+    const repoPath = await ensureRepoOrRespond(req, res);
+    if (!repoPath) return;
 
     res.setHeader("Content-Type", "application/x-git-upload-pack-result");
     res.setHeader("Cache-Control", "no-cache");
@@ -106,7 +136,8 @@ router.post("/:userId/:repo/git-upload-pack", async (req, res) => {
 // POST /:userId/:repo/git-receive-pack   (push)
 // ─────────────────────────────────────────────────────────────────────────────
 router.post("/:userId/:repo/git-receive-pack", async (req, res) => {
-    const repoPath = await resolveRepo(req);
+    const repoPath = await ensureRepoOrRespond(req, res);
+    if (!repoPath) return;
 
     res.setHeader("Content-Type", "application/x-git-receive-pack-result");
     res.setHeader("Cache-Control", "no-cache");
