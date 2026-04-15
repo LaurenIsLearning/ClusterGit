@@ -75,11 +75,9 @@ export async function resolveExistingRepoPath(userId, projectName) {
 
     for (const candidate of candidates) {
         if (await pathExists(candidate)) {
-            // Lazily install the post-receive hook on existing repos that predate it.
-            const hookPath = path.join(candidate, '.git', 'hooks', 'post-receive');
-            if (!(await pathExists(hookPath))) {
-                await installPostReceiveHook(candidate).catch(() => {});
-            }
+            // Always reinstall the hook so repos created before the fix get the
+            // safe update-ref version instead of the old git-annex-sync version.
+            await installPostReceiveHook(candidate).catch(() => {});
             return candidate;
         }
     }
@@ -235,10 +233,19 @@ export async function installPostReceiveHook(repoPath) {
     const hooksDir = path.join(repoPath, '.git', 'hooks');
     await fs.mkdir(hooksDir, { recursive: true });
     const hookPath = path.join(hooksDir, 'post-receive');
+    // Fast-forward main → synced/main using update-ref so the working tree is
+    // never touched.  The old approach (git annex sync --no-push --no-pull) ran
+    // "git commit -a" on the server which committed any working-tree deletions
+    // that updateInstead introduced during a git-annex push, wiping the repo.
     const script = [
         '#!/bin/sh',
-        '# Installed by ClusterGit — merges synced/main into main after every push.',
-        'git annex sync --no-push --no-pull 2>/dev/null || true',
+        '# Installed by ClusterGit — fast-forwards main to synced/main after every push.',
+        '# Uses update-ref only; never touches the working tree.',
+        'SYNCED=$(git rev-parse --verify refs/heads/synced/main 2>/dev/null) || exit 0',
+        'MAIN=$(git rev-parse --verify refs/heads/main 2>/dev/null)',
+        'if [ -z "$MAIN" ] || git merge-base --is-ancestor "$MAIN" "$SYNCED" 2>/dev/null; then',
+        '    git update-ref refs/heads/main "$SYNCED"',
+        'fi',
         '',
     ].join('\n');
     await fs.writeFile(hookPath, script, { mode: 0o755 });
