@@ -1,9 +1,12 @@
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
-import { supabase } from "../services/supabaseClient";
 import { authService } from "../services/authService";
 
 
 const AuthContext = createContext(null);
+
+function getRoleFromUser(user) {
+  return user?.app_metadata?.role ?? user?.user_metadata?.role ?? null;
+}
 
 async function fetchRole(userId) {
   console.log("[fetchRole] called with:", userId);
@@ -42,41 +45,76 @@ export function AuthProvider({ children }) {
   const [authError, setAuthError] = useState(null);
 
   async function refreshRole(uid) {
+    if (!uid) {
+      setRole(null);
+      return;
+    }
+
+    const session = await authService.getSession();
+    const fallbackRole = getRoleFromUser(session?.user);
     const r = await fetchRole(uid);
-    setRole(r);
+    setRole(r ?? fallbackRole);
+  }
+
+  async function applyResolvedRole(sessionUser) {
+    const fallbackRole = getRoleFromUser(sessionUser);
+    setRole(fallbackRole);
+
+    if (!sessionUser?.id) {
+      return;
+    }
+
+    try {
+      const resolvedRole = await fetchRole(sessionUser.id);
+      setRole(resolvedRole ?? fallbackRole);
+    } catch (e) {
+      console.error("[AUTH] role fetch failed:", e);
+      setRole(fallbackRole);
+    }
   }
 
   useEffect(() => {
     console.log("[AUTH] effect mounted");
     setLoading(true);
 
-    const { data } = supabase.auth.onAuthStateChange((event, session) => {
+    authService.getSession()
+      .then(async (session) => {
+        const sessionUser = session?.user ?? null;
+        setUser(sessionUser);
+
+        if (!sessionUser) {
+          setRole(null);
+          return;
+        }
+
+        await applyResolvedRole(sessionUser);
+      })
+      .catch((error) => {
+        console.error("[AUTH] initial session load failed:", error);
+        setAuthError(error);
+        setUser(null);
+        setRole(null);
+      })
+      .finally(() => {
+        setLoading(false);
+      });
+
+    const { data } = authService.onAuthStateChange(async (event, session) => {
       console.log("[AUTH EVENT]", event);
 
       const sessionUser = session?.user ?? null;
 
       setUser(sessionUser);
-      setLoading(false);
 
-      // Clear role if signed out
       if (!sessionUser) {
         setRole(null);
+        setLoading(false);
         return;
       }
 
-      console.log("[AUTH] scheduling role fetch (setTimeout 0)");
-
-      setTimeout(async () => {
-        console.log("[AUTH] role fetch start (delayed)");
-        try {
-          const r = await fetchRole(sessionUser.id);
-          console.log("[AUTH] role fetch done (delayed):", r);
-          setRole(r);
-        } catch (e) {
-          console.error("[AUTH] role fetch failed (delayed):", e);
-          setRole(null);
-        }
-      }, 0);
+      setLoading(true);
+      await applyResolvedRole(sessionUser);
+      setLoading(false);
     });
 
     const subscription = data?.subscription;

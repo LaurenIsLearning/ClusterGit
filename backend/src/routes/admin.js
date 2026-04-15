@@ -8,6 +8,15 @@ import { loadLatestNodeSnapshots } from "../utils/nodeTelemetry.js";
 const router = express.Router();
 const DEFAULT_STORAGE_QUOTA_BYTES = 20 * 1024 * 1024 * 1024;
 
+function resolveRole(profileRole, rawUser) {
+    return (
+        profileRole
+        || rawUser?.app_metadata?.role
+        || rawUser?.user_metadata?.role
+        || null
+    );
+}
+
 async function requireAdmin(req, res, next) {
     // checks if the signed in user is actually an admin before letting them use admin routes
     const userId = req.user?.id;
@@ -25,7 +34,9 @@ async function requireAdmin(req, res, next) {
         return res.status(500).json({ error: { message: error.message || "Failed to verify role" } });
     }
 
-    if (data?.role !== "admin") {
+    const resolvedRole = resolveRole(data?.role, req.user?.raw);
+
+    if (resolvedRole !== "admin") {
         return res.status(403).json({ error: { message: "Admin access required" } });
     }
 

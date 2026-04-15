@@ -3,6 +3,15 @@ import { supabase } from "../utils/supabase.js";
 import authMiddleware from "../middleware/authMiddleware.js";
 const router = express.Router();
 
+function resolveRole(profileRole, rawUser) {
+    return (
+        profileRole
+        || rawUser?.app_metadata?.role
+        || rawUser?.user_metadata?.role
+        || null
+    );
+}
+
 // REGISTER
 router.post("/register", async (req, res) => {
     const { email, password, display_name, role } = req.body;
@@ -143,7 +152,7 @@ router.get("/profile", authMiddleware, async (req, res) => {
         user_id: userId,
         email: req.user.email,
         display_name: data?.display_name || null,
-        role: data?.role || null
+        role: resolveRole(data?.role, req.user.raw)
     });
 });
 
@@ -196,7 +205,7 @@ router.patch("/profile", authMiddleware, async (req, res) => {
         user_id: userId,
         email: req.user.email,
         display_name: data?.display_name || displayName,
-        role: data?.role || null
+        role: resolveRole(data?.role, req.user.raw)
     });
 });
 
