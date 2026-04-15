@@ -8,7 +8,6 @@ import {
   Users,
   LogOut,
   Database,
-  CircleHelp,
 } from "lucide-react";
 
 export default function DashboardLayout() {
@@ -70,7 +69,7 @@ export default function DashboardLayout() {
               <NavItem to="/projects" icon={FolderGit2} label="Projects" />
               <NavItem to="/settings" icon={Settings} label="Settings" />
             </>
-          ) : role === "admin" ? (
+          ) : !loading ? (
             <>
               <NavItem to="/admin" icon={LayoutDashboard} label="Cluster Health" />
               <NavItem to="/admin/nodes" icon={Server} label="Nodes" />
@@ -81,11 +80,6 @@ export default function DashboardLayout() {
         </nav>
 
         <div className="p-4 border-t border-[--border-color]">
-          {role === "student" ? (
-            <div className="mb-2">
-              <NavItem to="/annex-help" icon={CircleHelp} label="Annex Help" />
-            </div>
-          ) : null}
           <button
             onClick={handleLogout}
             className="flex items-center gap-3 px-4 py-3 w-full rounded-md text-[--text-muted] hover:text-[--status-error] hover:bg-[--bg-tertiary] transition-colors"
