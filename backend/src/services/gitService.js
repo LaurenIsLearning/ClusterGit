@@ -177,6 +177,9 @@ async function prepareWorkingClone(bareRepoPath, tempWorkingPath) {
     await execAsync(GIT_BIN, ["config", "user.name", "ClusterGit"], { cwd: tempWorkingPath });
     await execAsync(GIT_BIN, ["config", "user.email", "system@clustergit.local"], { cwd: tempWorkingPath });
 
+    // Ensure git-annex treats origin as the preferred content destination in this clone.
+    await execAsync(GIT_BIN, ["annex", "wanted", "origin", "anything"], { cwd: tempWorkingPath }).catch(() => {});
+
     const gitDir = await getGitDir(bareRepoPath);
     await execAsync(GIT_BIN, ["--git-dir", gitDir, "config", "user.name", "ClusterGit"]);
     await execAsync(GIT_BIN, ["--git-dir", gitDir, "config", "user.email", "system@clustergit.local"]);
@@ -272,8 +275,12 @@ export async function createRepository(userId, projectName, description = '') {
     await execAsync(GIT_BIN, ["add", "."], { cwd: repoPath });
     await execAsync(GIT_BIN, ["commit", "-m", "Initial commit"], { cwd: repoPath });
 
-    // 4. git-annex init + placeholder to keep the git-annex branch alive from creation
+    // 4. git-annex init + configure origin as the required content location
     await execAsync(GIT_BIN, ["annex", "init"], { cwd: repoPath });
+    // Require all annexed files to be retained on this server (here = origin).
+    // This prevents git-annex from ever dropping content from the authoritative store.
+    await execAsync(GIT_BIN, ["annex", "required", "here", "anything"], { cwd: repoPath });
+    await execAsync(GIT_BIN, ["annex", "numcopies", String(GIT_ANNEX_CONFIG.numCopies)], { cwd: repoPath });
     await fs.writeFile(path.join(repoPath, ".annex-placeholder"), "This file anchors the git-annex branch");
     await execAsync(GIT_BIN, ["add", "."], { cwd: repoPath });
     await execAsync(GIT_BIN, ["commit", "-m", "Initialize git-annex with placeholder"], { cwd: repoPath });
