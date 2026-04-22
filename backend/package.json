@@ -6,7 +6,7 @@
   "scripts": {
     "start": "node --trace-warnings src/server.js",
     "dev": "nodemon src/server.js",
-    "sync:nodes": "node scripts/sync-node-health.js",
+    "sync:nodes": "node ../scripts/sync-node-health.js",
     "test": "mocha --config .mocharc.json"
   },
   "keywords": [],

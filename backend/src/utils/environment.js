@@ -52,7 +52,6 @@ export function applyEnvironmentFilter(query, environmentKey, column = "environm
             return query.or(`${column}.eq.local,${column}.is.null`);
         }
 
-        // test doubles and older query builders may not implement `.or()`
         return query;
     }
 
