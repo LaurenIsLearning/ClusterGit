@@ -3,7 +3,7 @@ import { spawn } from "child_process";
 import { createReadStream, createWriteStream } from "fs";
 import { stat, mkdir, rename, chmod, access } from "fs/promises";
 import path from "path";
-import { resolveExistingRepoPath, getAnnexUuid } from "../services/gitService.js";
+import { resolveExistingRepoPath, isLfsInitialized } from "../services/gitService.js";
 import { syncPushMetadata } from "../services/syncService.js";
 
 const router = express.Router();
@@ -28,18 +28,7 @@ async function resolveRepo(req) {
 // fragment containing the annex.uuid so git-annex can use the remote for
 // content transfer via the regular git HTTP protocol.
 // ─────────────────────────────────────────────────────────────────────────────
-router.get("/:userId/:repo/config", async (req, res) => {
-    try {
-        const repoPath = await resolveRepo(req);
-        const uuid = await getAnnexUuid(repoPath);
-        if (!uuid) return res.status(404).end("Not Found\n");
-
-        res.setHeader("Content-Type", "text/plain");
-        res.end(`[annex]\n\tuuid = ${uuid}\n`);
-    } catch {
-        res.status(500).end("Internal server error\n");
-    }
-});
+// (Annex config route removed)
 
 // ─────────────────────────────────────────────────────────────────────────────
 // GET /:userId/:repo/info/refs?service=git-upload-pack|git-receive-pack
@@ -173,57 +162,65 @@ router.post("/:userId/:repo/git-receive-pack", async (req, res) => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Git annex object transfer   HEAD / GET / PUT
-//
-// Git annex stores content outside the regular git pack.  When a remote URL is
-// HTTP, git annex reads and writes individual objects at:
-//   .git/annex/objects/<x>/<y>/<KEY>/<KEY>
-// where x/y are the first two pairs of hex chars derived from the key.
-//
-// These three routes let `git annex push` / `git annex copy` transfer files
-// through Cloudflare Tunnel one object at a time instead of bundling everything
-// into one giant pack (which hits the 100 MB tunnel limit).
-//
-// With `git config annex.chunksize 95mb` on the client, even individual files
-// over 100 MB are split into ≤95 MB chunks, each a separate PUT request.
+// Git LFS API
 // ─────────────────────────────────────────────────────────────────────────────
 
-// Validate x/y (2-char hex dirs) and key/file (annex key name).
-// Prevents path traversal — keys must not contain slashes or ".." sequences.
-function validateAnnexParams(x, y, key, file) {
-    if (!/^[0-9a-f]{2}$/i.test(x)) return false;
-    if (!/^[0-9a-f]{2}$/i.test(y)) return false;
-    if (key !== file) return false;
-    if (key.includes("/") || key.includes("\\") || key.includes("..")) return false;
-    if (!/^[A-Z][A-Z0-9]+-/.test(key)) return false; // must start with backend name
-    return true;
-}
+/**
+ * Git LFS Batch API
+ * Negotiates object transfers between client and server.
+ * POST /:userId/:repo/info/lfs/objects/batch
+ */
+router.post("/:userId/:repo/info/lfs/objects/batch", express.json(), async (req, res) => {
+    const { operation, objects } = req.body;
+    const { userId, repo } = req.params;
 
-function annexObjectPath(repoPath, x, y, key, file) {
-    return path.join(repoPath, ".git", "annex", "objects", x, y, key, file);
-}
-
-// HEAD — check whether the server already has this object
-router.head("/:userId/:repo/.git/annex/objects/:x/:y/:key/:file", async (req, res) => {
-    const { x, y, key, file } = req.params;
-    if (!validateAnnexParams(x, y, key, file)) return res.status(400).end();
-    try {
-        const repoPath = await resolveRepo(req);
-        const s = await stat(annexObjectPath(repoPath, x, y, key, file));
-        res.setHeader("Content-Length", s.size);
-        res.status(200).end();
-    } catch {
-        res.status(404).end();
+    if (operation !== "upload" && operation !== "download") {
+        return res.status(400).json({ message: "Invalid operation" });
     }
+
+    const responseObjects = objects.map((obj) => {
+        const { oid, size } = obj;
+        const host = req.get("host");
+        const protocol = req.protocol;
+        const baseUrl = `${protocol}://${host}/git/${userId}/${repo}/info/lfs/objects/basic/${oid}`;
+
+        const actions = {};
+        if (operation === "upload") {
+            actions.upload = {
+                href: baseUrl,
+                expires_in: 3600,
+            };
+        } else {
+            actions.download = {
+                href: baseUrl,
+                expires_in: 3600,
+            };
+        }
+
+        return {
+            oid,
+            size,
+            actions,
+        };
+    });
+
+    res.setHeader("Content-Type", "application/vnd.git-lfs+json");
+    res.json({
+        transfer: "basic",
+        objects: responseObjects,
+    });
 });
 
-// GET — download an annex object (used by `git annex copy --from`)
-router.get("/:userId/:repo/.git/annex/objects/:x/:y/:key/:file", async (req, res) => {
-    const { x, y, key, file } = req.params;
-    if (!validateAnnexParams(x, y, key, file)) return res.status(400).end();
+function lfsObjectPath(repoPath, oid) {
+    return path.join(repoPath, ".git", "lfs", "objects", oid.substring(0, 2), oid.substring(2, 4), oid);
+}
+
+// LFS Object Download
+router.get("/:userId/:repo/info/lfs/objects/basic/:oid", async (req, res) => {
+    const { oid } = req.params;
     try {
         const repoPath = await resolveRepo(req);
-        const objPath = annexObjectPath(repoPath, x, y, key, file);
+        const objPath = lfsObjectPath(repoPath, oid);
         const s = await stat(objPath);
         res.setHeader("Content-Type", "application/octet-stream");
         res.setHeader("Content-Length", s.size);
@@ -233,15 +230,14 @@ router.get("/:userId/:repo/.git/annex/objects/:x/:y/:key/:file", async (req, res
     }
 });
 
-// PUT — upload an annex object (used by `git annex push` / `git annex copy --to`)
-router.put("/:userId/:repo/.git/annex/objects/:x/:y/:key/:file", async (req, res) => {
-    const { x, y, key, file } = req.params;
-    if (!validateAnnexParams(x, y, key, file)) return res.status(400).end();
+// LFS Object Upload
+router.put("/:userId/:repo/info/lfs/objects/basic/:oid", async (req, res) => {
+    const { oid } = req.params;
     try {
         const repoPath = await resolveRepo(req);
-        const objPath = annexObjectPath(repoPath, x, y, key, file);
+        const objPath = lfsObjectPath(repoPath, oid);
 
-        // Idempotent: if the object is already present, drain and ack.
+        // Idempotent: if already present, drain and ack.
         try {
             await access(objPath);
             req.resume();
@@ -250,7 +246,6 @@ router.put("/:userId/:repo/.git/annex/objects/:x/:y/:key/:file", async (req, res
 
         await mkdir(path.dirname(objPath), { recursive: true });
 
-        // Write to a temp file first so a partial upload never leaves a corrupt object.
         const tmpPath = `${objPath}.tmp.${process.pid}`;
         await new Promise((resolve, reject) => {
             const ws = createWriteStream(tmpPath);
@@ -261,11 +256,9 @@ router.put("/:userId/:repo/.git/annex/objects/:x/:y/:key/:file", async (req, res
         });
 
         await rename(tmpPath, objPath);
-        await chmod(objPath, 0o444); // read-only, matching git annex convention
-
         res.status(200).end();
     } catch (err) {
-        console.error("[gitHttp] annex PUT error:", err);
+        console.error("[gitHttp] LFS PUT error:", err);
         res.status(500).end();
     }
 });

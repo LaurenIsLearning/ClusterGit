@@ -18,10 +18,10 @@ export async function insertPushEventWithFallback(payload) {
     return fallbackError || null;
 }
 
-export async function insertAnnexObjectWithFallback(payload) {
-    // keeps annex object metadata idempotent if the same upload logic retries
+export async function insertLfsObjectWithFallback(payload) {
+    // keeps LFS object metadata idempotent
     const { error: upsertError } = await supabase
-        .from("annex_objects")
+        .from("annex_objects") // reusing table for now
         .upsert(payload, { onConflict: "repo_id,annex_key" });
 
     if (!upsertError) return null;
@@ -140,7 +140,7 @@ export async function syncPushMetadata(userId, projectName) {
                 message: state.message,
                 branch: 'main',
                 is_merge: false,
-                annex_key: null,
+                annex_key: null, // Commits themselves don't have an LFS key
                 committed_at: state.timestamp,
             })
             .select()
@@ -158,19 +158,19 @@ export async function syncPushMetadata(userId, projectName) {
                     uploaded_by: userId,
                     file_path: file.path,
                     original_name: file.name,
-                    annex_key: file.annexKey,
+                    annex_key: file.lfsOid, // mapping lfsOid to annex_key column
                     mime_type: guessMime(file.name),
                     size_bytes: file.sizeBytes,
                     status: 'synced',
                     uploaded_at: state.timestamp,
                 }, { onConflict: 'repo_id,file_path' });
 
-            if (file.annexKey) {
-                await insertAnnexObjectWithFallback({
+            if (file.lfsOid) {
+                await insertLfsObjectWithFallback({
                     repo_id: repo.id,
-                    annex_key: file.annexKey,
+                    annex_key: file.lfsOid, // mapping lfsOid to annex_key column
                     size_bytes: file.sizeBytes,
-                    storage_backend: 'git-annex',
+                    storage_backend: 'git-lfs',
                 });
             }
         }

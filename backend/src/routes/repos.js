@@ -8,7 +8,7 @@ import fs from "fs/promises";
 import os from "os";
 import path from "path";
 import { applyEnvironmentFilter, getEnvironmentKey } from "../utils/environment.js";
-import { insertPushEventWithFallback, insertAnnexObjectWithFallback, insertActivityLogWithFallback } from "../services/syncService.js";
+import { insertPushEventWithFallback, insertLfsObjectWithFallback, insertActivityLogWithFallback } from "../services/syncService.js";
 
 const router = express.Router();
 
@@ -129,9 +129,9 @@ router.post("/create", authMiddleware, async (req, res) => {
             description || ''
         );
 
-        // makes sure the repo really initialized with git-annex metadata
-        if (!projectData.annexUuid) {
-            throw new Error("git-annex UUID could not be determined");
+        // makes sure the repo really initialized with Git LFS
+        if (!(await gitService.isLfsInitialized(projectData.repoPath))) {
+            throw new Error("Git LFS could not be initialized");
         }
 
         // persist the environment key so shared supabase metadata does not cross environments.
@@ -142,7 +142,7 @@ router.post("/create", authMiddleware, async (req, res) => {
                 owner_id: ownerId,
                 description: description || '',
                 is_public: Boolean(is_public),
-                git_annex_uuid: projectData.annexUuid,
+                git_annex_uuid: 'git-lfs', // placeholder since we don't have UUIDs anymore
                 environment_key: environmentKey,
             })
             .select()
@@ -532,8 +532,7 @@ router.post("/:id/upload", async (req, res) => {
             author_id: ownerId,
             message: `Upload ${file.originalname}`,
             branch: uploadResult.branch || "main",
-            is_merge: false,
-            annex_key: uploadResult.annexKey,
+            annex_key: null,
             committed_at: new Date().toISOString()
         };
 
@@ -577,19 +576,7 @@ router.post("/:id/upload", async (req, res) => {
             console.error("Failed to persist push event metadata:", resolvedPushError);
         }
 
-        let annexObjectError = null;
-        if (uploadResult.annexKey) {
-            annexObjectError = await insertAnnexObjectWithFallback({
-                repo_id: repoId,
-                annex_key: uploadResult.annexKey,
-                size_bytes: uploadResult.size || file.size || 0,
-                storage_backend: "git-annex"
-            });
-
-            if (annexObjectError) {
-                console.error("Failed to persist annex object metadata:", annexObjectError);
-            }
-        }
+        // LFS objects are tracked in repo_files
 
         const mimeType = file.mimetype || null;
         const { error: repoFileError } = await supabase
@@ -598,7 +585,7 @@ router.post("/:id/upload", async (req, res) => {
                 repo_id: repoId,
                 latest_commit_id: commitRow?.id || null,
                 uploaded_by: ownerId,
-                annex_key: uploadResult.annexKey || null,
+                annex_key: null, // Git LFS doesn't expose OID easily here without extra steps, but we can add it if needed
                 file_path: file.originalname,
                 original_name: file.originalname,
                 mime_type: mimeType,
@@ -625,7 +612,6 @@ router.post("/:id/upload", async (req, res) => {
         // reports partial-success cases where git worked but one of the metadata tables did not
         const metadataErrors = {
             push_events: resolvedPushError?.message || null,
-            annex_objects: annexObjectError?.message || null,
             repo_files: repoFileError?.message || null,
             activity_log: activityError?.message || null
         };
@@ -639,8 +625,7 @@ router.post("/:id/upload", async (req, res) => {
                 metadata_errors: metadataErrors,
                 metadata: {
                     commit_id: commitRow?.id,
-                    git_commit_hash: uploadResult.gitCommitHash,
-                    annex_key: uploadResult.annexKey
+                    git_commit_hash: uploadResult.gitCommitHash
                 }
             });
         }
@@ -738,17 +723,7 @@ router.delete("/:repoId/files/:fileId", authMiddleware, async (req, res) => {
             });
         }
 
-        if (repoFile.annex_key) {
-            const { error: annexDeleteError } = await supabase
-                .from("annex_objects")
-                .delete()
-                .eq("repo_id", repoId)
-                .eq("annex_key", repoFile.annex_key);
-
-            if (annexDeleteError) {
-                console.error("Failed to delete annex object metadata:", annexDeleteError);
-            }
-        }
+        // LFS cleanup handled by Git
 
         const activityError = await insertActivityLogWithFallback({
             user_id: ownerId,

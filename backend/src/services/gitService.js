@@ -4,7 +4,7 @@ import fs from 'fs/promises';
 import path from 'path';
 import os from 'os';
 import { pathToFileURL } from 'url';
-import { REPO_BASE_PATH, GIT_ANNEX_CONFIG } from '../config/config.js';
+import { REPO_BASE_PATH, GIT_LFS_CONFIG } from '../config/config.js';
 
 const execAsync = promisify(execFile);
 const GIT_BIN = process.platform === 'win32' ? 'git' : '/usr/bin/git';
@@ -95,70 +95,13 @@ async function refExists(cwd, refName) {
 }
 
 async function syncRemoteBranches(cwd) {
-    // refreshes the remote refs before uploads or deletes touch main/git-annex
+    // refreshes the remote refs before uploads or deletes
     await execAsync(GIT_BIN, ["fetch", "origin", "main"], { cwd });
-    try {
-        await execAsync(GIT_BIN, ["fetch", "origin", "git-annex"], { cwd });
-    } catch {
-        // Some repositories may not have a remote git-annex branch yet.
-    }
 }
 
-async function mergeRemoteGitAnnex(cwd) {
-    // pulls origin/git-annex into the local checkout so annex pushes stay fast-forwardable
-    const hasLocalGitAnnex = await refExists(cwd, "git-annex");
-    const hasRemoteGitAnnex = await refExists(cwd, "origin/git-annex");
+// Removed mergeRemoteGitAnnex as LFS doesn't need a separate metadata branch
 
-    if (!hasLocalGitAnnex || !hasRemoteGitAnnex) {
-        return;
-    }
-
-    const { stdout: currentBranchStdout } = await execAsync(GIT_BIN, ["rev-parse", "--abbrev-ref", "HEAD"], { cwd });
-    const originalBranch = currentBranchStdout.trim() || "main";
-
-    await execAsync(GIT_BIN, ["checkout", "git-annex"], { cwd });
-    try {
-        await execAsync(GIT_BIN, ["merge", "--no-edit", "origin/git-annex"], { cwd });
-    } catch {
-        // Abort the failed merge to clear the index before retrying or checking out
-        await execAsync(GIT_BIN, ["merge", "--abort"], { cwd }).catch(() =>
-            execAsync(GIT_BIN, ["reset", "--hard"], { cwd }).catch(() => {})
-        );
-        // Retry allowing unrelated histories (first-upload case where branches diverge)
-        try {
-            await execAsync(GIT_BIN, ["merge", "--no-edit", "--allow-unrelated-histories", "origin/git-annex"], { cwd });
-        } catch {
-            // If the retry also fails (e.g. uuid.log conflict), force-reset so the
-            // finally block can checkout the original branch without hitting
-            // "you need to resolve your current index first"
-            await execAsync(GIT_BIN, ["reset", "--hard"], { cwd }).catch(() => {});
-        }
-    } finally {
-        await execAsync(GIT_BIN, ["checkout", originalBranch], { cwd });
-    }
-}
-
-function isFetchFirstPushError(error) {
-    // spots the annoying git-annex race where the remote branch moved first
-    const stderr = String(error?.stderr || error?.message || "");
-    return stderr.includes("git-annex -> git-annex") && stderr.includes("(fetch first)");
-}
-
-async function pushGitAnnexBranch(cwd) {
-    try {
-        await mergeRemoteGitAnnex(cwd);
-        await execAsync(GIT_BIN, ["push", "origin", "git-annex"], { cwd });
-    } catch (error) {
-        if (!isFetchFirstPushError(error)) {
-            throw error;
-        }
-
-        // retries once so the user does not have to upload the same file twice
-        await syncRemoteBranches(cwd);
-        await mergeRemoteGitAnnex(cwd);
-        await execAsync(GIT_BIN, ["push", "origin", "git-annex"], { cwd });
-    }
-}
+// Removed pushGitAnnexBranch
 
 async function prepareWorkingClone(bareRepoPath, tempWorkingPath) {
     // creates the temp working copy used for uploads and delete operations
@@ -167,12 +110,7 @@ async function prepareWorkingClone(bareRepoPath, tempWorkingPath) {
     await syncRemoteBranches(tempWorkingPath);
     await execAsync(GIT_BIN, ["checkout", "-B", "main", "origin/main"], { cwd: tempWorkingPath });
 
-    // Ensure the local git-annex branch starts from origin/git-annex so git annex add
-    // never creates an unrelated history that causes merge failures on first upload
-    const hasRemoteGitAnnex = await refExists(tempWorkingPath, "origin/git-annex");
-    if (hasRemoteGitAnnex) {
-        await execAsync(GIT_BIN, ["branch", "-f", "git-annex", "origin/git-annex"], { cwd: tempWorkingPath }).catch(() => {});
-    }
+    // Git LFS handles its own refs, nothing extra needed here.
 
     await execAsync(GIT_BIN, ["config", "user.name", "ClusterGit"], { cwd: tempWorkingPath });
     await execAsync(GIT_BIN, ["config", "user.email", "system@clustergit.local"], { cwd: tempWorkingPath });
@@ -200,23 +138,15 @@ export function getGitUrl(userId, projectName) {
 }
 
 /**
- * Get git-annex UUID for a repository
+ * Check if Git LFS is initialized in a repository
  */
-export async function getAnnexUuid(repoPath) {
+export async function isLfsInitialized(repoPath) {
     try {
-        // Detect if it's a working copy (has .git subdir) or bare repo
-        const gitDir = (await fs.stat(path.join(repoPath, '.git')).catch(() => null))
-            ? path.join(repoPath, '.git')
-            : repoPath;
-
-        const { stdout } = await execAsync(
-            GIT_BIN,
-            ["--git-dir", gitDir, "config", "--get", "annex.uuid"]
-        );
-        return stdout.trim() || null;
-    } catch (error) {
-        console.error("Failed to get git-annex UUID:", error);
-        return null;
+        const gitDir = await getGitDir(repoPath);
+        await execAsync(GIT_BIN, ["--git-dir", gitDir, "lfs", "ls-files"]);
+        return true;
+    } catch {
+        return false;
     }
 }
 
@@ -230,25 +160,9 @@ export async function getAnnexUuid(repoPath) {
  * remote.  Safe to call on existing repos — just overwrites the hook file.
  */
 export async function installPostReceiveHook(repoPath) {
-    const hooksDir = path.join(repoPath, '.git', 'hooks');
-    await fs.mkdir(hooksDir, { recursive: true });
-    const hookPath = path.join(hooksDir, 'post-receive');
-    // Fast-forward main → synced/main using update-ref so the working tree is
-    // never touched.  The old approach (git annex sync --no-push --no-pull) ran
-    // "git commit -a" on the server which committed any working-tree deletions
-    // that updateInstead introduced during a git-annex push, wiping the repo.
-    const script = [
-        '#!/bin/sh',
-        '# Installed by ClusterGit — fast-forwards main to synced/main after every push.',
-        '# Uses update-ref only; never touches the working tree.',
-        'SYNCED=$(git rev-parse --verify refs/heads/synced/main 2>/dev/null) || exit 0',
-        'MAIN=$(git rev-parse --verify refs/heads/main 2>/dev/null)',
-        'if [ -z "$MAIN" ] || git merge-base --is-ancestor "$MAIN" "$SYNCED" 2>/dev/null; then',
-        '    git update-ref refs/heads/main "$SYNCED"',
-        'fi',
-        '',
-    ].join('\n');
-    await fs.writeFile(hookPath, script, { mode: 0o755 });
+    // Standard post-receive hook is not strictly needed for LFS to work,
+    // but we can keep it if we want to auto-update a dashboard or something.
+    // For now, let's keep it minimal.
 }
 
 export async function createRepository(userId, projectName, description = '') {
@@ -272,40 +186,34 @@ export async function createRepository(userId, projectName, description = '') {
     await execAsync(GIT_BIN, ["add", "."], { cwd: repoPath });
     await execAsync(GIT_BIN, ["commit", "-m", "Initial commit"], { cwd: repoPath });
 
-    // 4. git-annex init + placeholder to keep the git-annex branch alive from creation
-    await execAsync(GIT_BIN, ["annex", "init"], { cwd: repoPath });
-    await fs.writeFile(path.join(repoPath, ".annex-placeholder"), "This file anchors the git-annex branch");
-    await execAsync(GIT_BIN, ["add", "."], { cwd: repoPath });
-    await execAsync(GIT_BIN, ["commit", "-m", "Initialize git-annex with placeholder"], { cwd: repoPath });
+    // 4. git-lfs init
+    await execAsync(GIT_BIN, ["lfs", "install"], { cwd: repoPath });
 
-    // 5. post-receive hook so every push auto-merges synced/main → main
+    // 5. post-receive hook (optional for now)
     await installPostReceiveHook(repoPath);
-
-    // 6. get annex UUID
-    const annexUuid = await getAnnexUuid(repoPath);
 
     if (description) {
         await fs.writeFile(path.join(repoPath, '.git', 'description'), description);
     }
 
-    return { repoPath, userId, annexUuid };
+    return { repoPath, userId };
 }
 
 
 /**
  * Initialize git-annex in a repository (if needed later)
  */
-export async function initGitAnnex(repoPath) {
+/**
+ * Initialize Git LFS in a repository
+ */
+export async function initGitLfs(repoPath) {
     try {
-        console.log("Running initGitAnnex in:", repoPath);
-        await execAsync(GIT_BIN, ["annex", "init"], { cwd: repoPath });
-        await execAsync(GIT_BIN, ["config", "annex.backends", GIT_ANNEX_CONFIG.backend], { cwd: repoPath });
-        await execAsync(GIT_BIN, ["annex", "numcopies", GIT_ANNEX_CONFIG.numCopies], { cwd: repoPath });
-        await execAsync(GIT_BIN, ["config", "annex.largefiles", `largerthan=${GIT_ANNEX_CONFIG.largeFileThreshold}b`], { cwd: repoPath });
-        console.log("initGitAnnex complete");
+        console.log("Running initGitLfs in:", repoPath);
+        await execAsync(GIT_BIN, ["lfs", "install"], { cwd: repoPath });
+        console.log("initGitLfs complete");
         return { success: true };
     } catch (error) {
-        throw new Error(`Failed to initialize git-annex: ${error.message}`);
+        throw new Error(`Failed to initialize Git LFS: ${error.message}`);
     }
 }
 
@@ -313,8 +221,7 @@ export async function initGitAnnex(repoPath) {
  * Create a project (wrapper)
  */
 export async function createProject(userId, projectName, description = '') {
-    // createRepository now returns annexUuid from the working clone
-    const { repoPath, annexUuid } = await createRepository(userId, projectName, description);
+    const { repoPath } = await createRepository(userId, projectName, description);
 
     // get repo size
     const size = await getRepoSize(repoPath);
@@ -328,7 +235,6 @@ export async function createProject(userId, projectName, description = '') {
         repoPath,
         gitUrl,
         size,
-        annexUuid, // comes from createRepository
         ownerId: userId
     };
 }
@@ -352,42 +258,33 @@ export async function addFileToProject(userId, projectName, filePath, originalNa
         const targetPath = path.join(tempWorkingPath, originalName);
         await fs.rename(filePath, targetPath);
 
-        // unlocks existing annexed files so re-uploads can overwrite cleanly
-        try {
-            await execAsync(GIT_BIN, ["annex", "unlock", originalName], { cwd: tempWorkingPath });
-        } catch { }
+        // Ensure this file type is tracked by LFS if it's large
+        const stats = await fs.stat(targetPath);
+        if (stats.size > GIT_LFS_CONFIG.largeFileThreshold) {
+            const ext = path.extname(originalName);
+            const pattern = ext ? `*${ext}` : originalName;
+            await execAsync(GIT_BIN, ["lfs", "track", pattern], { cwd: tempWorkingPath });
+            await execAsync(GIT_BIN, ["add", ".gitattributes"], { cwd: tempWorkingPath });
+        }
 
-        await execAsync(GIT_BIN, ["annex", "add", originalName], { cwd: tempWorkingPath });
-
-        const { stdout: annexKeyStdout } = await execAsync(
-            GIT_BIN,
-            ["annex", "lookupkey", originalName],
-            { cwd: tempWorkingPath }
-        );
-        const annexKey = annexKeyStdout.trim() || null;
+        await execAsync(GIT_BIN, ["add", originalName], { cwd: tempWorkingPath });
 
         // commit only if something changed
         const { stdout: statusOut } = await execAsync(GIT_BIN, ["status", "--porcelain"], { cwd: tempWorkingPath });
         if (statusOut.trim()) {
             await execAsync(GIT_BIN, ["commit", "-m", `Upload ${originalName}`], { cwd: tempWorkingPath });
         } else {
-            // force a new commit even if content is identical, so metadata stays consistent
             await execAsync(GIT_BIN, ["commit", "--allow-empty", "-m", `Re-upload ${originalName}`], { cwd: tempWorkingPath });
         }
+        
         const { stdout: toRefStdout } = await execAsync(GIT_BIN, ["rev-parse", "HEAD"], { cwd: tempWorkingPath });
         const toRef = toRefStdout.trim();
 
         await execAsync(GIT_BIN, ["push", "origin", "main"], { cwd: tempWorkingPath });
-        await pushGitAnnexBranch(tempWorkingPath);
-
-        // copies the annex object itself after the git refs are pushed
-        await execAsync(GIT_BIN, ["annex", "copy", "--to", "origin", originalName], { cwd: tempWorkingPath });
-
 
         return {
             success: true,
             name: originalName,
-            annexKey,
             gitCommitHash: toRef,
             branch: "main"
         };
@@ -417,14 +314,13 @@ export async function deleteFileFromProject(userId, projectName, filePath) {
             throw new Error(`File ${filePath} was not found in repository ${projectName}`);
         }
 
-        await execAsync(GIT_BIN, ["annex", "rm", "--force", filePath], { cwd: tempWorkingPath });
+        await execAsync(GIT_BIN, ["rm", filePath], { cwd: tempWorkingPath });
         await execAsync(GIT_BIN, ["commit", "-m", `Delete ${filePath}`], { cwd: tempWorkingPath });
 
         const { stdout: commitStdout } = await execAsync(GIT_BIN, ["rev-parse", "HEAD"], { cwd: tempWorkingPath });
         const gitCommitHash = commitStdout.trim();
 
         await execAsync(GIT_BIN, ["push", "origin", "main"], { cwd: tempWorkingPath });
-        await pushGitAnnexBranch(tempWorkingPath);
 
         return {
             success: true,
@@ -536,11 +432,14 @@ export async function getProjectFileBuffer(userId, projectName, filePath) {
 
         await prepareReadOnlyClone(bareRepoPath, tempWorkingPath);
 
-        // tries annex get first in case the file content is annexed instead of plain git tracked
+        // Git LFS: if the file is a pointer, we need to fetch the content.
+        // Standard git checkout in a clone with LFS installed should handle this,
+        // but since we are cloning from a local bare repo, we might need to manually
+        // ensure LFS objects are available or just read them from the storage.
         try {
-            await execAsync(GIT_BIN, ["annex", "get", filePath], { cwd: tempWorkingPath });
+            await execAsync(GIT_BIN, ["lfs", "pull"], { cwd: tempWorkingPath });
         } catch {
-            // some files are plain git files or the annex content may not be present.
+            // Might not be an LFS file
         }
 
         const targetPath = path.join(tempWorkingPath, filePath);
@@ -603,21 +502,8 @@ export async function readRepoStateForSync(repoPath) {
         throw err;
     }
 
-    // synced/main is always the authoritative content branch for CLI pushes —
-    // git annex push deposits commits here.  Always prefer it when it exists.
-    // Attempt a fast-forward of main so web uploads keep seeing the latest state,
-    // but never let that attempt change which commit we actually read files from.
-    const headHash = syncedHash || mainHash;
-    if (syncedHash && syncedHash !== mainHash) {
-        try {
-            if (mainHash) {
-                await execAsync(GIT_BIN, ['--git-dir', gitDir, 'merge-base', '--is-ancestor', mainHash, syncedHash]);
-            }
-            await execAsync(GIT_BIN, ['--git-dir', gitDir, 'update-ref', 'refs/heads/main', syncedHash]);
-        } catch {
-            // Not a clean fast-forward — fine, we still read from synced/main
-        }
-    }
+    const headHash = mainHash;
+    // We strictly use main branch now, no more synced/main
 
     // Commit metadata — use \x1f (unit separator) to avoid conflicts with names/messages
     const { stdout: logOut } = await execAsync(GIT_BIN, [
@@ -637,26 +523,25 @@ export async function readRepoStateForSync(repoPath) {
         if (!match) continue;
         const [, mode, blobHash, rawSizeStr, filePath] = match;
 
-        let annexKey = null;
+        let lfsOid = null;
         let sizeBytes = rawSizeStr === '-' ? 0 : Number(rawSizeStr);
 
-        if (mode === '120000') {
-            // Annex pointer symlink — read blob content to extract key and real size
+        if (mode === '100644' && sizeBytes < 200) {
+            // Potential LFS pointer — read blob content to check
             try {
                 const { stdout: blob } = await execAsync(GIT_BIN, [
                     '--git-dir', gitDir, 'cat-file', 'blob', blobHash
                 ]);
-                // e.g. "../../.git/annex/objects/.../SHA256E-s12345--abc.iso/SHA256E-s12345--abc.iso"
-                const keyMatch = blob.trim().match(/([A-Z0-9]+-s\d+--[^/\s]+)$/);
-                if (keyMatch) {
-                    annexKey = keyMatch[1];
-                    const sizeMatch = annexKey.match(/-s(\d+)-/);
+                if (blob.includes('version https://git-lfs.github.com/spec/v1')) {
+                    const oidMatch = blob.match(/oid sha256:([a-f0-9]+)/);
+                    const sizeMatch = blob.match(/size (\d+)/);
+                    if (oidMatch) lfsOid = oidMatch[1];
                     if (sizeMatch) sizeBytes = Number(sizeMatch[1]);
                 }
             } catch {}
         }
 
-        files.push({ path: filePath, name: path.basename(filePath), mode, blobHash, annexKey, sizeBytes });
+        files.push({ path: filePath, name: path.basename(filePath), mode, blobHash, lfsOid, sizeBytes });
     }
 
     return { commitHash, authorName, timestamp, message, files };
@@ -665,8 +550,8 @@ export async function readRepoStateForSync(repoPath) {
 export default {
     validateProjectName,
     createRepository,
-    initGitAnnex,
-    getAnnexUuid,
+    initGitLfs,
+    isLfsInitialized,
     createProject,
     deleteFileFromProject,
     deleteProjectRepository,

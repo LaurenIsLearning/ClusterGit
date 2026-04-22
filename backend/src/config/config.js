@@ -7,11 +7,9 @@ export const REPO_BASE_PATH = path.isAbsolute(rawRepoPath)
     ? rawRepoPath
     : path.resolve(process.cwd(), rawRepoPath);
 
-// Git-annex configuration
-export const GIT_ANNEX_CONFIG = {
-    backend: 'SHA256E', // Cryptographic hash + extension
+// Git LFS configuration
+export const GIT_LFS_CONFIG = {
     largeFileThreshold: 1024 * 1024, // 1MB
-    numCopies: 1, // Minimum number of copies
 };
 
 // Server configuration
@@ -20,7 +18,7 @@ export const SERVER_PORT = process.env.PORT || 80;
 
 export default {
     REPO_BASE_PATH,
-    GIT_ANNEX_CONFIG,
+    GIT_LFS_CONFIG,
     SERVER_HOST,
     SERVER_PORT,
 };
