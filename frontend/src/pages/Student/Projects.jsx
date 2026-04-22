@@ -285,7 +285,7 @@ export default function StudentProjects() {
                 {currentProject ? (
                     <>
                         {/* Toolbar */}
-                        <div className="p-6 border-b border-[--border-color] flex justify-between items-center bg-[--bg-secondary] gap-4">
+                        <div className="p-6 border-b border-[--border-color] flex justify-between items-center bg-[--bg-secondary]">
                             <div>
                                 <h2 className="text-xl font-bold flex items-center gap-2">
                                     {currentProject.name}
@@ -293,7 +293,7 @@ export default function StudentProjects() {
                                 </h2>
                                 <p className="text-sm text-[--text-secondary] mt-1">{files.length} large files stored</p>
                             </div>
-                            <div className="flex items-center gap-3">
+                            <div className="flex gap-3">
                                 <button
                                     onClick={(e) => handleCopyCloneLink(e, currentProject.repo, 'header')}
                                     className="btn btn-secondary gap-2"
@@ -311,6 +311,7 @@ export default function StudentProjects() {
                             </div>
                         </div>
 
+                        {/* File List */}
                         <div className="flex-1 overflow-y-auto p-4">
                             <table className="w-full text-left border-collapse">
                                 <thead>

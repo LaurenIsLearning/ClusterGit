@@ -87,7 +87,6 @@ All repo PVCs are mounted at `/repos` inside the backend pod.
 | `k8s/preview-template.yaml` | Template for per-branch namespace, PVC, deployment, service, and ingress |
 | `k8s/storage-deployment.yaml` | Production deployment in `storage` namespace |
 | `k8s/storage-ingress.yaml` | Production ingress for `clustergit.com` and `develop.clustergit.com` |
-| `k8s/node-sync-cronjob.yaml` | Scheduled Prometheus → Supabase node health sync in `storage` namespace |
 | `scripts/deploy-preview.sh` | Called by the preview deploy workflow to spin up branch environments |
 
 ---
@@ -113,16 +112,9 @@ PORT=3000
 REPO_BASE_PATH=./local-repos
 SUPABASE_URL=your_supabase_url
 SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
-PROMETHEUS_URL=your_prometheus_url
-PROMETHEUS_STORAGE_MOUNTPOINTS=/,/mnt/cluster-storage
 ```
 
 Backend runs at http://localhost:3000
-
-To manually refresh node health from Prometheus into Supabase (from backend):
-```bash
-npm run sync:nodes
-```
 
 ### Frontend
 

@@ -57,15 +57,15 @@ const MOCK_DB_ROW_FACULTY = {
     owner_id: FACULTY_ID
 };
 
-const STUDENT_GIT_URL = `https://clustergit.com/git/${STUDENT_ID}/test-repo.git`;
-const FACULTY_GIT_URL = `https://clustergit.com/git/${FACULTY_ID}/test-repo.git`;
+const STUDENT_GIT_URL = `git@10.27.12.244:/repos/${STUDENT_ID}/test-repo.git`;
+const FACULTY_GIT_URL = `git@10.27.12.244:/repos/${FACULTY_ID}/test-repo.git`;
 
 function makeCreateProjectResult(ownerId) {
     return {
         name:        'test-repo',
         description: 'A test repository',
         repoPath:    `/repos/${ownerId}/test-repo.git`,
-        gitUrl:      `https://clustergit.com/git/${ownerId}/test-repo.git`,
+        gitUrl:      `git@10.27.12.244:/repos/${ownerId}/test-repo.git`,
         size:        0,
         annexUuid:   'annex-uuid-xyz',
         ownerId

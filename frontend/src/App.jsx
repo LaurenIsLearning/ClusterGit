@@ -10,7 +10,6 @@ import SupabaseSmokeTest from "./pages/SupabaseSmokeTest";
 import StudentDashboard from "./pages/Student/Dashboard";
 import StudentProjects from "./pages/Student/Projects";
 import StudentSettings from "./pages/Student/Settings";
-import StudentAnnexHelp from "./pages/Student/AnnexHelp";
 
 import AdminDashboard from "./pages/Admin/Dashboard";
 import AdminNodes from "./pages/Admin/Nodes";
@@ -48,7 +47,6 @@ export default function App() {
         {/* Student */}
         <Route path="/dashboard" element={<StudentDashboard />} />
         <Route path="/projects" element={<StudentProjects />} />
-        <Route path="/annex-help" element={<StudentAnnexHelp />} />
         <Route path="/settings" element={<StudentSettings />} />
 
         {/* Admin (guarded) */}

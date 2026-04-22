@@ -35,68 +35,18 @@ const QUOTA = {
 };
 
 // --- Admin Data ---
-const NODES = [
-  {
-    id: 'pi5-server',
-    status: 'online',
-    uptime: '31d',
-    storage: {
-      used: 58,
-      used_bytes: 116 * 1024 ** 3,
-      total_bytes: 200 * 1024 ** 3
-    },
-    cpu: 17,
-    temp: 46
+const NODES = Array.from({ length: 8 }).map((_, i) => ({
+  id: `node-0${i + 1}`,
+  ip: `192.168.1.10${i + 1}`,
+  status: i === 2 ? 'warning' : i === 5 ? 'offline' : 'online',
+  uptime: `${Math.floor(Math.random() * 30)}d`,
+  storage: {
+    used: Math.floor(Math.random() * 60) + 20, // 20-80%
+    total: '512 GB'
   },
-  {
-    id: 'pi5-worker1',
-    status: 'online',
-    uptime: '29d',
-    storage: {
-      used: 34,
-      used_bytes: 68 * 1024 ** 3,
-      total_bytes: 200 * 1024 ** 3
-    },
-    cpu: 12,
-    temp: 43
-  },
-  {
-    id: 'pi5-worker2',
-    status: 'warning',
-    uptime: '28d',
-    storage: {
-      used: 71,
-      used_bytes: 142 * 1024 ** 3,
-      total_bytes: 200 * 1024 ** 3
-    },
-    cpu: 49,
-    temp: 57
-  },
-  {
-    id: 'pi5-worker3',
-    status: 'online',
-    uptime: '30d',
-    storage: {
-      used: 41,
-      used_bytes: 82 * 1024 ** 3,
-      total_bytes: 200 * 1024 ** 3
-    },
-    cpu: 19,
-    temp: 44
-  },
-  {
-    id: 'pi5-worker4',
-    status: 'offline',
-    uptime: '27d',
-    storage: {
-      used: 0,
-      used_bytes: 0,
-      total_bytes: 200 * 1024 ** 3
-    },
-    cpu: 0,
-    temp: 0
-  }
-];
+  cpu: Math.floor(Math.random() * 50) + 5,
+  temp: Math.floor(Math.random() * 20) + 35
+}));
 
 export const mockService = {
   login: async (role) => {

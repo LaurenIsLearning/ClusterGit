@@ -46,8 +46,8 @@ const STUDENT_ID   = 'student-uuid-1234';
 const FACULTY_ID   = 'faculty-uuid-5678';
 const PROJECT_NAME = 'my-project';
 
-// Smart HTTP pattern used by the current Git HTTP route: https://host/git/<user>/<repo>.git
-const GIT_HTTP_URL_PATTERN = /^https:\/\/[^/]+\/git\/[^/]+\/[^/]+\.git$/;
+// SSH URL pattern all git clients understand:  git@<host>:<path>
+const SSH_URL_PATTERN = /^git@[^:]+:.+/;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Helper: check whether /usr/bin/git is available in this environment.
@@ -151,16 +151,16 @@ describe('gitService', function () {
     // =========================================================================
     describe('getGitUrl() — clone / push / pull URL contract', function () {
 
-        it('should return a valid Git HTTP URL for a student repository (REQ-05, REQ-07)', function () {
+        it('should return a valid SSH URL for a student repository (REQ-05, REQ-07)', function () {
             const url = getGitUrl(STUDENT_ID, PROJECT_NAME);
-            assert.match(url, GIT_HTTP_URL_PATTERN,
-                `Expected Git HTTP URL, got: ${url}`);
+            assert.match(url, SSH_URL_PATTERN,
+                `Expected SSH URL (git@host:path), got: ${url}`);
         });
 
-        it('should return a valid Git HTTP URL for a faculty repository (REQ-09, REQ-11)', function () {
+        it('should return a valid SSH URL for a faculty repository (REQ-09, REQ-11)', function () {
             const url = getGitUrl(FACULTY_ID, PROJECT_NAME);
-            assert.match(url, GIT_HTTP_URL_PATTERN,
-                `Expected Git HTTP URL, got: ${url}`);
+            assert.match(url, SSH_URL_PATTERN,
+                `Expected SSH URL (git@host:path), got: ${url}`);
         });
 
         it('should include the project name in the URL', function () {
@@ -190,16 +190,16 @@ describe('gitService', function () {
         });
 
         it('student URL should be usable for pull operations (REQ-07)', function () {
-            // `git pull` uses the same Git HTTP URL as `git clone` for this deployment.
+            // `git pull` uses the same SSH URL as `git clone` — if clone works, pull works.
             const url = getGitUrl(STUDENT_ID, PROJECT_NAME);
-            assert.match(url, GIT_HTTP_URL_PATTERN,
-                'Pull URL must be a valid Git HTTP URL');
+            assert.match(url, SSH_URL_PATTERN,
+                'Pull URL must be a valid SSH git URL');
         });
 
         it('faculty URL should be usable for pull operations (REQ-11)', function () {
             const url = getGitUrl(FACULTY_ID, PROJECT_NAME);
-            assert.match(url, GIT_HTTP_URL_PATTERN,
-                'Pull URL must be a valid Git HTTP URL');
+            assert.match(url, SSH_URL_PATTERN,
+                'Pull URL must be a valid SSH git URL');
         });
     });
 
@@ -237,8 +237,8 @@ describe('gitService', function () {
             }
 
             const result = await createProject(STUDENT_ID, PROJECT_NAME);
-            assert.match(result.gitUrl, GIT_HTTP_URL_PATTERN,
-                'gitUrl should be a valid Git HTTP URL');
+            assert.match(result.gitUrl, SSH_URL_PATTERN,
+                'gitUrl should be a valid SSH URL');
             assert.ok(result.gitUrl.includes(STUDENT_ID),
                 'gitUrl should be scoped to the student');
             assert.equal(result.ownerId, STUDENT_ID);
@@ -253,7 +253,7 @@ describe('gitService', function () {
             }
 
             const result = await createProject(FACULTY_ID, PROJECT_NAME);
-            assert.match(result.gitUrl, GIT_HTTP_URL_PATTERN);
+            assert.match(result.gitUrl, SSH_URL_PATTERN);
             assert.ok(result.gitUrl.includes(FACULTY_ID),
                 'gitUrl should be scoped to the faculty user');
         });
