@@ -1,7 +1,14 @@
 import express from "express";
-import { spawn } from "child_process";
+import { spawn, execFile } from "child_process";
+import { promisify } from "util";
+import crypto from "crypto";
+import path from "path";
+import fs from "fs/promises";
+import { createWriteStream, createReadStream } from "fs";
 import { resolveExistingRepoPath, getAnnexUuid } from "../services/gitService.js";
 import { syncPushMetadata } from "../services/syncService.js";
+
+const execAsync = promisify(execFile);
 
 const router = express.Router();
 
@@ -35,6 +42,102 @@ router.get("/:userId/:repo/config", async (req, res) => {
         res.end(`[annex]\n\tuuid = ${uuid}\n`);
     } catch {
         res.status(500).end("Internal server error\n");
+    }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// git-annex P2P HTTP API (v3)
+//
+// Enables `git annex copy --to origin` / `git annex get` directly over HTTP.
+// git-annex >= 10.20230213 clients auto-detect these endpoints and use them
+// instead of failing with "copying to this remote is not supported".
+//
+// HEAD  /:userId/:repo/git-annex/v3/key/:key  — check if key is present
+// GET   /:userId/:repo/git-annex/v3/key/:key  — download key content
+// POST  /:userId/:repo/git-annex/v3/key/:key  — upload key content
+// ─────────────────────────────────────────────────────────────────────────────
+
+function annexHashDir(key) {
+    // Lower-case hashdir: MD5 of key name, first 4 hex chars split as 2+2 dirs.
+    const md5 = crypto.createHash("md5").update(key).digest("hex");
+    return path.join(md5.slice(0, 2), md5.slice(2, 4));
+}
+
+function annexObjectPath(repoPath, key) {
+    return path.join(repoPath, ".git", "annex", "objects", annexHashDir(key), key, key);
+}
+
+async function findAnnexContent(repoPath, key) {
+    // Ask git-annex where it put the content — handles both lower and upper hashdirs.
+    try {
+        const { stdout } = await execAsync(GIT_BIN, ["annex", "contentlocation", key], { cwd: repoPath });
+        const rel = stdout.trim();
+        if (!rel) return null;
+        const abs = path.join(repoPath, rel);
+        await fs.access(abs);
+        return abs;
+    } catch {
+        return null;
+    }
+}
+
+router.head("/:userId/:repo/git-annex/v3/key/:key", async (req, res) => {
+    try {
+        const repoPath = await resolveRepo(req);
+        const found = await findAnnexContent(repoPath, req.params.key);
+        if (found) {
+            res.setHeader("X-git-annex-key-is-present", "1");
+            return res.status(200).end();
+        }
+    } catch (err) {
+        console.error("[annex HEAD]", err);
+    }
+    res.status(404).end();
+});
+
+router.get("/:userId/:repo/git-annex/v3/key/:key", async (req, res) => {
+    try {
+        const repoPath = await resolveRepo(req);
+        const found = await findAnnexContent(repoPath, req.params.key);
+        if (found) {
+            res.setHeader("Content-Type", "application/octet-stream");
+            return createReadStream(found).pipe(res);
+        }
+    } catch (err) {
+        console.error("[annex GET]", err);
+    }
+    res.status(404).end();
+});
+
+router.post("/:userId/:repo/git-annex/v3/key/:key", async (req, res) => {
+    try {
+        const repoPath = await resolveRepo(req);
+        const { key } = req.params;
+
+        if (!/^[A-Za-z0-9+._-]+$/.test(key)) return res.status(400).end();
+
+        // Already have it — drain body and return success.
+        const existing = await findAnnexContent(repoPath, key);
+        if (existing) {
+            req.resume();
+            return res.status(200).end();
+        }
+
+        const targetPath = annexObjectPath(repoPath, key);
+        await fs.mkdir(path.dirname(targetPath), { recursive: true });
+
+        await new Promise((resolve, reject) => {
+            const ws = createWriteStream(targetPath, { mode: 0o444 });
+            req.pipe(ws);
+            ws.on("finish", resolve);
+            ws.on("error", reject);
+            req.on("error", reject);
+        });
+
+        res.status(200).end();
+    } catch (err) {
+        console.error("[annex POST]", err);
+        res.status(500).end();
     }
 });
 
