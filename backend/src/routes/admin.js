@@ -4,6 +4,7 @@ import authMiddleware from "../middleware/authMiddleware.js";
 import { applyEnvironmentFilter, getEnvironmentKey } from "../utils/environment.js";
 import gitService from "../services/gitService.js";
 import { loadLatestNodeSnapshots } from "../utils/nodeTelemetry.js";
+import { loadRepoVolumeMetrics } from "../utils/repoStorageMetrics.js";
 
 const router = express.Router();
 const DEFAULT_STORAGE_QUOTA_BYTES = 20 * 1024 * 1024 * 1024;
@@ -100,26 +101,13 @@ function parseQuotaBytes(input) {
 router.get("/summary", async (req, res) => {
     try {
         const environmentKey = getEnvironmentKey(req);
-        // pulls student quotas so the admin summary uses real supabase allocations instead of filler values
-        const { data: profiles, error: profilesError } = await supabase
-            .from("user_profiles")
-            .select("user_id, role, storage_quota_bytes");
-        if (profilesError) {
-            return res.status(500).json({ error: { message: profilesError.message || "Failed to load profiles" } });
-        }
-
-        const studentProfiles = (profiles || []).filter((p) => p.role === "student");
-        const totalStorageBytes = studentProfiles.reduce((sum, profile) => {
-            return sum + (Number(profile.storage_quota_bytes) || 0);
-        }, 0);
-
         const repos = await loadEnvironmentRepositories(environmentKey);
 
         const repoById = new Map((repos || []).map((r) => [r.id, r]));
         const repoIds = repos.map((repo) => repo.id);
         const totalUsers = new Set(repos.map((repo) => repo.owner_id).filter(Boolean)).size;
 
-        let usedStorageBytes = 0;
+        let annexUsedStorageBytes = 0;
         if (repoIds.length > 0) {
             const { data: annexRows, error: annexError } = await supabase
                 .from("annex_objects")
@@ -128,8 +116,16 @@ router.get("/summary", async (req, res) => {
             if (annexError) {
                 return res.status(500).json({ error: { message: annexError.message || "Failed to load storage usage" } });
             }
-            usedStorageBytes = (annexRows || []).reduce((sum, row) => sum + (Number(row.size_bytes) || 0), 0);
+            annexUsedStorageBytes = (annexRows || []).reduce((sum, row) => sum + (Number(row.size_bytes) || 0), 0);
         }
+
+        const repoVolumeMetrics = await loadRepoVolumeMetrics(environmentKey).catch((error) => {
+            console.error("Repo volume metrics fallback:", error);
+            return null;
+        });
+
+        const usedStorageBytes = repoVolumeMetrics?.usedBytes ?? annexUsedStorageBytes;
+        const totalStorageBytes = repoVolumeMetrics?.capacityBytes ?? 0;
 
         const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
         // summary activity is constrained to repos in this environment.
@@ -214,6 +210,8 @@ router.get("/summary", async (req, res) => {
             total_users: totalUsers,
             used_storage_bytes: usedStorageBytes,
             total_storage_bytes: totalStorageBytes,
+            storage_namespace: repoVolumeMetrics?.namespace || null,
+            storage_pvc: repoVolumeMetrics?.persistentVolumeClaim || null,
             archived_repositories: archivedRepositories,
             recent_activity: recentActivity
         });

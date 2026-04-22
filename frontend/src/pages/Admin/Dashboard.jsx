@@ -49,10 +49,8 @@ export default function AdminDashboard() {
 
     const onlineNodes = nodes.filter(n => n.status === 'online').length;
     const totalNodes = nodes.length;
-    const totalStorageBytes = nodes.reduce((sum, node) => sum + (Number(node.storageTotalBytes) || 0), 0);
-    const usedStorageBytes = nodes.reduce((sum, node) => sum + (Number(node.storageUsedBytes) || 0), 0);
-    const storageUsed = formatBytes(usedStorageBytes);
-    const storageTotal = formatBytes(totalStorageBytes);
+    const storageUsed = formatBytes(summary?.used_storage_bytes || 0);
+    const storageTotal = formatBytes(summary?.total_storage_bytes || 0);
     const archivedRepos = summary?.archived_repositories || [];
 
     return (
