@@ -77,7 +77,7 @@ export async function resolveExistingRepoPath(userId, projectName) {
         if (await pathExists(candidate)) {
             // Always reinstall the hook so repos created before the fix get the
             // safe update-ref version instead of the old git-annex-sync version.
-            await installPostReceiveHook(candidate).catch(() => {});
+            await installPostReceiveHook(candidate).catch(() => { });
             return candidate;
         }
     }
@@ -276,7 +276,7 @@ export async function addFileToProject(userId, projectName, filePath, originalNa
         } else {
             await execAsync(GIT_BIN, ["commit", "--allow-empty", "-m", `Re-upload ${originalName}`], { cwd: tempWorkingPath });
         }
-        
+
         const { stdout: toRefStdout } = await execAsync(GIT_BIN, ["rev-parse", "HEAD"], { cwd: tempWorkingPath });
         const toRef = toRefStdout.trim();
 
@@ -493,7 +493,7 @@ export async function readRepoStateForSync(repoPath) {
         } catch { return null; }
     };
 
-    const mainHash   = await resolve('refs/heads/main');
+    const mainHash = await resolve('refs/heads/main');
     const syncedHash = await resolve('refs/heads/synced/main');
 
     if (!mainHash && !syncedHash) {
@@ -538,7 +538,7 @@ export async function readRepoStateForSync(repoPath) {
                     if (oidMatch) lfsOid = oidMatch[1];
                     if (sizeMatch) sizeBytes = Number(sizeMatch[1]);
                 }
-            } catch {}
+            } catch { }
         }
 
         files.push({ path: filePath, name: path.basename(filePath), mode, blobHash, lfsOid, sizeBytes });
