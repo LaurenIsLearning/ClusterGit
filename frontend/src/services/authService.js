@@ -48,6 +48,22 @@ function isMissingRoute(response, data) {
   return response.status === 404 || raw.includes("Cannot GET");
 }
 
+function getRoleFromUser(user) {
+  return user?.app_metadata?.role ?? user?.user_metadata?.role ?? null;
+}
+
+function getDisplayNameFromUser(user) {
+  return (
+    user?.user_metadata?.display_name
+    ?? user?.user_metadata?.full_name
+    ?? user?.user_metadata?.name
+    ?? user?.user_metadata?.user_name
+    ?? user?.user_metadata?.preferred_username
+    ?? user?.email?.split("@")?.[0]
+    ?? null
+  );
+}
+
 export const authService = {
   async signUp(email, password) {
     const { data, error } = await supabase.auth.signUp({ email, password });
@@ -112,8 +128,8 @@ export const authService = {
       return {
         user_id: user.id,
         email: user.email,
-        display_name: profile?.display_name || null,
-        role: profile?.role || null,
+        display_name: profile?.display_name || getDisplayNameFromUser(user),
+        role: profile?.role || getRoleFromUser(user) || "student",
       };
     }
 
@@ -149,7 +165,7 @@ export const authService = {
         .eq("user_id", user.id)
         .maybeSingle();
 
-      const resolvedRole = existing?.role || "student";
+      const resolvedRole = existing?.role || getRoleFromUser(user) || "student";
 
       const { data: updated, error } = await supabase
         .from("user_profiles")

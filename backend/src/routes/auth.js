@@ -12,6 +12,54 @@ function resolveRole(profileRole, rawUser) {
     );
 }
 
+function resolveDisplayName(profileDisplayName, rawUser, email) {
+    return (
+        profileDisplayName
+        || rawUser?.user_metadata?.display_name
+        || rawUser?.user_metadata?.full_name
+        || rawUser?.user_metadata?.name
+        || rawUser?.user_metadata?.user_name
+        || rawUser?.user_metadata?.preferred_username
+        || email?.split("@")?.[0]
+        || "user"
+    );
+}
+
+async function ensureUserProfile(userId, email, rawUser, existingProfile = null) {
+    const resolvedRole = resolveRole(existingProfile?.role, rawUser) || "student";
+    const resolvedDisplayName = resolveDisplayName(existingProfile?.display_name, rawUser, email);
+
+    if (
+        existingProfile?.role === resolvedRole
+        && existingProfile?.display_name === resolvedDisplayName
+    ) {
+        return {
+            display_name: resolvedDisplayName,
+            role: resolvedRole
+        };
+    }
+
+    const { error } = await supabase
+        .from("user_profiles")
+        .upsert(
+            {
+                user_id: userId,
+                display_name: resolvedDisplayName,
+                role: resolvedRole
+            },
+            { onConflict: "user_id" }
+        );
+
+    if (error) {
+        console.error("Failed to ensure user profile metadata:", error);
+    }
+
+    return {
+        display_name: resolvedDisplayName,
+        role: resolvedRole
+    };
+}
+
 // REGISTER
 router.post("/register", async (req, res) => {
     const { email, password, display_name, role } = req.body;
@@ -148,11 +196,18 @@ router.get("/profile", authMiddleware, async (req, res) => {
         });
     }
 
+    const ensuredProfile = await ensureUserProfile(
+        userId,
+        req.user.email,
+        req.user.raw,
+        data || null
+    );
+
     return res.json({
         user_id: userId,
         email: req.user.email,
-        display_name: data?.display_name || null,
-        role: resolveRole(data?.role, req.user.raw)
+        display_name: ensuredProfile.display_name,
+        role: ensuredProfile.role
     });
 });
 
@@ -173,14 +228,14 @@ router.patch("/profile", authMiddleware, async (req, res) => {
         });
     }
 
-    // role is NOT NULL in user_profiles; preserve existing role or use default on first write.
+    // role is NOT NULL in user_profiles; preserve metadata/admin role when the profile row is missing.
     const { data: existingProfile } = await supabase
         .from("user_profiles")
         .select("role")
         .eq("user_id", userId)
         .maybeSingle();
 
-    const resolvedRole = existingProfile?.role || "student";
+    const resolvedRole = resolveRole(existingProfile?.role, req.user.raw) || "student";
 
     const { data, error } = await supabase
         .from("user_profiles")

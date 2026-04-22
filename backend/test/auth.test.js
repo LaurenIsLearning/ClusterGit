@@ -85,6 +85,9 @@ function makeFromChain() {
         upsert:  sinon.stub().resolves({ error: null }),
         insert:  sinon.stub().resolves({ error: null }),
         select:  sinon.stub().returnsThis(),
+        eq:      sinon.stub().returnsThis(),
+        maybeSingle: sinon.stub().resolves({ data: null, error: null }),
+        single:  sinon.stub().resolves({ data: null, error: null }),
     };
 }
 
@@ -370,6 +373,104 @@ describe('Auth Routes', function () {
 
                 assert.equal(res.status, 401);
             });
+        });
+    });
+
+    // =========================================================================
+    // OAuth/bootstrap profile resolution
+    // =========================================================================
+    describe('GET /api/auth/profile', function () {
+
+        it('should bootstrap an admin GitHub OAuth user from auth metadata', async function () {
+            sinon.stub(supabase.auth, 'getUser').resolves({
+                data: {
+                    user: {
+                        id: 'oauth-admin-uuid',
+                        email: 'admin@university.edu',
+                        app_metadata: { role: 'admin' },
+                        user_metadata: { full_name: 'OAuth Admin' }
+                    }
+                },
+                error: null
+            });
+
+            let userProfilesCallCount = 0;
+            const upsertSpy = sinon.stub().resolves({ error: null });
+
+            supabase.from.restore();
+            sinon.stub(supabase, 'from').callsFake((table) => {
+                if (table !== 'user_profiles') {
+                    return makeFromChain();
+                }
+
+                userProfilesCallCount += 1;
+                if (userProfilesCallCount === 1) {
+                    return {
+                        select: sinon.stub().returnsThis(),
+                        eq: sinon.stub().returnsThis(),
+                        maybeSingle: sinon.stub().resolves({ data: null, error: null })
+                    };
+                }
+
+                return {
+                    upsert: upsertSpy
+                };
+            });
+
+            const res = await request(app)
+                .get('/api/auth/profile')
+                .set('Authorization', 'Bearer oauth-admin-token');
+
+            assert.equal(res.status, 200);
+            assert.equal(res.body.role, 'admin');
+            assert.equal(res.body.display_name, 'OAuth Admin');
+            assert.ok(upsertSpy.calledOnce, 'OAuth admin should be bootstrapped into user_profiles');
+        });
+
+        it('should default a GitHub OAuth user to student when no role metadata exists', async function () {
+            sinon.stub(supabase.auth, 'getUser').resolves({
+                data: {
+                    user: {
+                        id: 'oauth-student-uuid',
+                        email: 'student@university.edu',
+                        app_metadata: {},
+                        user_metadata: { user_name: 'studentoauth' }
+                    }
+                },
+                error: null
+            });
+
+            let userProfilesCallCount = 0;
+            const upsertSpy = sinon.stub().resolves({ error: null });
+
+            supabase.from.restore();
+            sinon.stub(supabase, 'from').callsFake((table) => {
+                if (table !== 'user_profiles') {
+                    return makeFromChain();
+                }
+
+                userProfilesCallCount += 1;
+                if (userProfilesCallCount === 1) {
+                    return {
+                        select: sinon.stub().returnsThis(),
+                        eq: sinon.stub().returnsThis(),
+                        maybeSingle: sinon.stub().resolves({ data: null, error: null })
+                    };
+                }
+
+                return {
+                    upsert: upsertSpy
+                };
+            });
+
+            const res = await request(app)
+                .get('/api/auth/profile')
+                .set('Authorization', 'Bearer oauth-student-token');
+
+            assert.equal(res.status, 200);
+            assert.equal(res.body.role, 'student');
+            assert.equal(res.body.display_name, 'studentoauth');
+            assert.ok(upsertSpy.calledOnce, 'OAuth student should be bootstrapped into user_profiles');
         });
     });
 });

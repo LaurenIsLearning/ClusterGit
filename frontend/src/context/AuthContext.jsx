@@ -22,6 +22,10 @@ async function fetchRole(userId) {
   }
 }
 
+function resolveFinalRole(resolvedRole, fallbackRole) {
+  return resolvedRole ?? fallbackRole ?? "student";
+}
+
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [role, setRole] = useState(null);
@@ -37,7 +41,7 @@ export function AuthProvider({ children }) {
     const session = await authService.getSession();
     const fallbackRole = getRoleFromUser(session?.user);
     const r = await fetchRole(uid);
-    setRole(r ?? fallbackRole);
+    setRole(resolveFinalRole(r, fallbackRole));
   }
 
   async function applyResolvedRole(sessionUser) {
@@ -50,10 +54,10 @@ export function AuthProvider({ children }) {
 
     try {
       const resolvedRole = await fetchRole(sessionUser.id);
-      setRole(resolvedRole ?? fallbackRole);
+      setRole(resolveFinalRole(resolvedRole, fallbackRole));
     } catch (e) {
       console.error("[AUTH] role fetch failed:", e);
-      setRole(fallbackRole);
+      setRole(resolveFinalRole(null, fallbackRole));
     }
   }
 

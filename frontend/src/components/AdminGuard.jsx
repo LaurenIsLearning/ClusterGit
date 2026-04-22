@@ -2,7 +2,11 @@ import { Navigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 
 export default function AdminGuard({ children }) {
-  const { user, role } = useAuth();
+  const { user, role, loading } = useAuth();
+
+  if (loading) {
+    return <div>Checking permissions...</div>;
+  }
 
   if (!user) {
     return <Navigate to="/login" replace />;
