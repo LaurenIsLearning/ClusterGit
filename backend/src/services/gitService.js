@@ -106,6 +106,15 @@ async function mergeRemoteGitAnnex(cwd) {
     await execAsync(GIT_BIN, ["checkout", "git-annex"], { cwd });
     try {
         await execAsync(GIT_BIN, ["merge", "--no-edit", "origin/git-annex"], { cwd });
+    } catch {
+        await execAsync(GIT_BIN, ["merge", "--abort"], { cwd }).catch(() =>
+            execAsync(GIT_BIN, ["reset", "--hard"], { cwd }).catch(() => {})
+        );
+        try {
+            await execAsync(GIT_BIN, ["merge", "--no-edit", "--allow-unrelated-histories", "origin/git-annex"], { cwd });
+        } catch {
+            await execAsync(GIT_BIN, ["reset", "--hard"], { cwd }).catch(() => {});
+        }
     } finally {
         await execAsync(GIT_BIN, ["checkout", originalBranch], { cwd });
     }
@@ -133,12 +142,63 @@ async function pushGitAnnexBranch(cwd) {
     }
 }
 
+async function pushHeadToMain(cwd) {
+    // git-annex may leave HEAD on adjusted/main(unlocked), so push the real current commit to main.
+    await execAsync(GIT_BIN, ["push", "origin", "HEAD:main"], { cwd });
+}
+
+function isCopyToStorageUnsupported(error) {
+    const stderr = String(error?.stderr || error?.message || "").toLowerCase();
+    return stderr.includes("copy-to-storage is not supported")
+        || stderr.includes("copy to storage is not supported")
+        || stderr.includes("not supported");
+}
+
+async function copyAnnexContentToOrigin(cwd, bareRepoPath, originalName, annexKey) {
+    try {
+        await execAsync(GIT_BIN, ["annex", "copy", "--to", "origin", originalName], { cwd });
+        return;
+    } catch (error) {
+        if (!annexKey || !isCopyToStorageUnsupported(error)) {
+            throw error;
+        }
+
+        const remoteUuid = await getAnnexUuid(bareRepoPath);
+        if (!remoteUuid) {
+            throw new Error(`Origin repository ${bareRepoPath} is missing annex.uuid`);
+        }
+
+        const { stdout: contentLocationStdout } = await execAsync(
+            GIT_BIN,
+            ["annex", "contentlocation", annexKey],
+            { cwd }
+        );
+        const sourceRelativePath = contentLocationStdout.trim();
+        if (!sourceRelativePath) {
+            throw new Error(`Could not locate annex object for ${annexKey}`);
+        }
+
+        const sourcePath = path.resolve(cwd, sourceRelativePath);
+        const destinationRelativePath = sourceRelativePath.replace(/^\.git[\\/]/, "");
+        const destinationPath = path.join(bareRepoPath, destinationRelativePath);
+
+        await fs.mkdir(path.dirname(destinationPath), { recursive: true });
+        await fs.copyFile(sourcePath, destinationPath);
+        await execAsync(GIT_BIN, ["annex", "setpresentkey", annexKey, remoteUuid, "1"], { cwd });
+    }
+}
+
 async function prepareWorkingClone(bareRepoPath, tempWorkingPath) {
     // creates the temp working copy used for uploads and delete operations
     await fs.mkdir(tempWorkingPath, { recursive: true });
     await execAsync(GIT_BIN, ["clone", bareRepoPath, "."], { cwd: tempWorkingPath });
     await syncRemoteBranches(tempWorkingPath);
     await execAsync(GIT_BIN, ["checkout", "-B", "main", "origin/main"], { cwd: tempWorkingPath });
+
+    const hasRemoteGitAnnex = await refExists(tempWorkingPath, "origin/git-annex");
+    if (hasRemoteGitAnnex) {
+        await execAsync(GIT_BIN, ["branch", "-f", "git-annex", "origin/git-annex"], { cwd: tempWorkingPath }).catch(() => {});
+    }
 
     await execAsync(GIT_BIN, ["config", "user.name", "ClusterGit"], { cwd: tempWorkingPath });
     await execAsync(GIT_BIN, ["config", "user.email", "system@clustergit.local"], { cwd: tempWorkingPath });
@@ -326,11 +386,9 @@ export async function addFileToProject(userId, projectName, filePath, originalNa
         const { stdout: toRefStdout } = await execAsync(GIT_BIN, ["rev-parse", "HEAD"], { cwd: tempWorkingPath });
         const toRef = toRefStdout.trim();
 
-        await execAsync(GIT_BIN, ["push", "origin", "main"], { cwd: tempWorkingPath });
+        await pushHeadToMain(tempWorkingPath);
+        await copyAnnexContentToOrigin(tempWorkingPath, bareRepoPath, originalName, annexKey);
         await pushGitAnnexBranch(tempWorkingPath);
-
-        // copies the annex object itself after the git refs are pushed
-        await execAsync(GIT_BIN, ["annex", "copy", "--to", "origin", originalName], { cwd: tempWorkingPath });
 
 
         return {
@@ -372,7 +430,7 @@ export async function deleteFileFromProject(userId, projectName, filePath) {
         const { stdout: commitStdout } = await execAsync(GIT_BIN, ["rev-parse", "HEAD"], { cwd: tempWorkingPath });
         const gitCommitHash = commitStdout.trim();
 
-        await execAsync(GIT_BIN, ["push", "origin", "main"], { cwd: tempWorkingPath });
+        await pushHeadToMain(tempWorkingPath);
         await pushGitAnnexBranch(tempWorkingPath);
 
         return {

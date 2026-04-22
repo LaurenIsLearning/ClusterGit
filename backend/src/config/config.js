@@ -1,8 +1,17 @@
+import fs from 'fs';
 import path from 'path';
-import os from 'os';
+import dotenv from 'dotenv';
+
+dotenv.config();
 
 // Repository storage configuration
-const rawRepoPath = process.env.REPO_BASE_PATH || "/repos"; // path.join(os.homedir(), 'clustergit-repos');    This gets seen as root/clustergit-repos in docker
+const configuredRepoPath = process.env.REPO_BASE_PATH?.trim();
+const mountedRepoPath = "/repos";
+const rawRepoPath =
+    process.env.KUBERNETES_SERVICE_HOST && fs.existsSync(mountedRepoPath)
+        ? mountedRepoPath
+        : configuredRepoPath || "./local-repos";
+
 export const REPO_BASE_PATH = path.isAbsolute(rawRepoPath)
     ? rawRepoPath
     : path.resolve(process.cwd(), rawRepoPath);
