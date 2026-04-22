@@ -170,9 +170,14 @@ router.post("/:userId/:repo/git-receive-pack", async (req, res) => {
  * Negotiates object transfers between client and server.
  * POST /:userId/:repo/info/lfs/objects/batch
  */
-router.post("/:userId/:repo/info/lfs/objects/batch", express.json(), async (req, res) => {
-    const { operation, objects } = req.body;
-    const { userId, repo } = req.params;
+router.post("/:userId/:repo/info/lfs/objects/batch", express.json({ type: ["application/json", "application/vnd.git-lfs+json"] }), async (req, res) => {
+    try {
+        const { operation, objects } = req.body;
+        const { userId, repo } = req.params;
+
+        if (!objects || !Array.isArray(objects)) {
+            return res.status(400).json({ message: "Invalid request: objects is required" });
+        }
 
     if (operation !== "upload" && operation !== "download") {
         return res.status(400).json({ message: "Invalid operation" });
@@ -180,8 +185,10 @@ router.post("/:userId/:repo/info/lfs/objects/batch", express.json(), async (req,
 
     const responseObjects = objects.map((obj) => {
         const { oid, size } = obj;
+        if (!oid) return { error: { code: 422, message: "Missing OID" } };
+
         const host = req.get("host");
-        const protocol = req.protocol;
+        const protocol = req.get("x-forwarded-proto") || req.protocol;
         const baseUrl = `${protocol}://${host}/git/${userId}/${repo}/info/lfs/objects/basic/${oid}`;
 
         const actions = {};
@@ -209,6 +216,10 @@ router.post("/:userId/:repo/info/lfs/objects/batch", express.json(), async (req,
         transfer: "basic",
         objects: responseObjects,
     });
+    } catch (err) {
+        console.error("[gitHttp] LFS Batch error:", err);
+        res.status(500).json({ message: "Internal server error" });
+    }
 });
 
 function lfsObjectPath(repoPath, oid) {
