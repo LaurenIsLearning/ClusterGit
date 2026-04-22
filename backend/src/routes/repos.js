@@ -3,7 +3,7 @@ import { supabase } from "../utils/supabase.js";
 import authMiddleware from "../middleware/authMiddleware.js";
 import gitService from "../services/gitService.js";
 import busboy from "busboy";
-import { createWriteStream } from "fs";
+import { createWriteStream, createReadStream } from "fs";
 import fs from "fs/promises";
 import os from "os";
 import path from "path";
@@ -41,6 +41,121 @@ function receiveUpload(req) {
 
         req.pipe(bb);
     });
+}
+
+// Receives one chunk from a multipart request and captures all form fields.
+function receiveChunk(req) {
+    return new Promise((resolve, reject) => {
+        let bb;
+        try { bb = busboy({ headers: req.headers }); }
+        catch { return reject(new Error('Invalid multipart/form-data request')); }
+
+        const fields = {};
+        const tmpPath = path.join(os.tmpdir(), `clustergit-chunk-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+        let fileReceived = false;
+
+        bb.on('field', (name, value) => { fields[name] = value; });
+        bb.on('file', (_fieldname, stream) => {
+            fileReceived = true;
+            const ws = createWriteStream(tmpPath);
+            stream.pipe(ws);
+            ws.on('finish', () => resolve({ fields, chunkPath: tmpPath }));
+            ws.on('error', reject);
+        });
+        bb.on('error', reject);
+        bb.on('close', () => { if (!fileReceived) resolve({ fields, chunkPath: null }); });
+        req.pipe(bb);
+    });
+}
+
+// Concatenates numbered chunk files into a single output file using streams.
+async function assembleChunks(chunkDir, totalChunks, outputPath) {
+    const ws = createWriteStream(outputPath);
+    for (let i = 0; i < totalChunks; i++) {
+        const chunkPath = path.join(chunkDir, String(i).padStart(6, '0'));
+        await new Promise((resolve, reject) => {
+            const rs = createReadStream(chunkPath);
+            rs.pipe(ws, { end: false });
+            rs.on('end', resolve);
+            rs.on('error', reject);
+        });
+    }
+    return new Promise((resolve, reject) => {
+        ws.end();
+        ws.on('finish', resolve);
+        ws.on('error', reject);
+    });
+}
+
+// Writes all upload-related metadata rows to Supabase after git-annex succeeds.
+async function persistUploadMetadata(repoId, ownerId, file, uploadResult) {
+    const metadataErrors = {};
+
+    const { data: commitRow, error: commitError } = await supabase
+        .from("commits")
+        .insert({
+            repo_id: repoId,
+            git_commit_hash: uploadResult.gitCommitHash,
+            author_id: ownerId,
+            message: `Upload ${file.originalname}`,
+            branch: uploadResult.branch || "main",
+            is_merge: false,
+            annex_key: uploadResult.annexKey,
+            committed_at: new Date().toISOString()
+        })
+        .select()
+        .single();
+
+    if (commitError) throw new Error(`Upload succeeded but commit metadata failed: ${commitError.message}`);
+
+    const pushPayload = {
+        repo_id: repoId,
+        pusher_id: ownerId,
+        pushed_at: new Date().toISOString(),
+        from_ref: uploadResult.fromRef,
+        to_ref: uploadResult.toRef || uploadResult.branch,
+        commit_count: uploadResult.commitCount || 1,
+        hook_source: "repo_upload_route"
+    };
+    const { error: pushEventError } = await supabase.from("push_events").insert(pushPayload);
+    const resolvedPushError = pushEventError ? await insertPushEventWithFallback(pushPayload) : null;
+    if (resolvedPushError) metadataErrors.push_events = resolvedPushError.message;
+
+    if (uploadResult.annexKey) {
+        const annexError = await insertAnnexObjectWithFallback({
+            repo_id: repoId,
+            annex_key: uploadResult.annexKey,
+            size_bytes: uploadResult.size || file.size || 0,
+            storage_backend: "git-annex"
+        });
+        if (annexError) metadataErrors.annex_objects = annexError.message;
+    }
+
+    const { error: repoFileError } = await supabase
+        .from("repo_files")
+        .upsert({
+            repo_id: repoId,
+            latest_commit_id: commitRow?.id || null,
+            uploaded_by: ownerId,
+            annex_key: uploadResult.annexKey || null,
+            file_path: file.originalname,
+            original_name: file.originalname,
+            mime_type: file.mimetype || null,
+            size_bytes: uploadResult.size || file.size || 0,
+            status: "synced",
+            uploaded_at: new Date().toISOString()
+        }, { onConflict: "repo_id,file_path" });
+    if (repoFileError) metadataErrors.repo_files = repoFileError.message;
+
+    const activityError = await insertActivityLogWithFallback({
+        user_id: ownerId,
+        repo_id: repoId,
+        event_type: "file_uploaded",
+        detail: `Uploaded ${file.originalname} (commit ${uploadResult.gitCommitHash || "unknown"})`
+    });
+    if (activityError) metadataErrors.activity_log = activityError.message;
+
+    return { commitRow, metadataErrors };
 }
 
 async function getUserQuotaBytes(userId) {
@@ -447,6 +562,127 @@ router.get("/:id/files", authMiddleware, async (req, res) => {
         return res.status(500).json({
             error: { message: error.message || "Failed to fetch repository files" }
         });
+    }
+});
+
+// RECEIVE ONE CHUNK (chunked upload for files > 90 MB)
+router.post("/:id/upload/chunk", async (req, res) => {
+    const chunkPromise = receiveChunk(req);
+
+    const authHeader = req.headers.authorization || '';
+    const [scheme, token] = authHeader.split(' ');
+    if (scheme !== 'Bearer' || !token) {
+        chunkPromise.catch(() => {});
+        return res.status(401).json({ error: { message: 'Missing or invalid Authorization header' } });
+    }
+
+    let chunkData;
+    try {
+        const [authResult, received] = await Promise.all([supabase.auth.getUser(token), chunkPromise]);
+        if (authResult.error || !authResult.data?.user) {
+            if (received?.chunkPath) await fs.unlink(received.chunkPath).catch(() => {});
+            return res.status(401).json({ error: { message: 'Invalid or expired session' } });
+        }
+        chunkData = received;
+    } catch (err) {
+        return res.status(500).json({ error: { message: err.message || 'Failed to receive chunk' } });
+    }
+
+    const { fields, chunkPath } = chunkData;
+    const { uploadId, chunkIndex, fileName } = fields;
+
+    if (!uploadId || chunkIndex === undefined || !chunkPath || !fileName) {
+        await fs.unlink(chunkPath).catch(() => {});
+        return res.status(400).json({ error: { message: 'Missing required chunk metadata' } });
+    }
+    if (!/^[a-zA-Z0-9_-]+$/.test(uploadId)) {
+        await fs.unlink(chunkPath).catch(() => {});
+        return res.status(400).json({ error: { message: 'Invalid uploadId' } });
+    }
+
+    const chunkDir = path.join(os.tmpdir(), `clustergit-chunks-${uploadId}`);
+    await fs.mkdir(chunkDir, { recursive: true });
+    const destPath = path.join(chunkDir, String(Number(chunkIndex)).padStart(6, '0'));
+
+    try {
+        await fs.rename(chunkPath, destPath);
+    } catch {
+        // rename fails across device boundaries — copy then delete
+        await fs.writeFile(destPath, await fs.readFile(chunkPath));
+        await fs.unlink(chunkPath).catch(() => {});
+    }
+
+    return res.json({ success: true, chunkIndex: Number(chunkIndex) });
+});
+
+// FINALIZE CHUNKED UPLOAD — reassemble shards and commit to git-annex
+router.post("/:id/upload/complete", authMiddleware, async (req, res) => {
+    const repoId = req.params.id;
+    const ownerId = req.user.id;
+    const environmentKey = getEnvironmentKey(req);
+    const { uploadId, fileName, totalChunks } = req.body;
+
+    if (!uploadId || !fileName || !totalChunks) {
+        return res.status(400).json({ error: { message: 'Missing uploadId, fileName, or totalChunks' } });
+    }
+    if (!/^[a-zA-Z0-9_-]+$/.test(uploadId)) {
+        return res.status(400).json({ error: { message: 'Invalid uploadId' } });
+    }
+
+    const total = Number(totalChunks);
+    const chunkDir = path.join(os.tmpdir(), `clustergit-chunks-${uploadId}`);
+    const assembledPath = path.join(os.tmpdir(), `clustergit-assembled-${uploadId}`);
+
+    try {
+        let projectQuery = supabase.from("repositories").select("name, owner_id").eq("id", repoId);
+        projectQuery = applyEnvironmentFilter(projectQuery, environmentKey);
+        const { data: project, error: fetchError } = await projectQuery.single();
+
+        if (fetchError || !project) return res.status(404).json({ error: { message: "Project not found" } });
+        if (project.owner_id !== ownerId) return res.status(403).json({ error: { message: "Permission denied" } });
+
+        // Verify every chunk arrived before attempting assembly
+        for (let i = 0; i < total; i++) {
+            await fs.access(path.join(chunkDir, String(i).padStart(6, '0'))).catch(() => {
+                throw new Error(`Chunk ${i} of ${total} is missing — upload may be incomplete`);
+            });
+        }
+
+        await assembleChunks(chunkDir, total, assembledPath);
+        await fs.rm(chunkDir, { recursive: true, force: true }).catch(() => {});
+
+        const fileStat = await fs.stat(assembledPath);
+        const file = {
+            path: assembledPath,
+            originalname: path.basename(fileName),
+            mimetype: null,
+            size: fileStat.size,
+        };
+
+        const uploadResult = await gitService.addFileToProject(ownerId, project.name, file.path, file.originalname);
+        const { commitRow, metadataErrors } = await persistUploadMetadata(repoId, ownerId, file, uploadResult);
+
+        const hasMetadataError = Object.values(metadataErrors).some(Boolean);
+        if (hasMetadataError) {
+            return res.status(500).json({
+                error: { message: "Upload succeeded but one or more metadata table writes failed" },
+                metadata_errors: metadataErrors,
+                metadata: { commit_id: commitRow?.id, git_commit_hash: uploadResult.gitCommitHash, annex_key: uploadResult.annexKey }
+            });
+        }
+
+        return res.json({
+            success: true,
+            message: "File uploaded and added to repository successfully",
+            file: { name: file.originalname, size: file.size },
+            metadata: { commit_id: commitRow?.id, git_commit_hash: uploadResult.gitCommitHash, annex_key: uploadResult.annexKey }
+        });
+
+    } catch (error) {
+        console.error("Chunked upload finalize error:", error);
+        return res.status(500).json({ error: { message: error.message || "Failed to finalize upload" } });
+    } finally {
+        await fs.unlink(assembledPath).catch(() => {});
     }
 });
 

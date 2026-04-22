@@ -209,47 +209,54 @@ export const projectService = {
 
     async uploadFile(projectId, file, onProgress) {
         const session = await authService.getSession();
-        if (!session?.access_token) {
-            throw new Error('Not authenticated');
+        if (!session?.access_token) throw new Error('Not authenticated');
+        const token = session.access_token;
+
+        const CHUNK_SIZE = 90 * 1024 * 1024; // 90 MB — safely under Cloudflare's 100 MB limit
+
+        if (file.size <= CHUNK_SIZE) {
+            // Small file: single request
+            const formData = new FormData();
+            formData.append('file', file);
+            return uploadWithXhr(`${API_BASE_URL}/repos/${projectId}/upload`, token, formData, onProgress);
         }
 
-        // uses xhr instead of fetch so the upload modal can show progress updates
-        const formData = new FormData();
-        formData.append('file', file);
+        // Large file: split into 90 MB shards
+        const uploadId = crypto.randomUUID
+            ? crypto.randomUUID()
+            : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+        const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
 
-        return new Promise((resolve, reject) => {
-            const xhr = new XMLHttpRequest();
-            xhr.open('POST', `${API_BASE_URL}/repos/${projectId}/upload`);
-            xhr.setRequestHeader('Authorization', `Bearer ${session.access_token}`);
+        for (let i = 0; i < totalChunks; i++) {
+            const start = i * CHUNK_SIZE;
+            const chunk = file.slice(start, Math.min(start + CHUNK_SIZE, file.size));
 
-            xhr.upload.onprogress = (event) => {
-                if (event.lengthComputable && onProgress) {
-                    const percentComplete = (event.loaded / event.total) * 100;
-                    onProgress(percentComplete);
-                }
-            };
+            const formData = new FormData();
+            formData.append('chunk', chunk, file.name);
+            formData.append('uploadId', uploadId);
+            formData.append('chunkIndex', String(i));
+            formData.append('totalChunks', String(totalChunks));
+            formData.append('fileName', file.name);
 
-            xhr.onload = () => {
-                let data;
-                try {
-                    data = JSON.parse(xhr.responseText);
-                } catch (e) {
-                    data = { error: { message: 'Invalid server response' } };
-                }
+            await uploadWithXhr(
+                `${API_BASE_URL}/repos/${projectId}/upload/chunk`,
+                token,
+                formData,
+                (chunkPercent) => onProgress?.((i + chunkPercent / 100) / totalChunks * 100)
+            );
+        }
 
-                if (xhr.status >= 200 && xhr.status < 300) {
-                    resolve(data);
-                } else {
-                    reject(new Error(data.error?.message || 'Upload failed'));
-                }
-            };
-
-            xhr.onerror = () => {
-                reject(new Error('Network error during upload'));
-            };
-
-            xhr.send(formData);
+        // All shards received — ask the server to assemble and commit
+        const finalRes = await fetch(`${API_BASE_URL}/repos/${projectId}/upload/complete`, {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ uploadId, fileName: file.name, totalChunks }),
         });
+
+        const data = await safeParseJson(finalRes);
+        if (!finalRes.ok) throw new Error(data.error?.message || 'Upload finalization failed');
+        onProgress?.(100);
+        return data;
     },
 
     async deleteFile(projectId, fileId) {

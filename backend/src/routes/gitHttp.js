@@ -14,6 +14,13 @@ const router = express.Router();
 
 const GIT_BIN = process.platform === "win32" ? "git" : "/usr/bin/git";
 
+// Collapse double slashes that git-annex produces when the remote URL has a
+// trailing slash (e.g. Drake.git//config → Drake.git/config).
+router.use((req, _res, next) => {
+    if (req.url.includes("//")) req.url = req.url.replace(/\/\/+/g, "/");
+    next();
+});
+
 /**
  * Resolve the bare repo path from the URL params.
  * Strips trailing .git and looks up the real path on disk.
@@ -38,8 +45,14 @@ router.get("/:userId/:repo/config", async (req, res) => {
         const uuid = await getAnnexUuid(repoPath);
         if (!uuid) return res.status(404).end("Not Found\n");
 
+        // Advertise the P2P HTTP URL so git-annex clients automatically set
+        // remote.<name>.annex-p2phttp-url and can use `git annex copy --to origin`.
+        const protocol = req.headers["x-forwarded-proto"] || req.protocol;
+        const host = req.headers["x-forwarded-host"] || req.headers.host;
+        const p2pUrl = `${protocol}://${host}/git/${req.params.userId}/${req.params.repo}`;
+
         res.setHeader("Content-Type", "text/plain");
-        res.end(`[annex]\n\tuuid = ${uuid}\n`);
+        res.end(`[annex]\n\tuuid = ${uuid}\n\tp2phttp-url = ${p2pUrl}\n`);
     } catch {
         res.status(500).end("Internal server error\n");
     }
