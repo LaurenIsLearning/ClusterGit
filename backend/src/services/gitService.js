@@ -5,7 +5,7 @@ import path from 'path';
 import os from 'os';
 import { pathToFileURL } from 'url';
 import { REPO_BASE_PATH, GIT_ANNEX_CONFIG } from '../config/config.js';
-
+//HELP ME PLEASE 
 const execAsync = promisify(execFile);
 const GIT_BIN = process.platform === 'win32' ? 'git' : '/usr/bin/git';
 
@@ -77,7 +77,7 @@ export async function resolveExistingRepoPath(userId, projectName) {
         if (await pathExists(candidate)) {
             // Always reinstall the hook so repos created before the fix get the
             // safe update-ref version instead of the old git-annex-sync version.
-            await installPostReceiveHook(candidate).catch(() => {});
+            await installPostReceiveHook(candidate).catch(() => { });
             return candidate;
         }
     }
@@ -122,7 +122,7 @@ async function mergeRemoteGitAnnex(cwd) {
     } catch {
         // Abort the failed merge to clear the index before retrying or checking out
         await execAsync(GIT_BIN, ["merge", "--abort"], { cwd }).catch(() =>
-            execAsync(GIT_BIN, ["reset", "--hard"], { cwd }).catch(() => {})
+            execAsync(GIT_BIN, ["reset", "--hard"], { cwd }).catch(() => { })
         );
         // Retry allowing unrelated histories (first-upload case where branches diverge)
         try {
@@ -131,7 +131,7 @@ async function mergeRemoteGitAnnex(cwd) {
             // If the retry also fails (e.g. uuid.log conflict), force-reset so the
             // finally block can checkout the original branch without hitting
             // "you need to resolve your current index first"
-            await execAsync(GIT_BIN, ["reset", "--hard"], { cwd }).catch(() => {});
+            await execAsync(GIT_BIN, ["reset", "--hard"], { cwd }).catch(() => { });
         }
     } finally {
         await execAsync(GIT_BIN, ["checkout", originalBranch], { cwd });
@@ -171,14 +171,14 @@ async function prepareWorkingClone(bareRepoPath, tempWorkingPath) {
     // never creates an unrelated history that causes merge failures on first upload
     const hasRemoteGitAnnex = await refExists(tempWorkingPath, "origin/git-annex");
     if (hasRemoteGitAnnex) {
-        await execAsync(GIT_BIN, ["branch", "-f", "git-annex", "origin/git-annex"], { cwd: tempWorkingPath }).catch(() => {});
+        await execAsync(GIT_BIN, ["branch", "-f", "git-annex", "origin/git-annex"], { cwd: tempWorkingPath }).catch(() => { });
     }
 
     await execAsync(GIT_BIN, ["config", "user.name", "ClusterGit"], { cwd: tempWorkingPath });
     await execAsync(GIT_BIN, ["config", "user.email", "system@clustergit.local"], { cwd: tempWorkingPath });
 
     // Ensure git-annex treats origin as the preferred content destination in this clone.
-    await execAsync(GIT_BIN, ["annex", "wanted", "origin", "anything"], { cwd: tempWorkingPath }).catch(() => {});
+    await execAsync(GIT_BIN, ["annex", "wanted", "origin", "anything"], { cwd: tempWorkingPath }).catch(() => { });
 
     const gitDir = await getGitDir(bareRepoPath);
     await execAsync(GIT_BIN, ["--git-dir", gitDir, "config", "user.name", "ClusterGit"]);
@@ -601,7 +601,7 @@ export async function readRepoStateForSync(repoPath) {
         } catch { return null; }
     };
 
-    const mainHash   = await resolve('refs/heads/main');
+    const mainHash = await resolve('refs/heads/main');
     const syncedHash = await resolve('refs/heads/synced/main');
 
     if (!mainHash && !syncedHash) {
@@ -660,7 +660,7 @@ export async function readRepoStateForSync(repoPath) {
                     const sizeMatch = annexKey.match(/-s(\d+)-/);
                     if (sizeMatch) sizeBytes = Number(sizeMatch[1]);
                 }
-            } catch {}
+            } catch { }
         }
 
         files.push({ path: filePath, name: path.basename(filePath), mode, blobHash, annexKey, sizeBytes });
