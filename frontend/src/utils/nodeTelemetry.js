@@ -1,0 +1,1 @@
+export const NODE_TELEMETRY_REFRESH_MS = 60_000;

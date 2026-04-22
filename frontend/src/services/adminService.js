@@ -53,6 +53,40 @@ function bytesToGiB(bytes) {
     return Number(((Number(bytes) || 0) / (1024 ** 3)).toFixed(2));
 }
 
+function normalizeNodeTelemetry(node) {
+    const storageUsedPercent = Number(
+        node?.storage?.used
+        ?? node?.storage_used_percent
+        ?? 0
+    ) || 0;
+
+    const storageUsedBytes = Number(
+        node?.storage?.used_bytes
+        ?? node?.storageUsedBytes
+        ?? 0
+    ) || 0;
+
+    const storageTotalBytes = Number(
+        node?.storage?.total_bytes
+        ?? node?.storageTotalBytes
+        ?? 0
+    ) || 0;
+
+    return {
+        id: node?.id || 'unknown-node',
+        status: node?.status || 'unknown',
+        cpuPercent: Number(node?.cpu ?? node?.cpuPercent ?? 0) || 0,
+        temperatureC: node?.temp == null && node?.temp_c == null && node?.temperatureC == null
+            ? null
+            : Number(node?.temp ?? node?.temp_c ?? node?.temperatureC ?? 0),
+        heartbeatAt: node?.heartbeat_at || node?.heartbeatAt || null,
+        uptimeLabel: node?.uptime || null,
+        storageUsedPercent,
+        storageUsedBytes,
+        storageTotalBytes,
+    };
+}
+
 export const adminService = {
     async getSummary() {
         const headers = await getAuthHeaders();
@@ -293,12 +327,12 @@ export const adminService = {
         }
 
         if (Array.isArray(data?.nodes) && data.nodes.length > 0) {
-            return data.nodes;
+            return data.nodes.map(normalizeNodeTelemetry);
         }
 
         // falls back to mock nodes only when real node_health data is not there yet
         const mock = await mockService.getClusterStatus();
-        return mock.nodes;
+        return (mock.nodes || []).map(normalizeNodeTelemetry);
     },
 };
 
