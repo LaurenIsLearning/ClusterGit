@@ -188,7 +188,9 @@ router.post("/:userId/:repo/info/lfs/objects/batch", express.json({ type: ["appl
         if (!oid) return { error: { code: 422, message: "Missing OID" } };
 
         const host = req.get("host");
-        const protocol = req.get("x-forwarded-proto") || req.protocol;
+        let protocol = req.get("x-forwarded-proto") || req.protocol;
+        if (host === "upload.clustergit.com") protocol = "https";
+        
         const baseUrl = `${protocol}://${host}/git/${userId}/${repo}/info/lfs/objects/basic/${oid}`;
 
         const actions = {};
@@ -244,6 +246,8 @@ router.get("/:userId/:repo/info/lfs/objects/basic/:oid", async (req, res) => {
 // LFS Object Upload
 router.put("/:userId/:repo/info/lfs/objects/basic/:oid", async (req, res) => {
     const { oid } = req.params;
+    console.log(`[gitHttp] LFS PUT start: ${oid}`);
+    let tmpPath = null;
     try {
         const repoPath = await resolveRepo(req);
         const objPath = lfsObjectPath(repoPath, oid);
@@ -267,9 +271,11 @@ router.put("/:userId/:repo/info/lfs/objects/basic/:oid", async (req, res) => {
         });
 
         await rename(tmpPath, objPath);
+        console.log(`[gitHttp] LFS PUT success: ${oid}`);
         res.status(200).end();
     } catch (err) {
         console.error("[gitHttp] LFS PUT error:", err);
+        if (tmpPath) await fs.unlink(tmpPath).catch(() => {});
         res.status(500).end();
     }
 });
