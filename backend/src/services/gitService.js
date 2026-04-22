@@ -385,11 +385,14 @@ export async function addFileToProject(userId, projectName, filePath, originalNa
         const toRef = toRefStdout.trim();
 
         await execAsync(GIT_BIN, ["push", "origin", "main"], { cwd: tempWorkingPath });
-        await pushGitAnnexBranch(tempWorkingPath);
 
-        // copies the annex object itself after the git refs are pushed
+        // copies the annex object to origin before pushing the git-annex branch
+        // so the location log records origin's UUID as a content holder
         await execAsync(GIT_BIN, ["annex", "copy", "--to", "origin", originalName], { cwd: tempWorkingPath });
 
+        // push git-annex branch AFTER copy so the server's location log includes
+        // origin's UUID — without this the teacher's `git annex get` returns 404
+        await pushGitAnnexBranch(tempWorkingPath);
 
         return {
             success: true,

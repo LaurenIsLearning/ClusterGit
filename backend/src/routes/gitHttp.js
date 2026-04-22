@@ -70,28 +70,43 @@ router.get("/:userId/:repo/config", async (req, res) => {
 // POST  /:userId/:repo/git-annex/v3/key/:key  — upload key content
 // ─────────────────────────────────────────────────────────────────────────────
 
-function annexHashDir(key) {
-    // Lower-case hashdir: MD5 of key name, first 4 hex chars split as 2+2 dirs.
+function annexHashDir(key, upper = false) {
+    // git-annex uses MD5 of the key, first 4 hex chars split as 2+2 dirs.
+    // Older versions used upper-case hex; newer ones use lower-case.
     const md5 = crypto.createHash("md5").update(key).digest("hex");
-    return path.join(md5.slice(0, 2), md5.slice(2, 4));
+    const hex = upper ? md5.toUpperCase() : md5;
+    return path.join(hex.slice(0, 2), hex.slice(2, 4));
 }
 
-function annexObjectPath(repoPath, key) {
-    return path.join(repoPath, ".git", "annex", "objects", annexHashDir(key), key, key);
+function annexObjectPath(repoPath, key, upper = false) {
+    return path.join(repoPath, ".git", "annex", "objects", annexHashDir(key, upper), key, key);
 }
 
 async function findAnnexContent(repoPath, key) {
-    // Ask git-annex where it put the content — handles both lower and upper hashdirs.
+    // First ask git-annex itself — it knows the exact layout.
     try {
         const { stdout } = await execAsync(GIT_BIN, ["annex", "contentlocation", key], { cwd: repoPath });
         const rel = stdout.trim();
-        if (!rel) return null;
-        const abs = path.join(repoPath, rel);
-        await fs.access(abs);
-        return abs;
-    } catch {
-        return null;
+        if (rel) {
+            const abs = path.join(repoPath, rel);
+            await fs.access(abs);
+            return abs;
+        }
+    } catch { /* fall through to filesystem check */ }
+
+    // Fallback: check both lower and upper hashdir layouts directly.
+    // This handles the case where the location log is stale or the content
+    // was written directly (e.g. via the P2P HTTP POST route) without updating
+    // the git-annex branch yet.
+    for (const upper of [false, true]) {
+        const candidate = annexObjectPath(repoPath, key, upper);
+        try {
+            await fs.access(candidate);
+            return candidate;
+        } catch { /* try next layout */ }
     }
+
+    return null;
 }
 
 router.head("/:userId/:repo/git-annex/v3/key/:key", async (req, res) => {
