@@ -6,12 +6,7 @@ import { authService } from "../services/authService";
 const AuthContext = createContext(null);
 
 async function fetchRole(userId) {
-  console.log("[fetchRole] called with:", userId);
-
-  if (!userId) {
-    console.log("[fetchRole] no userId provided");
-    return null;
-  }
+  if (!userId) return null;
 
   const { data, error } = await supabase
     .from("user_profiles")
@@ -19,20 +14,12 @@ async function fetchRole(userId) {
     .eq("user_id", userId)
     .maybeSingle();
 
-  console.log("[fetchRole] response:", { data, error });
-
   if (error) {
     console.error("[fetchRole] ERROR:", error);
     return null;
   }
 
-  if (!data) {
-    console.warn("[fetchRole] no row found for user");
-    return null;
-  }
-
-  console.log("[fetchRole] resolved role:", data.role);
-  return data.role ?? null;
+  return data?.role ?? null;
 }
 
 export function AuthProvider({ children }) {
@@ -47,34 +34,57 @@ export function AuthProvider({ children }) {
   }
 
   useEffect(() => {
-    console.log("[AUTH] effect mounted");
-    setLoading(true);
+    let isMounted = true;
+
+    // Seed state once from the current session so we don't depend solely on auth events.
+    (async () => {
+      try {
+        const session = await authService.getSession();
+        if (!isMounted) return;
+        const sessionUser = session?.user ?? null;
+        setUser(sessionUser);
+        if (sessionUser) {
+          const r = await fetchRole(sessionUser.id);
+          if (isMounted) setRole(r);
+        }
+      } catch (e) {
+        console.error("[AUTH] initial session load failed:", e);
+      } finally {
+        if (isMounted) setLoading(false);
+      }
+    })();
 
     const { data } = supabase.auth.onAuthStateChange((event, session) => {
-      console.log("[AUTH EVENT]", event);
+      // Ignore events that fire on tab focus or background refresh. These do not
+      // represent an actual auth state change and cause cascading re-renders
+      // (and sometimes a brief null-user window) if we react to them.
+      if (event === "TOKEN_REFRESHED" || event === "USER_UPDATED" || event === "INITIAL_SESSION") {
+        return;
+      }
 
       const sessionUser = session?.user ?? null;
 
-      setUser(sessionUser);
-      setLoading(false);
+      // Only update user state if the identity actually changed. Comparing ids
+      // prevents a new object reference from invalidating every consumer's memo.
+      setUser((prev) => {
+        if (prev?.id === sessionUser?.id) return prev;
+        return sessionUser;
+      });
 
-      // Clear role if signed out
       if (!sessionUser) {
         setRole(null);
         return;
       }
 
-      console.log("[AUTH] scheduling role fetch (setTimeout 0)");
-
+      // Only relevant auth events here are SIGNED_IN / SIGNED_OUT / PASSWORD_RECOVERY.
+      // A fresh role fetch is appropriate on a real sign-in.
       setTimeout(async () => {
-        console.log("[AUTH] role fetch start (delayed)");
         try {
           const r = await fetchRole(sessionUser.id);
-          console.log("[AUTH] role fetch done (delayed):", r);
-          setRole(r);
+          if (isMounted) setRole(r);
         } catch (e) {
-          console.error("[AUTH] role fetch failed (delayed):", e);
-          setRole(null);
+          console.error("[AUTH] role fetch failed:", e);
+          if (isMounted) setRole(null);
         }
       }, 0);
     });
@@ -82,7 +92,7 @@ export function AuthProvider({ children }) {
     const subscription = data?.subscription;
 
     return () => {
-      console.log("[AUTH] effect cleanup");
+      isMounted = false;
       subscription?.unsubscribe();
     };
   }, []);
@@ -90,20 +100,18 @@ export function AuthProvider({ children }) {
   const value = useMemo(
     () => ({
       user,
-      role, // can be null => treat as UNKNOWN in UI
+      role,
       loading,
       authError,
 
       signUp: async (email, password) => {
         setAuthError(null);
-        const data = await authService.signUp(email, password);
-        return data;
+        return authService.signUp(email, password);
       },
 
       signIn: async (email, password) => {
         setAuthError(null);
-        const data = await authService.signIn(email, password);
-        return data;
+        return authService.signIn(email, password);
       },
 
       signInWithGitHub: async (redirectTo) => {
@@ -129,4 +137,3 @@ export function useAuth() {
   if (!ctx) throw new Error("useAuth must be used within <AuthProvider>");
   return ctx;
 }
-
