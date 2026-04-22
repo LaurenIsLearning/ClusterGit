@@ -45,17 +45,24 @@ export default function StudentProjects() {
         }
     };
 
-    // Load files when project changes
     useEffect(() => {
         if (!selectedProject) {
             setFiles([]);
             return;
         }
 
+        let cancelled = false;
         let isFirstLoad = true;
+
         const loadFiles = async () => {
+            // Skip while the tab is hidden. Avoids burst-fire of queued ticks
+            // on refocus and avoids racing with Supabase token refresh.
+            if (document.hidden) return;
+
             try {
                 const data = await projectService.getProjectFiles(selectedProject);
+                if (cancelled) return;
+
                 const normalized = (data || []).map((file) => ({
                     id: file.id,
                     name: file.name,
@@ -64,8 +71,17 @@ export default function StudentProjects() {
                     type: file.type || 'unknown',
                     status: file.status || 'synced',
                 }));
-                setFiles(normalized);
+
+                // Only overwrite files on the first load, or when the server
+                // actually has results. A transient empty response from a poll
+                // should not wipe a populated list.
+                setFiles((prev) => {
+                    if (isFirstLoad) return normalized;
+                    if (normalized.length === 0 && prev.length > 0) return prev;
+                    return normalized;
+                });
             } catch (error) {
+                if (cancelled) return;
                 console.error('Failed to load files:', error);
                 if (isFirstLoad) {
                     addToast(error.message || 'Failed to load project files', 'error');
@@ -78,7 +94,19 @@ export default function StudentProjects() {
 
         loadFiles();
         const intervalId = setInterval(loadFiles, 10_000);
-        return () => clearInterval(intervalId);
+
+        // Immediately refresh when the tab becomes visible again so the user
+        // sees current state without waiting up to 10 seconds.
+        const handleVisibility = () => {
+            if (!document.hidden) loadFiles();
+        };
+        document.addEventListener('visibilitychange', handleVisibility);
+
+        return () => {
+            cancelled = true;
+            clearInterval(intervalId);
+            document.removeEventListener('visibilitychange', handleVisibility);
+        };
     }, [selectedProject, addToast]);
 
     const handleUploadComplete = async () => {
