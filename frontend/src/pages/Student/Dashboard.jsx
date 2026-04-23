@@ -2,6 +2,21 @@ import { useEffect, useState } from 'react';
 import { projectService } from '../../services/projectService';
 import { Clock, Database } from 'lucide-react';
 
+function formatBytes(bytes) {
+    const value = Number(bytes) || 0;
+    if (value <= 0) return '0 B';
+
+    const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+    const unitIndex = Math.min(
+        Math.floor(Math.log(value) / Math.log(1024)),
+        units.length - 1
+    );
+    const amount = value / (1024 ** unitIndex);
+    const precision = amount >= 10 || unitIndex === 0 ? 0 : 1;
+
+    return `${amount.toFixed(precision)} ${units[unitIndex]}`;
+}
+
 export default function StudentDashboard() {
     const [quota, setQuota] = useState({ used: 0, total: 20 * 1024 * 1024 * 1024 });
     const [activity, setActivity] = useState([]);
@@ -29,8 +44,8 @@ export default function StudentDashboard() {
     if (error) return <div className="p-10 text-center text-red-500">{error}</div>;
 
     const usedPercent = quota.total > 0 ? Math.min(100, (quota.used / quota.total) * 100) : 0;
-    const gbUsed = (quota.used / (1024 * 1024 * 1024)).toFixed(1);
-    const gbTotal = (quota.total / (1024 * 1024 * 1024)).toFixed(1);
+    const visibleUsedPercent = quota.used > 0 && usedPercent < 0.5 ? 0.5 : usedPercent;
+    const usedPercentLabel = quota.used > 0 && usedPercent < 0.1 ? '<0.1' : usedPercent.toFixed(1);
 
     const formatRelativeTime = (iso) => {
         if (!iso) return 'just now';
@@ -66,20 +81,22 @@ export default function StudentDashboard() {
                         <Database className="w-5 h-5 text-emerald-600" />
                         Storage Quota
                     </h2>
-                    <span className="text-sm font-medium text-slate-600">{gbUsed} GB / {gbTotal} GB</span>
+                    <span className="text-sm font-medium text-slate-600">
+                        {formatBytes(quota.used)} / {formatBytes(quota.total)}
+                    </span>
                 </div>
 
                 <div className="mb-4">
                     <div className="h-4 w-full bg-emerald-100 rounded-full overflow-hidden">
                         <div
                             className="h-full bg-emerald-600 transition-all duration-1000 ease-out shadow-sm"
-                            style={{ width: `${usedPercent}%` }}
+                            style={{ width: `${visibleUsedPercent}%` }}
                         />
                     </div>
                 </div>
 
                 <div className="flex justify-between text-sm text-slate-500 font-medium">
-                    <span>{usedPercent.toFixed(1)}% Used</span>
+                    <span>{usedPercentLabel}% Used</span>
                     <span>{(100 - usedPercent).toFixed(1)}% Available</span>
                 </div>
             </div>
