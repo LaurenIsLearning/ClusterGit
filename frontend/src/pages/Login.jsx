@@ -7,7 +7,7 @@ import { useAuth } from "../context/AuthContext";
 import { validatePasswordAuthEmail } from "../utils/authValidation";
 
 export default function Login() {
-  const { signIn, signUp, signInWithGitHub, user, role } = useAuth();
+  const { signIn, signUp, user, role } = useAuth();
   const navigate = useNavigate();
   const { addToast } = useToast();
 
@@ -66,25 +66,6 @@ export default function Login() {
     } finally {
       window.clearTimeout(watchdog);
       setIsSubmitting(false);
-    }
-  };
-
-  const handleGitHub = async () => {
-    setError("");
-    setIsSubmitting(true);
-    setStuck(false);
-
-    const watchdog = window.setTimeout(() => setStuck(true), 12000);
-
-    try {
-      // Return to /login and let role-aware routing above navigate in-app.
-      // This avoids direct hard reloads to nested SPA paths in preview/prod.
-      await signInWithGitHub(`${window.location.origin}/login`);
-    } catch (e) {
-      setError(e?.message ?? "GitHub login failed");
-      setIsSubmitting(false);
-    } finally {
-      window.clearTimeout(watchdog);
     }
   };
 
@@ -173,15 +154,6 @@ export default function Login() {
 
             <button type="submit" disabled={disableUI} className="btn btn-primary w-full">
               {isSubmitting ? "Processing..." : isRegisterMode ? "Create Account" : "Sign In"}
-            </button>
-
-            <button
-              type="button"
-              onClick={handleGitHub}
-              disabled={disableUI}
-              className="btn w-full border border-[--border-color] bg-[--bg-tertiary] hover:bg-[--bg-secondary]"
-            >
-              Continue with GitHub
             </button>
 
             {stuck && (
