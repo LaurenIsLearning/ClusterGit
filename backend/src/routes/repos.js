@@ -12,7 +12,9 @@ import {
     insertPushEventWithFallback,
     insertAnnexObjectWithFallback,
     insertActivityLogWithFallback,
-    insertActivityLogWithUserTokenFallback
+    insertActivityLogWithUserTokenFallback,
+    insertRowWithUserTokenFallback,
+    upsertRowWithUserTokenFallback
 } from "../services/syncService.js";
 
 const router = express.Router();
@@ -92,72 +94,132 @@ async function assembleChunks(chunkDir, totalChunks, outputPath) {
     });
 }
 
-// Writes all upload-related metadata rows to Supabase after git-annex succeeds.
-async function persistUploadMetadata(repoId, ownerId, file, uploadResult) {
-    const metadataErrors = {};
-
-    const { data: commitRow, error: commitError } = await supabase
+async function insertCommitMetadata(payload, accessToken) {
+    const { data, error } = await supabase
         .from("commits")
-        .insert({
-            repo_id: repoId,
-            git_commit_hash: uploadResult.gitCommitHash,
-            author_id: ownerId,
-            message: `Upload ${file.originalname}`,
-            branch: uploadResult.branch || "main",
-            is_merge: false,
-            annex_key: uploadResult.annexKey,
-            committed_at: new Date().toISOString()
-        })
+        .insert(payload)
         .select()
         .single();
 
-    if (commitError) throw new Error(`Upload succeeded but commit metadata failed: ${commitError.message}`);
+    if (!error) return { data, error: null };
+
+    return insertRowWithUserTokenFallback("commits", payload, accessToken, {
+        returnRepresentation: true
+    });
+}
+
+async function insertPushEventMetadata(payload, accessToken) {
+    const { error } = await supabase
+        .from("push_events")
+        .insert(payload);
+
+    if (!error) return null;
+
+    const resolvedPushError = await insertPushEventWithFallback(payload);
+    if (!resolvedPushError) return null;
+
+    const { error: userScopedError } = await insertRowWithUserTokenFallback("push_events", payload, accessToken);
+    return userScopedError || null;
+}
+
+async function upsertAnnexObjectMetadata(payload, accessToken) {
+    const annexError = await insertAnnexObjectWithFallback(payload);
+    if (!annexError) return null;
+
+    const { error: userScopedError } = await upsertRowWithUserTokenFallback(
+        "annex_objects",
+        payload,
+        accessToken,
+        "repo_id,annex_key"
+    );
+
+    return userScopedError || annexError;
+}
+
+async function upsertRepoFileMetadata(payload, accessToken) {
+    const { error } = await supabase
+        .from("repo_files")
+        .upsert(payload, { onConflict: "repo_id,file_path" });
+
+    if (!error) return null;
+
+    const { error: userScopedError } = await upsertRowWithUserTokenFallback(
+        "repo_files",
+        payload,
+        accessToken,
+        "repo_id,file_path"
+    );
+
+    return userScopedError || error;
+}
+
+async function insertActivityMetadata(payload, accessToken) {
+    const activityError = await insertActivityLogWithFallback(payload);
+    if (!activityError) return null;
+
+    return insertActivityLogWithUserTokenFallback(payload, accessToken);
+}
+
+// Writes all upload-related metadata rows to Supabase after git-annex succeeds.
+async function persistUploadMetadata(repoId, ownerId, file, uploadResult, accessToken) {
+    const metadataErrors = {};
+
+    const uploadedAt = new Date().toISOString();
+    const commitPayload = {
+        repo_id: repoId,
+        git_commit_hash: uploadResult.gitCommitHash,
+        author_id: ownerId,
+        message: `Upload ${file.originalname}`,
+        branch: uploadResult.branch || "main",
+        is_merge: false,
+        annex_key: uploadResult.annexKey,
+        committed_at: uploadedAt
+    };
+    const { data: commitRow, error: commitError } = await insertCommitMetadata(commitPayload, accessToken);
+    if (commitError) metadataErrors.commits = commitError.message;
 
     const pushPayload = {
         repo_id: repoId,
         pusher_id: ownerId,
-        pushed_at: new Date().toISOString(),
+        pushed_at: uploadedAt,
         from_ref: uploadResult.fromRef,
         to_ref: uploadResult.toRef || uploadResult.branch,
         commit_count: uploadResult.commitCount || 1,
         hook_source: "repo_upload_route"
     };
-    const { error: pushEventError } = await supabase.from("push_events").insert(pushPayload);
-    const resolvedPushError = pushEventError ? await insertPushEventWithFallback(pushPayload) : null;
+    const resolvedPushError = await insertPushEventMetadata(pushPayload, accessToken);
     if (resolvedPushError) metadataErrors.push_events = resolvedPushError.message;
 
     if (uploadResult.annexKey) {
-        const annexError = await insertAnnexObjectWithFallback({
+        const annexError = await upsertAnnexObjectMetadata({
             repo_id: repoId,
             annex_key: uploadResult.annexKey,
             size_bytes: uploadResult.size || file.size || 0,
             storage_backend: "git-annex"
-        });
+        }, accessToken);
         if (annexError) metadataErrors.annex_objects = annexError.message;
     }
 
-    const { error: repoFileError } = await supabase
-        .from("repo_files")
-        .upsert({
-            repo_id: repoId,
-            latest_commit_id: commitRow?.id || null,
-            uploaded_by: ownerId,
-            annex_key: uploadResult.annexKey || null,
-            file_path: file.originalname,
-            original_name: file.originalname,
-            mime_type: file.mimetype || null,
-            size_bytes: uploadResult.size || file.size || 0,
-            status: "synced",
-            uploaded_at: new Date().toISOString()
-        }, { onConflict: "repo_id,file_path" });
+    const repoFileError = await upsertRepoFileMetadata({
+        repo_id: repoId,
+        latest_commit_id: commitRow?.id || null,
+        uploaded_by: ownerId,
+        annex_key: uploadResult.annexKey || null,
+        file_path: file.originalname,
+        original_name: file.originalname,
+        mime_type: file.mimetype || null,
+        size_bytes: uploadResult.size || file.size || 0,
+        status: "synced",
+        uploaded_at: uploadedAt
+    }, accessToken);
     if (repoFileError) metadataErrors.repo_files = repoFileError.message;
 
-    const activityError = await insertActivityLogWithFallback({
+    const activityError = await insertActivityMetadata({
         user_id: ownerId,
         repo_id: repoId,
         event_type: "file_uploaded",
         detail: `Uploaded ${file.originalname} (commit ${uploadResult.gitCommitHash || "unknown"})`
-    });
+    }, accessToken);
     if (activityError) metadataErrors.activity_log = activityError.message;
 
     return { commitRow, metadataErrors };
@@ -665,21 +727,16 @@ router.post("/:id/upload/complete", authMiddleware, async (req, res) => {
         };
 
         const uploadResult = await gitService.addFileToProject(ownerId, project.name, file.path, file.originalname);
-        const { commitRow, metadataErrors } = await persistUploadMetadata(repoId, ownerId, file, uploadResult);
+        const { commitRow, metadataErrors } = await persistUploadMetadata(repoId, ownerId, file, uploadResult, req.accessToken);
 
         const hasMetadataError = Object.values(metadataErrors).some(Boolean);
-        if (hasMetadataError) {
-            return res.status(500).json({
-                error: { message: "Upload succeeded but one or more metadata table writes failed" },
-                metadata_errors: metadataErrors,
-                metadata: { commit_id: commitRow?.id, git_commit_hash: uploadResult.gitCommitHash, annex_key: uploadResult.annexKey }
-            });
-        }
-
         return res.json({
             success: true,
-            message: "File uploaded and added to repository successfully",
+            message: hasMetadataError
+                ? "File uploaded, but some metadata rows could not be saved"
+                : "File uploaded and added to repository successfully",
             file: { name: file.originalname, size: file.size },
+            metadata_errors: hasMetadataError ? metadataErrors : null,
             metadata: { commit_id: commitRow?.id, git_commit_hash: uploadResult.gitCommitHash, annex_key: uploadResult.annexKey }
         });
 
@@ -767,132 +824,25 @@ router.post("/:id/upload", async (req, res) => {
             file.originalname
         );
 
-        const commitPayload = {
-            repo_id: repoId,
-            git_commit_hash: uploadResult.gitCommitHash,
-            author_id: ownerId,
-            message: `Upload ${file.originalname}`,
-            branch: uploadResult.branch || "main",
-            is_merge: false,
-            annex_key: uploadResult.annexKey,
-            committed_at: new Date().toISOString()
-        };
-
-        const { data: commitRow, error: commitError } = await supabase
-            .from("commits")
-            .insert(commitPayload)
-            .select()
-            .single();
-
-        if (commitError) {
-            return res.status(500).json({
-                error: { message: `Upload succeeded but commit metadata failed: ${commitError.message}` }
-            });
-        }
-
-        const { error: pushEventError } = await supabase
-            .from("push_events")
-            .insert({
-                repo_id: repoId,
-                pusher_id: ownerId,
-                pushed_at: new Date().toISOString(),
-                from_ref: uploadResult.fromRef,
-                to_ref: uploadResult.toRef || uploadResult.branch,
-                commit_count: uploadResult.commitCount || 1,
-                hook_source: "repo_upload_route"
-            });
-
-        const resolvedPushError = pushEventError
-            ? await insertPushEventWithFallback({
-                repo_id: repoId,
-                pusher_id: ownerId,
-                pushed_at: new Date().toISOString(),
-                from_ref: uploadResult.fromRef,
-                to_ref: uploadResult.toRef || uploadResult.branch,
-                commit_count: uploadResult.commitCount || 1,
-                hook_source: "repo_upload_route"
-            })
-            : null;
-
-        if (resolvedPushError) {
-            console.error("Failed to persist push event metadata:", resolvedPushError);
-        }
-
-        let annexObjectError = null;
-        if (uploadResult.annexKey) {
-            annexObjectError = await insertAnnexObjectWithFallback({
-                repo_id: repoId,
-                annex_key: uploadResult.annexKey,
-                size_bytes: uploadResult.size || file.size || 0,
-                storage_backend: "git-annex"
-            });
-
-            if (annexObjectError) {
-                console.error("Failed to persist annex object metadata:", annexObjectError);
-            }
-        }
-
-        const mimeType = file.mimetype || null;
-        const { error: repoFileError } = await supabase
-            .from("repo_files")
-            .upsert({
-                repo_id: repoId,
-                latest_commit_id: commitRow?.id || null,
-                uploaded_by: ownerId,
-                annex_key: uploadResult.annexKey || null,
-                file_path: file.originalname,
-                original_name: file.originalname,
-                mime_type: mimeType,
-                size_bytes: uploadResult.size || file.size || 0,
-                status: "synced",
-                uploaded_at: new Date().toISOString()
-            }, { onConflict: "repo_id,file_path" });
-
-        if (repoFileError) {
-            console.error("Failed to persist repo_files metadata:", repoFileError);
-        }
-
-        const activityError = await insertActivityLogWithFallback({
-            user_id: ownerId,
-            repo_id: repoId,
-            event_type: "file_uploaded",
-            detail: `Uploaded ${file.originalname} (commit ${uploadResult.gitCommitHash || "unknown"})`
-        });
-
-        if (activityError) {
-            console.error("Failed to persist upload activity metadata:", activityError);
-        }
-
-        // reports partial-success cases where git worked but one of the metadata tables did not
-        const metadataErrors = {
-            push_events: resolvedPushError?.message || null,
-            annex_objects: annexObjectError?.message || null,
-            repo_files: repoFileError?.message || null,
-            activity_log: activityError?.message || null
-        };
+        const { commitRow, metadataErrors } = await persistUploadMetadata(
+            repoId,
+            ownerId,
+            file,
+            uploadResult,
+            token
+        );
 
         const hasMetadataError = Object.values(metadataErrors).some(Boolean);
-        if (hasMetadataError) {
-            return res.status(500).json({
-                error: {
-                    message: "Upload succeeded but one or more metadata table writes failed"
-                },
-                metadata_errors: metadataErrors,
-                metadata: {
-                    commit_id: commitRow?.id,
-                    git_commit_hash: uploadResult.gitCommitHash,
-                    annex_key: uploadResult.annexKey
-                }
-            });
-        }
-
         return res.json({
             success: true,
-            message: "File uploaded and added to repository successfully",
+            message: hasMetadataError
+                ? "File uploaded, but some metadata rows could not be saved"
+                : "File uploaded and added to repository successfully",
             file: {
                 name: file.originalname,
                 size: file.size
             },
+            metadata_errors: hasMetadataError ? metadataErrors : null,
             metadata: {
                 commit_id: commitRow?.id,
                 git_commit_hash: uploadResult.gitCommitHash,

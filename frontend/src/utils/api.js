@@ -13,8 +13,7 @@ export function getApiBaseUrl() {
   // maps each pages preview to the matching cluster preview backend
   if (host.endsWith(".clustergit.pages.dev")) {
     const branch = host.split(".")[0].replace(/[^a-z0-9-]/gi, '').toLowerCase();
-    const backendBranch = branch === "updateduifix" ? "annex" : branch;
-    return `https://${backendBranch}.clustergit.com`;
+    return `https://${branch}.clustergit.com`;
   }
 
   // keeps production frontend talking to the cluster backend instead of pages itself

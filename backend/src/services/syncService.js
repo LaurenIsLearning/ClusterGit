@@ -1,6 +1,74 @@
 import { supabase } from '../utils/supabase.js';
 import { resolveExistingRepoPath, readRepoStateForSync } from './gitService.js';
 
+function getSupabaseRestBaseUrl() {
+    return String(process.env.SUPABASE_URL || '').replace(/\/+$/, '');
+}
+
+function getSupabaseApiKey() {
+    return process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY || '';
+}
+
+async function parseRestError(response) {
+    const body = await response.json().catch(() => ({}));
+    return new Error(body.message || body.error || `Supabase REST write failed (${response.status})`);
+}
+
+async function writeRowWithUserToken(tableName, payload, accessToken, options = {}) {
+    const baseUrl = getSupabaseRestBaseUrl();
+    const apiKey = getSupabaseApiKey();
+
+    if (!accessToken || !baseUrl || !apiKey) {
+        return {
+            data: null,
+            error: new Error('Missing authenticated Supabase context for metadata fallback')
+        };
+    }
+
+    const params = new URLSearchParams();
+    if (options.onConflict) params.set('on_conflict', options.onConflict);
+    if (options.returnRepresentation) params.set('select', '*');
+
+    const url = `${baseUrl}/rest/v1/${tableName}${params.toString() ? `?${params}` : ''}`;
+    const prefer = [
+        options.onConflict ? 'resolution=merge-duplicates' : null,
+        options.returnRepresentation ? 'return=representation' : 'return=minimal',
+    ].filter(Boolean).join(',');
+
+    const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+            apikey: apiKey,
+            Authorization: `Bearer ${accessToken}`,
+            'Content-Type': 'application/json',
+            Prefer: prefer,
+        },
+        body: JSON.stringify(payload),
+    });
+
+    if (!response.ok) {
+        return { data: null, error: await parseRestError(response) };
+    }
+
+    if (!options.returnRepresentation) {
+        return { data: null, error: null };
+    }
+
+    const rows = await response.json().catch(() => []);
+    return { data: Array.isArray(rows) ? rows[0] : rows, error: null };
+}
+
+export async function insertRowWithUserTokenFallback(tableName, payload, accessToken, options = {}) {
+    return writeRowWithUserToken(tableName, payload, accessToken, options);
+}
+
+export async function upsertRowWithUserTokenFallback(tableName, payload, accessToken, onConflict, options = {}) {
+    return writeRowWithUserToken(tableName, payload, accessToken, {
+        ...options,
+        onConflict,
+    });
+}
+
 // ─── Supabase fallback helpers (shared with repos.js) ────────────────────────
 
 export async function insertPushEventWithFallback(payload) {
