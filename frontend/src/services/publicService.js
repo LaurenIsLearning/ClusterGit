@@ -18,25 +18,16 @@ async function safeParseJson(response) {
 }
 
 function normalizeNodeTelemetry(node) {
-  const storageUsedBytes = Number(node?.storage?.used_bytes ?? node?.storageUsedBytes ?? 0) || 0;
-  const storageTotalBytes = Number(node?.storage?.total_bytes ?? node?.storageTotalBytes ?? 0) || 0;
-  const rawStoragePercent = Number(node?.storage?.used ?? node?.storage_used_percent ?? NaN);
-  const computedStoragePercent = storageTotalBytes > 0
-    ? (storageUsedBytes / storageTotalBytes) * 100
-    : 0;
-  const storageUsedPercent = Math.max(0, Math.min(
-    100,
-    Number.isFinite(rawStoragePercent) ? rawStoragePercent : computedStoragePercent
-  ));
+  const storageUsedPercent = Number(node?.storage?.used ?? 0) || 0;
+  const storageUsedBytes = Number(node?.storage?.used_bytes ?? 0) || 0;
+  const storageTotalBytes = Number(node?.storage?.total_bytes ?? 0) || 0;
 
   return {
     id: node?.id || "unknown-node",
     status: node?.status || "unknown",
-    cpuPercent: Number(node?.cpu ?? node?.cpuPercent ?? 0) || 0,
-    temperatureC: node?.temp == null && node?.temp_c == null && node?.temperatureC == null
-      ? null
-      : Number(node?.temp ?? node?.temp_c ?? node?.temperatureC ?? 0),
-    heartbeatAt: node?.heartbeat_at || node?.heartbeatAt || null,
+    cpuPercent: Number(node?.cpu ?? 0) || 0,
+    temperatureC: node?.temp == null ? null : Number(node.temp),
+    heartbeatAt: node?.heartbeat_at || null,
     uptimeLabel: node?.uptime || null,
     storageUsedPercent,
     storageUsedBytes,
