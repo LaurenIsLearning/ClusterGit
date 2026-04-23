@@ -114,7 +114,7 @@ async function collectNodeSnapshots() {
     queryPrometheus(buildFilesystemQuery("node_filesystem_avail_bytes")),
     queryPrometheus(buildFilesystemQuery("node_filesystem_size_bytes")),
     queryPrometheusFirstAvailable([
-      'max by (instance) (node_thermal_zone_temp / 1000)',
+      'max by (instance) (node_thermal_zone_temp)',
       'max by (instance) (node_hwmon_temp_celsius)',
       'max by (instance) (node_hwmon_temp_celsius{chip!=""})',
     ]),
