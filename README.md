@@ -114,7 +114,7 @@ REPO_BASE_PATH=./local-repos
 SUPABASE_URL=your_supabase_url
 SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
 PROMETHEUS_URL=your_prometheus_url
-PROMETHEUS_STORAGE_MOUNTPOINTS=/,/mnt/cluster-storage
+PROMETHEUS_STORAGE_MOUNTPOINTS=/,/mnt/ssd,/mnt/cluster-storage
 ```
 
 Backend runs at http://localhost:3000
