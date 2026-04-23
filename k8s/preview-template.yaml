@@ -25,6 +25,7 @@ metadata:
   namespace: preview-{{BRANCH}}
 spec:
   replicas: 1
+  minReadySeconds: 5
   selector:
     matchLabels:
       app: clustergit-backend
@@ -33,12 +34,33 @@ spec:
       labels:
         app: clustergit-backend
     spec:
+      terminationGracePeriodSeconds: 15
       containers:
         - name: backend
           image: ghcr.io/laurenislearning/clustergit-backend:{{BRANCH}}
           imagePullPolicy: Always
           ports:
             - containerPort: 80
+          startupProbe:
+            httpGet:
+              path: /
+              port: 80
+            periodSeconds: 2
+            failureThreshold: 30
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 80
+            initialDelaySeconds: 2
+            periodSeconds: 5
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 80
+            initialDelaySeconds: 10
+            periodSeconds: 15
+            failureThreshold: 3
           envFrom:
             - secretRef:
                 name: clustergit-backend-env-{{BRANCH}}
