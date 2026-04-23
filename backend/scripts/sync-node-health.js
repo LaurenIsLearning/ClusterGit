@@ -84,10 +84,10 @@ function inferNodeStatus(readyValue) {
 }
 
 function parseStorageMountpoints(rawValue) {
-  return String(rawValue || DEFAULT_STORAGE_MOUNTPOINTS)
+  return [...new Set(String(`${DEFAULT_STORAGE_MOUNTPOINTS},${rawValue || ""}`)
     .split(",")
     .map((value) => value.trim())
-    .filter(Boolean);
+    .filter(Boolean))];
 }
 
 function escapePrometheusRegex(value) {
