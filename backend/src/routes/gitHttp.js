@@ -31,6 +31,28 @@ async function resolveRepo(req) {
     return resolveExistingRepoPath(userId, projectName);
 }
 
+function decodeAnnexPathValue(value = "") {
+    if (value.startsWith("[") && value.endsWith("]")) {
+        const encoded = value.slice(1, -1);
+        const normalized = encoded.replace(/-/g, "+").replace(/_/g, "/");
+        const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, "=");
+        return Buffer.from(padded, "base64").toString("utf8");
+    }
+    return value;
+}
+
+async function resolveRepoWithUuid(req) {
+    const repoPath = await resolveRepo(req);
+    const repoUuid = await getAnnexUuid(repoPath);
+    const requestedUuid = decodeAnnexPathValue(req.params.uuid || "");
+
+    if (!repoUuid || (requestedUuid && requestedUuid !== repoUuid)) {
+        return { repoPath, repoUuid: null };
+    }
+
+    return { repoPath, repoUuid };
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // GET /:userId/:repo/config
 //
@@ -45,29 +67,27 @@ router.get("/:userId/:repo/config", async (req, res) => {
         const uuid = await getAnnexUuid(repoPath);
         if (!uuid) return res.status(404).end("Not Found\n");
 
-        // Advertise the P2P HTTP URL so git-annex clients automatically set
-        // remote.<name>.annex-p2phttp-url and can use `git annex copy --to origin`.
+        // Advertise the smart HTTP annex URL so git-annex clients populate
+        // remote.<name>.annexUrl and use the HTTP P2P API for content transfer.
         const protocol = req.headers["x-forwarded-proto"] || req.protocol;
         const host = req.headers["x-forwarded-host"] || req.headers.host;
-        const p2pUrl = `${protocol}://${host}/git/${req.params.userId}/${req.params.repo}`;
+        const repoUrl = `${protocol}://${host}/git/${req.params.userId}/${req.params.repo}`;
+        const annexUrl = `annex+${repoUrl}`;
 
         res.setHeader("Content-Type", "text/plain");
-        res.end(`[annex]\n\tuuid = ${uuid}\n\tp2phttp-url = ${p2pUrl}\n`);
+        res.end(`[annex]\n\tuuid = ${uuid}\n\turl = ${annexUrl}\n\tp2phttp-url = ${repoUrl}\n`);
     } catch {
         res.status(500).end("Internal server error\n");
     }
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// git-annex P2P HTTP API (v3)
+// git-annex HTTP P2P API
 //
-// Enables `git annex copy --to origin` / `git annex get` directly over HTTP.
-// git-annex >= 10.20230213 clients auto-detect these endpoints and use them
-// instead of failing with "copying to this remote is not supported".
+// The smart HTTP config advertises annex.url, and clients then request:
+//   /git/<user>/<repo>/git-annex/<uuid>/vN/<action>
 //
-// HEAD  /:userId/:repo/git-annex/v3/key/:key  — check if key is present
-// GET   /:userId/:repo/git-annex/v3/key/:key  — download key content
-// POST  /:userId/:repo/git-annex/v3/key/:key  — upload key content
+// Keep the older v3 key endpoints too for backwards compatibility.
 // ─────────────────────────────────────────────────────────────────────────────
 
 function annexHashDir(key, upper = false) {
@@ -109,10 +129,49 @@ async function findAnnexContent(repoPath, key) {
     return null;
 }
 
+async function resolveKeyRequest(req) {
+    const { repoPath, repoUuid } = await resolveRepoWithUuid(req);
+    if (!repoUuid) return { repoPath, repoUuid: null, key: null };
+
+    const key = decodeAnnexPathValue(req.params.key || req.query.key || "");
+    return { repoPath, repoUuid, key };
+}
+
+async function streamAnnexKeyContent(req, res, includeLengthHeader = true) {
+    try {
+        const { repoPath, repoUuid, key } = await resolveKeyRequest(req);
+        if (!repoUuid || !key) return res.status(404).end();
+
+        const found = await findAnnexContent(repoPath, key);
+        if (found) {
+            const stats = await fs.stat(found);
+            if (includeLengthHeader) {
+                res.setHeader("X-git-annex-data-length", String(stats.size));
+            }
+            res.setHeader("Content-Type", "application/octet-stream");
+
+            const offset = Number(req.query.offset || 0);
+            return createReadStream(found, Number.isFinite(offset) && offset > 0 ? { start: offset } : undefined).pipe(res);
+        }
+    } catch (err) {
+        console.error("[annex GET]", err);
+    }
+    res.status(404).end();
+}
+
+router.get("/:userId/:repo/git-annex/:uuid/key/:key", async (req, res) => {
+    await streamAnnexKeyContent(req, res, true);
+});
+
+router.get("/:userId/:repo/git-annex/:uuid/:version/key/:key", async (req, res) => {
+    await streamAnnexKeyContent(req, res, req.params.version !== "v0");
+});
+
 router.head("/:userId/:repo/git-annex/v3/key/:key", async (req, res) => {
     try {
         const repoPath = await resolveRepo(req);
-        const found = await findAnnexContent(repoPath, req.params.key);
+        const key = decodeAnnexPathValue(req.params.key || "");
+        const found = await findAnnexContent(repoPath, key);
         if (found) {
             res.setHeader("X-git-annex-key-is-present", "1");
             return res.status(200).end();
@@ -124,23 +183,35 @@ router.head("/:userId/:repo/git-annex/v3/key/:key", async (req, res) => {
 });
 
 router.get("/:userId/:repo/git-annex/v3/key/:key", async (req, res) => {
-    try {
-        const repoPath = await resolveRepo(req);
-        const found = await findAnnexContent(repoPath, req.params.key);
-        if (found) {
-            res.setHeader("Content-Type", "application/octet-stream");
-            return createReadStream(found).pipe(res);
-        }
-    } catch (err) {
-        console.error("[annex GET]", err);
-    }
-    res.status(404).end();
+    await streamAnnexKeyContent(req, res, true);
 });
+
+async function writeAnnexContent(repoPath, key, req) {
+    const targetPath = annexObjectPath(repoPath, key);
+    await fs.mkdir(path.dirname(targetPath), { recursive: true });
+
+    await new Promise((resolve, reject) => {
+        const ws = createWriteStream(targetPath, { mode: 0o444 });
+        req.pipe(ws);
+        ws.on("finish", resolve);
+        ws.on("error", reject);
+        req.on("error", reject);
+    });
+
+    return targetPath;
+}
+
+function responseWithPlusUuids(version, payload, repoUuid) {
+    if (["v2", "v3", "v4"].includes(version) && repoUuid) {
+        return { ...payload, plusuuids: [repoUuid] };
+    }
+    return payload;
+}
 
 router.post("/:userId/:repo/git-annex/v3/key/:key", async (req, res) => {
     try {
         const repoPath = await resolveRepo(req);
-        const { key } = req.params;
+        const key = decodeAnnexPathValue(req.params.key || "");
 
         if (!/^[A-Za-z0-9+._-]+$/.test(key)) return res.status(400).end();
 
@@ -151,21 +222,83 @@ router.post("/:userId/:repo/git-annex/v3/key/:key", async (req, res) => {
             return res.status(200).end();
         }
 
-        const targetPath = annexObjectPath(repoPath, key);
-        await fs.mkdir(path.dirname(targetPath), { recursive: true });
-
-        await new Promise((resolve, reject) => {
-            const ws = createWriteStream(targetPath, { mode: 0o444 });
-            req.pipe(ws);
-            ws.on("finish", resolve);
-            ws.on("error", reject);
-            req.on("error", reject);
-        });
+        await writeAnnexContent(repoPath, key, req);
 
         res.status(200).end();
     } catch (err) {
         console.error("[annex POST]", err);
         res.status(500).end();
+    }
+});
+
+router.post("/:userId/:repo/git-annex/:uuid/:version/checkpresent", async (req, res) => {
+    try {
+        const { repoPath, repoUuid, key } = await resolveKeyRequest(req);
+        if (!repoUuid || !key) return res.status(404).json({ present: false });
+
+        const found = await findAnnexContent(repoPath, key);
+        return res.json({ present: Boolean(found) });
+    } catch (err) {
+        console.error("[annex checkpresent]", err);
+        return res.status(500).json({ present: false });
+    }
+});
+
+router.post("/:userId/:repo/git-annex/:uuid/:version/gettimestamp", async (_req, res) => {
+    return res.json({ timestamp: Math.floor(process.uptime()) });
+});
+
+router.post("/:userId/:repo/git-annex/:uuid/:version/putoffset", async (req, res) => {
+    try {
+        const { repoPath, repoUuid, key } = await resolveKeyRequest(req);
+        const version = req.params.version;
+        if (!repoUuid || !key) return res.status(404).json({ offset: 0 });
+
+        const found = await findAnnexContent(repoPath, key);
+        if (found) {
+            return res.json(responseWithPlusUuids(version, { alreadyhave: true }, repoUuid));
+        }
+
+        const targetPath = annexObjectPath(repoPath, key);
+        let offset = 0;
+        try {
+            const stats = await fs.stat(targetPath);
+            offset = stats.size;
+        } catch {
+            offset = 0;
+        }
+
+        return res.json({ offset });
+    } catch (err) {
+        console.error("[annex putoffset]", err);
+        return res.status(500).json({ offset: 0 });
+    }
+});
+
+router.post("/:userId/:repo/git-annex/:uuid/:version/put", async (req, res) => {
+    try {
+        const { repoPath, repoUuid, key } = await resolveKeyRequest(req);
+        const version = req.params.version;
+        if (!repoUuid || !key) return res.status(404).json({ stored: false });
+
+        if (req.query["data-present"] === "true") {
+            const found = await findAnnexContent(repoPath, key);
+            return res.json(responseWithPlusUuids(version, { stored: Boolean(found) }, found ? repoUuid : null));
+        }
+
+        const expectedLength = Number(req.headers["x-git-annex-data-length"] || 0);
+        const targetPath = await writeAnnexContent(repoPath, key, req);
+        const stats = await fs.stat(targetPath);
+
+        if (expectedLength > 0 && stats.size !== expectedLength) {
+            await fs.rm(targetPath, { force: true }).catch(() => { });
+            return res.status(400).json({ stored: false });
+        }
+
+        return res.json(responseWithPlusUuids(version, { stored: true }, repoUuid));
+    } catch (err) {
+        console.error("[annex put]", err);
+        return res.status(500).json({ stored: false });
     }
 });
 
