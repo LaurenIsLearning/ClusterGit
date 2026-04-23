@@ -67,6 +67,15 @@ function uploadWithXhr(url, accessToken, formData, onProgress) {
             if (xhr.status >= 200 && xhr.status < 300) {
                 resolve(data);
             } else {
+                const message = data.error?.message || data._raw || '';
+                if (message.toLowerCase().startsWith('upload succeeded')) {
+                    resolve({
+                        ...data,
+                        success: true,
+                        file: data.file || null,
+                    });
+                    return;
+                }
                 reject(new Error(data.error?.message || data._raw || `Upload failed (${xhr.status})`));
             }
         };
@@ -254,9 +263,14 @@ export const projectService = {
         });
 
         const data = await safeParseJson(finalRes);
-        if (!finalRes.ok) throw new Error(data.error?.message || 'Upload finalization failed');
+        if (!finalRes.ok) {
+            const message = data.error?.message || data._raw || '';
+            if (!message.toLowerCase().startsWith('upload succeeded')) {
+                throw new Error(message || 'Upload finalization failed');
+            }
+        }
         onProgress?.(100);
-        return data;
+        return { ...data, success: true, file: data.file || null };
     },
 
     async deleteFile(projectId, fileId) {

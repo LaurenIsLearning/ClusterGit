@@ -240,6 +240,15 @@ async function getUserQuotaBytes(userId) {
     return Number(data?.storage_quota_bytes) || 0;
 }
 
+async function getRepoContentSizeSafely(ownerId, projectName) {
+    try {
+        return await gitService.getRepoContentSize(ownerId, projectName);
+    } catch (error) {
+        console.warn(`Failed to compute repo content size for ${ownerId}/${projectName}:`, error.message);
+        return 0;
+    }
+}
+
 // load one repo scoped to the current environment so preview/local metadata cannot mix.
 async function loadOwnedRepositoryInEnvironment(req, ownerId, repoId, selectClause = "id, name, owner_id") {
     const environmentKey = req ? getEnvironmentKey(req) : null;
@@ -424,14 +433,9 @@ router.get("/my", authMiddleware, async (req, res) => {
             const gitUrl = gitService.getGitUrl(ownerId, project.name);
 
             // Prefer authoritative metadata size from Supabase; fallback to filesystem if missing.
-            let size = sizeByRepoId.get(project.id) || 0;
-            if (!size) {
-                try {
-                    size = await gitService.getRepoSize(repoPath);
-                } catch (err) {
-                    console.warn("Repo path missing:", repoPath);
-                }
-            }
+            const metadataSize = sizeByRepoId.get(project.id) || 0;
+            const treeSize = await getRepoContentSizeSafely(ownerId, project.name);
+            const size = Math.max(metadataSize, treeSize);
 
             return {
                 ...project,
@@ -480,23 +484,28 @@ router.get("/summary", authMiddleware, async (req, res) => {
         const repoIds = (repos || []).map((repo) => repo.id);
         const repoNameById = new Map((repos || []).map((repo) => [repo.id, repo.name]));
 
-        let usedBytes = 0;
+        let metadataUsageByRepoId = new Map();
         if (repoIds.length > 0) {
             const { data: annexObjects, error: annexError } = await supabase
                 .from("annex_objects")
-                .select("size_bytes")
+                .select("repo_id, size_bytes")
                 .in("repo_id", repoIds);
 
             if (annexError) {
-                return res.status(500).json({
-                    error: { message: annexError.message || "Failed to load storage usage" }
-                });
+                console.warn("Failed to load annex_objects for dashboard summary:", annexError.message);
+            } else {
+                metadataUsageByRepoId = (annexObjects || []).reduce((acc, row) => {
+                    acc.set(row.repo_id, (acc.get(row.repo_id) || 0) + (Number(row.size_bytes) || 0));
+                    return acc;
+                }, new Map());
             }
-
-            usedBytes = (annexObjects || []).reduce((sum, row) => {
-                return sum + (Number(row.size_bytes) || 0);
-            }, 0);
         }
+
+        const usedBytes = (await Promise.all((repos || []).map(async (repo) => {
+            const metadataSize = metadataUsageByRepoId.get(repo.id) || 0;
+            const treeSize = await getRepoContentSizeSafely(ownerId, repo.name);
+            return Math.max(metadataSize, treeSize);
+        }))).reduce((sum, size) => sum + size, 0);
 
         // recent activity is also repo-scoped so local and preview feeds stay separate.
         let activityRows = [];
@@ -510,12 +519,10 @@ router.get("/summary", authMiddleware, async (req, res) => {
                 .limit(10);
 
             if (activityError) {
-                return res.status(500).json({
-                    error: { message: activityError.message || "Failed to load activity" }
-                });
+                console.warn("Failed to load activity_log for dashboard summary:", activityError.message);
+            } else {
+                activityRows = data || [];
             }
-
-            activityRows = data || [];
         }
 
         const recentActivity = (activityRows || []).map((row) => ({

@@ -8,6 +8,7 @@ import { REPO_BASE_PATH, GIT_ANNEX_CONFIG } from '../config/config.js';
 //HELP ME PLEASE 
 const execAsync = promisify(execFile);
 const GIT_BIN = process.platform === 'win32' ? 'git' : '/usr/bin/git';
+const UI_HIDDEN_FILES = new Set(['.annex-placeholder', '.gitattributes', '.gitignore']);
 
 /**
  * Validate project name
@@ -672,6 +673,20 @@ export async function readRepoStateForSync(repoPath) {
     return { commitHash, authorName, timestamp, message, files };
 }
 
+export async function getRepoContentSize(userId, projectName) {
+    const repoPath = await resolveExistingRepoPath(userId, projectName);
+
+    try {
+        const state = await readRepoStateForSync(repoPath);
+        return state.files
+            .filter((file) => !UI_HIDDEN_FILES.has(file.name))
+            .reduce((sum, file) => sum + (Number(file.sizeBytes) || 0), 0);
+    } catch (error) {
+        if (error.name === 'NoBranchError') return 0;
+        throw error;
+    }
+}
+
 export default {
     validateProjectName,
     createRepository,
@@ -685,6 +700,7 @@ export default {
     resolveExistingRepoPath,
     getRepoPath,
     getRepoSize,
+    getRepoContentSize,
     getGitUrl,
     addFileToProject,
     readRepoStateForSync,

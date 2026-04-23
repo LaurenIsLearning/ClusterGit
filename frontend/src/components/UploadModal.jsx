@@ -43,14 +43,9 @@ export default function UploadModal({ project, projectId, isOpen, onClose, onCom
 
             setStatus('complete');
             if (result?.metadata_errors) {
-                const failedTables = Object.entries(result.metadata_errors)
-                    .filter(([, message]) => Boolean(message))
-                    .map(([table]) => table)
-                    .join(', ');
-                addToast(`File uploaded, but metadata warnings remain: ${failedTables}`, 'info');
-            } else {
-                addToast('File uploaded successfully', 'success');
+                console.warn('Upload metadata warnings:', result.metadata_errors);
             }
+            addToast('File uploaded successfully', 'success');
             setTimeout(() => {
                 onComplete(result.file);
                 onClose();

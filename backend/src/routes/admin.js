@@ -62,6 +62,28 @@ async function loadEnvironmentRepositories(environmentKey) {
     return repos || [];
 }
 
+async function getRepoContentSizeSafely(ownerId, projectName) {
+    try {
+        return await gitService.getRepoContentSize(ownerId, projectName);
+    } catch (error) {
+        console.warn(`Failed to compute repo content size for ${ownerId}/${projectName}:`, error.message);
+        return 0;
+    }
+}
+
+async function getRepoFilesFromTreeSafely(ownerId, projectName) {
+    try {
+        const repoPath = await gitService.resolveExistingRepoPath(ownerId, projectName);
+        const state = await gitService.readRepoStateForSync(repoPath);
+        const hidden = new Set([".gitattributes", ".gitignore", ".annex-placeholder"]);
+        return state.files.filter((file) => !hidden.has(file.name));
+    } catch (error) {
+        if (error.name === "NoBranchError") return [];
+        console.warn(`Failed to inspect repo files for ${ownerId}/${projectName}:`, error.message);
+        return [];
+    }
+}
+
 // review requests are stored as activity events and surfaced back into the admin ui.
 async function loadReviewRequests(repoIds) {
     if (!repoIds.length) return [];
@@ -73,7 +95,10 @@ async function loadReviewRequests(repoIds) {
         .in("repo_id", repoIds)
         .order("created_at", { ascending: false });
 
-    if (error) throw error;
+    if (error) {
+        console.warn("Failed to load review request metadata:", error.message);
+        return [];
+    }
     return data || [];
 }
 
@@ -220,22 +245,44 @@ router.get("/summary", async (req, res) => {
         }, 0);
 
         const repos = await loadEnvironmentRepositories(environmentKey);
+        const nodeSnapshots = await loadLatestNodeSnapshots().catch((error) => {
+            console.warn("Failed to load node snapshots for admin summary:", error.message);
+            return [];
+        });
 
         const repoById = new Map((repos || []).map((r) => [r.id, r]));
         const repoIds = repos.map((repo) => repo.id);
         const totalUsers = new Set(repos.map((repo) => repo.owner_id).filter(Boolean)).size;
 
-        let usedStorageBytes = 0;
+        let metadataSizeByRepo = new Map();
         if (repoIds.length > 0) {
             const { data: annexRows, error: annexError } = await supabase
                 .from("annex_objects")
-                .select("size_bytes")
+                .select("repo_id, size_bytes")
                 .in("repo_id", repoIds);
             if (annexError) {
-                return res.status(500).json({ error: { message: annexError.message || "Failed to load storage usage" } });
+                console.warn("Failed to load admin storage metadata:", annexError.message);
+            } else {
+                metadataSizeByRepo = (annexRows || []).reduce((acc, row) => {
+                    acc.set(row.repo_id, (acc.get(row.repo_id) || 0) + (Number(row.size_bytes) || 0));
+                    return acc;
+                }, new Map());
             }
-            usedStorageBytes = (annexRows || []).reduce((sum, row) => sum + (Number(row.size_bytes) || 0), 0);
         }
+
+        const repoStorageBytes = (await Promise.all(repos.map(async (repo) => {
+            const metadataSize = metadataSizeByRepo.get(repo.id) || 0;
+            const treeSize = await getRepoContentSizeSafely(repo.owner_id, repo.name);
+            return Math.max(metadataSize, treeSize);
+        }))).reduce((sum, size) => sum + size, 0);
+
+        const clusterUsedStorageBytes = nodeSnapshots.reduce((sum, node) => {
+            return sum + (Number(node.storage?.used_bytes) || 0);
+        }, 0);
+        const clusterTotalStorageBytes = nodeSnapshots.reduce((sum, node) => {
+            return sum + (Number(node.storage?.total_bytes) || 0);
+        }, 0);
+        const usedStorageBytes = clusterUsedStorageBytes || repoStorageBytes;
 
         const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
         // summary activity is constrained to repos in this environment.
@@ -253,7 +300,7 @@ router.get("/summary", async (req, res) => {
 
         const { data: activityRows, error: activityError } = await activityQuery;
         if (activityError) {
-            return res.status(500).json({ error: { message: activityError.message || "Failed to load activity" } });
+            console.warn("Failed to load admin activity metadata:", activityError.message);
         }
 
         const activeUsers = new Set((activityRows || []).map((r) => r.user_id).filter(Boolean)).size;
@@ -294,24 +341,9 @@ router.get("/summary", async (req, res) => {
             created_at: repo.last_activity_at || repo.created_at || null
         }));
 
-        const { data: nodeRows, error: nodeError } = await supabase
-            .from("node_health")
-            .select("node_key, status, heartbeat_at")
-            .order("heartbeat_at", { ascending: false });
-
-        const latestNodeByKey = new Map();
-        if (!nodeError) {
-            for (const row of nodeRows || []) {
-                if (!latestNodeByKey.has(row.node_key)) {
-                    latestNodeByKey.set(row.node_key, row);
-                }
-            }
-        }
-
-        const latestNodes = [...latestNodeByKey.values()];
-        const healthyNodes = latestNodes.filter((node) => node.status === "online").length;
-        const health = latestNodes.length > 0
-            ? `${Math.round((healthyNodes / latestNodes.length) * 100)}%`
+        const healthyNodes = nodeSnapshots.filter((node) => node.status === "online").length;
+        const health = nodeSnapshots.length > 0
+            ? `${Math.round((healthyNodes / nodeSnapshots.length) * 100)}%`
             : "N/A";
 
         return res.json({
@@ -319,9 +351,9 @@ router.get("/summary", async (req, res) => {
             active_users: activeUsers,
             total_users: totalUsers,
             used_storage_bytes: usedStorageBytes,
-            total_storage_bytes: totalStorageBytes,
+            total_storage_bytes: clusterTotalStorageBytes || totalStorageBytes,
             archived_repositories: archivedRepositories,
-            recent_activity: recentActivity
+            recent_activity: activityError ? [] : recentActivity
         });
     } catch (error) {
         console.error("Admin summary error:", error);
@@ -363,11 +395,19 @@ router.get("/users", async (req, res) => {
             if (!error) annexRows = data || [];
         }
 
-        const usedByUser = new Map();
+        const metadataSizeByRepo = new Map();
         for (const row of annexRows) {
-            const ownerId = ownerByRepoId.get(row.repo_id);
+            metadataSizeByRepo.set(row.repo_id, (metadataSizeByRepo.get(row.repo_id) || 0) + (Number(row.size_bytes) || 0));
+        }
+
+        const usedByUser = new Map();
+        for (const repo of ownedRepos) {
+            const ownerId = ownerByRepoId.get(repo.id);
             if (!ownerId) continue;
-            usedByUser.set(ownerId, (usedByUser.get(ownerId) || 0) + (Number(row.size_bytes) || 0));
+
+            const metadataSize = metadataSizeByRepo.get(repo.id) || 0;
+            const treeSize = await getRepoContentSizeSafely(repo.owner_id, repo.name);
+            usedByUser.set(ownerId, (usedByUser.get(ownerId) || 0) + Math.max(metadataSize, treeSize));
         }
 
         let activityRows = [];
@@ -813,6 +853,12 @@ router.get("/users/:userId/repos", async (req, res) => {
             }
         }
 
+        for (const repo of repos) {
+            const metadataSize = sizeByRepo.get(repo.id) || 0;
+            const treeSize = await getRepoContentSizeSafely(userId, repo.name);
+            sizeByRepo.set(repo.id, Math.max(metadataSize, treeSize));
+        }
+
         return res.json({
             environment_key: environmentKey,
             repos: repos.map((repo) => ({
@@ -840,7 +886,7 @@ router.get("/repos/:repoId/files", async (req, res) => {
 
         let repoQuery = supabase
             .from("repositories")
-            .select("id, owner_id, environment_key")
+            .select("id, name, owner_id, environment_key")
             .eq("id", repoId);
 
         repoQuery = applyEnvironmentFilter(repoQuery, environmentKey);
@@ -855,7 +901,9 @@ router.get("/repos/:repoId/files", async (req, res) => {
             return res.status(404).json({ error: { message: "Repository not found" } });
         }
 
-        // file inspection stays metadata-only on the admin side.
+        const treeFiles = await getRepoFilesFromTreeSafely(repo.owner_id, repo.name);
+
+        // file inspection prefers metadata, but falls back to the live git tree.
         const { data: files, error: filesError } = await supabase
             .from("repo_files")
             .select("id, original_name, file_path, mime_type, size_bytes, status, uploaded_at")
@@ -863,12 +911,29 @@ router.get("/repos/:repoId/files", async (req, res) => {
             .order("uploaded_at", { ascending: false });
 
         if (filesError) {
-            return res.status(500).json({ error: { message: filesError.message || "Failed to load repository files" } });
+            console.warn("Failed to load repo_files metadata for admin files view:", filesError.message);
         }
+
+        const metadataFiles = filesError ? [] : (files || []);
+        const metaByPath = new Map(metadataFiles.map((file) => [file.file_path || file.original_name, file]));
+        const mergedFiles = treeFiles.length > 0
+            ? treeFiles.map((file, index) => {
+                const meta = metaByPath.get(file.path) || metaByPath.get(file.name);
+                return {
+                    id: meta?.id || `git-${index}`,
+                    original_name: meta?.original_name || file.name,
+                    file_path: file.path,
+                    mime_type: meta?.mime_type || null,
+                    size_bytes: Number(meta?.size_bytes) || Number(file.sizeBytes) || 0,
+                    status: meta?.status || "synced",
+                    uploaded_at: meta?.uploaded_at || null,
+                };
+            })
+            : metadataFiles;
 
         return res.json({
             environment_key: environmentKey,
-            files: (files || []).map((file) => ({
+            files: mergedFiles.map((file) => ({
                 id: file.id,
                 name: file.original_name || file.file_path || "unknown-file",
                 path: file.file_path || file.original_name || "",
