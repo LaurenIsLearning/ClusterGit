@@ -30,7 +30,6 @@ if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 const prometheusBaseUrl = String(PROMETHEUS_URL || "http://127.0.0.1:9090").replace(/\/+$/, "");
-const DEFAULT_STORAGE_MOUNTPOINTS = "/,/mnt/ssd,/mnt/cluster-storage";
 
 function normalizePrometheusBaseUrl(url) {
   return String(url).replace(/\/+$/, "");
@@ -86,10 +85,10 @@ function inferNodeStatus(readyValue) {
 }
 
 function parseStorageMountpoints(rawValue) {
-  return [...new Set(String(`${DEFAULT_STORAGE_MOUNTPOINTS},${rawValue || ""}`)
+  return String(rawValue || "/")
     .split(",")
     .map((value) => value.trim())
-    .filter(Boolean))];
+    .filter(Boolean);
 }
 
 function escapePrometheusRegex(value) {
@@ -100,12 +99,6 @@ function buildFilesystemQuery(metricName) {
   const mountpoints = parseStorageMountpoints(PROMETHEUS_STORAGE_MOUNTPOINTS);
   const mountpointRegex = mountpoints.map(escapePrometheusRegex).join("|");
   return `sum by (instance) (${metricName}{fstype!~"tmpfs|overlay",mountpoint=~"${mountpointRegex}"})`;
-}
-
-function normalizeTemperatureC(rawValue) {
-  const value = Number(rawValue);
-  if (!Number.isFinite(value) || value <= 0) return null;
-  return value > 150 ? value / 1000 : value;
 }
 
 async function collectNodeSnapshots() {
@@ -123,10 +116,9 @@ async function collectNodeSnapshots() {
     queryPrometheus(buildFilesystemQuery("node_filesystem_avail_bytes")),
     queryPrometheus(buildFilesystemQuery("node_filesystem_size_bytes")),
     queryPrometheusFirstAvailable([
-      'max by (instance) (node_thermal_zone_temp)',
+      'max by (instance) (node_thermal_zone_temp / 1000)',
       'max by (instance) (node_hwmon_temp_celsius)',
       'max by (instance) (node_hwmon_temp_celsius{chip!=""})',
-      'max by (instance) (node_thermal_zone_temp / 1000)',
     ]),
   ]);
 
@@ -189,14 +181,15 @@ async function collectNodeSnapshots() {
     const usedBytes = Math.max(0, totalBytes - availBytes);
     const readyValue = readyByNode.get(nodeKey) || 0;
     const ipAddress = [...nodeByInstance.entries()].find(([, node]) => node === nodeKey)?.[0] || null;
-    const temperatureC = normalizeTemperatureC(tempByNode.get(nodeKey));
 
     return {
       node_key: nodeKey,
       ip_address: ipAddress,
       status: inferNodeStatus(readyValue),
       cpu_percent: Number((cpuByNode.get(nodeKey) || 0).toFixed(2)),
-      temp_c: temperatureC == null ? null : Number(temperatureC.toFixed(2)),
+      temp_c: tempByNode.has(nodeKey) && Number(tempByNode.get(nodeKey) || 0) > 0
+        ? Number((tempByNode.get(nodeKey) || 0).toFixed(2))
+        : null,
       storage_used_bytes: usedBytes,
       storage_total_bytes: totalBytes,
       heartbeat_at: now,
