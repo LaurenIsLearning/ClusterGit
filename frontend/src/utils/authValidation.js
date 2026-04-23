@@ -1,5 +1,5 @@
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const DEFAULT_ALLOWED_DOMAINS = ["pfw.edu", "students.pfw.edu", "university.edu"];
+const DEFAULT_ALLOWED_DOMAINS = ["pfw.edu", "students.pfw.edu", "purdue.edu", "students.purdue.edu", "university.edu"];
 
 export function getAllowedSchoolEmailDomains() {
   const raw = String(import.meta.env.VITE_ALLOWED_SCHOOL_EMAIL_DOMAINS || "")

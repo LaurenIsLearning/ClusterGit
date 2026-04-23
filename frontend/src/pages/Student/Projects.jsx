@@ -6,6 +6,8 @@ import NewProjectModal from '../../components/NewProjectModal';
 import ConfirmationModal from '../../components/ConfirmationModal';
 import { useToast } from '../../context/ToastContext';
 
+const FILES_PAGE_SIZE = 250;
+
 export default function StudentProjects() {
     const [projects, setProjects] = useState([]);
     const [selectedProject, setSelectedProject] = useState(null);
@@ -17,6 +19,7 @@ export default function StudentProjects() {
     const [openProjectMenu, setOpenProjectMenu] = useState(null);
     const [openFileMenu, setOpenFileMenu] = useState(null);
     const [confirmState, setConfirmState] = useState(null);
+    const [visibleFileCount, setVisibleFileCount] = useState(FILES_PAGE_SIZE);
     const { addToast } = useToast();
 
     // Load projects on mount
@@ -53,6 +56,7 @@ export default function StudentProjects() {
 
         let cancelled = false;
         let isFirstLoad = true;
+        setVisibleFileCount(FILES_PAGE_SIZE);
 
         const loadFiles = async () => {
             // Skip while the tab is hidden. Avoids burst-fire of queued ticks
@@ -123,6 +127,7 @@ export default function StudentProjects() {
                 status: item.status || 'synced',
             }));
             setFiles(normalized);
+            setVisibleFileCount(FILES_PAGE_SIZE);
         } catch (error) {
             console.error('Failed to refresh files after upload:', error);
             addToast(error.message || 'Upload succeeded, but file list refresh failed', 'error');
@@ -193,9 +198,11 @@ export default function StudentProjects() {
     if (loading) return <div className="p-10 text-center">Loading projects...</div>;
 
     const currentProject = projects.find(p => p.id === selectedProject);
+    const visibleFiles = files.slice(0, visibleFileCount);
+    const hasMoreFiles = files.length > visibleFiles.length;
 
     return (
-        <div className="flex h-[calc(100vh-8rem)] gap-6">
+        <div className="flex h-[calc(100vh-8rem)] gap-6 min-w-0 max-w-full">
             <UploadModal
                 project={currentProject?.name}
                 projectId={currentProject?.id}
@@ -221,7 +228,7 @@ export default function StudentProjects() {
             />
 
             {/* Project List Sidebar */}
-            <div className="w-1/3 flex flex-col gap-4">
+            <div className="w-1/3 min-w-[18rem] flex flex-col gap-4">
                 <div className="flex justify-between items-center mb-2">
                     <h2 className="text-xl font-bold">Projects</h2>
                     <button onClick={handleNewProject} className="btn btn-secondary text-sm p-2"><Plus className="w-4 h-4" /></button>
@@ -316,7 +323,7 @@ export default function StudentProjects() {
             </div>
 
             {/* File Browser */}
-            <div className="flex-1 flex flex-col bg-[--bg-secondary] rounded-xl border border-[--border-color] overflow-hidden">
+            <div className="flex-1 min-w-0 flex flex-col bg-[--bg-secondary] rounded-xl border border-[--border-color] overflow-hidden">
                 {currentProject ? (
                     <>
                         {/* Toolbar */}
@@ -346,8 +353,8 @@ export default function StudentProjects() {
                             </div>
                         </div>
 
-                        <div className="flex-1 overflow-y-auto p-4">
-                            <table className="w-full text-left border-collapse">
+                        <div className="flex-1 overflow-auto p-4">
+                            <table className="min-w-[760px] w-full text-left border-collapse">
                                 <thead>
                                     <tr className="text-[--text-muted] text-sm border-b border-[--border-color]">
                                         <th className="pb-3 pl-4 font-medium">Name</th>
@@ -358,11 +365,11 @@ export default function StudentProjects() {
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-[--border-color]">
-                                    {files.map(file => (
+                                    {visibleFiles.map(file => (
                                         <tr key={file.id} className="group hover:bg-[--bg-tertiary]/30 transition-colors">
-                                            <td className="py-4 pl-4 flex items-center gap-3">
+                                            <td className="py-4 pl-4 flex items-center gap-3 max-w-[28rem]">
                                                 <FileIcon type={file.type} />
-                                                <span className="font-medium">{file.name}</span>
+                                                <span className="font-medium truncate" title={file.path || file.name}>{file.name}</span>
                                             </td>
                                             <td className="py-4 text-[--text-secondary] font-mono text-sm">{file.size}</td>
                                             <td className="py-4 text-[--text-secondary] capitalize">{file.type}</td>
@@ -410,6 +417,17 @@ export default function StudentProjects() {
                                     )}
                                 </tbody>
                             </table>
+                            {hasMoreFiles && (
+                                <div className="sticky bottom-0 mt-4 flex justify-center bg-[--bg-secondary]/95 py-3">
+                                    <button
+                                        type="button"
+                                        className="btn btn-secondary"
+                                        onClick={() => setVisibleFileCount((count) => count + FILES_PAGE_SIZE)}
+                                    >
+                                        Show {Math.min(FILES_PAGE_SIZE, files.length - visibleFiles.length)} more files
+                                    </button>
+                                </div>
+                            )}
                         </div>
                     </>
                 ) : (

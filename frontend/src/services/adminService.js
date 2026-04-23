@@ -54,12 +54,6 @@ function bytesToGiB(bytes) {
 }
 
 function normalizeNodeTelemetry(node) {
-    const storageUsedPercent = Number(
-        node?.storage?.used
-        ?? node?.storage_used_percent
-        ?? 0
-    ) || 0;
-
     const storageUsedBytes = Number(
         node?.storage?.used_bytes
         ?? node?.storageUsedBytes
@@ -71,6 +65,19 @@ function normalizeNodeTelemetry(node) {
         ?? node?.storageTotalBytes
         ?? 0
     ) || 0;
+
+    const rawStoragePercent = Number(
+        node?.storage?.used
+        ?? node?.storage_used_percent
+        ?? NaN
+    );
+    const computedStoragePercent = storageTotalBytes > 0
+        ? (storageUsedBytes / storageTotalBytes) * 100
+        : 0;
+    const storageUsedPercent = Math.max(0, Math.min(
+        100,
+        Number.isFinite(rawStoragePercent) ? rawStoragePercent : computedStoragePercent
+    ));
 
     return {
         id: node?.id || 'unknown-node',

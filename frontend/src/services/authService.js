@@ -32,6 +32,20 @@ function isMissingRoute(response, data) {
   return response.status === 404 || raw.includes("Cannot GET");
 }
 
+async function persistBackendSession(session) {
+  if (!session?.access_token || !session?.refresh_token) {
+    return null;
+  }
+
+  const { data, error } = await supabase.auth.setSession({
+    access_token: session.access_token,
+    refresh_token: session.refresh_token,
+  });
+
+  if (error) throw error;
+  return data;
+}
+
 export const authService = {
   async signUp(email, password) {
     const normalizedEmail = normalizeEmail(email);
@@ -51,6 +65,7 @@ export const authService = {
       throw new Error(data.error?.message || data._raw || "Registration failed");
     }
 
+    await persistBackendSession(data?.session);
     return data;
   },
 
@@ -72,18 +87,11 @@ export const authService = {
       throw new Error(data.error?.message || data._raw || "Authentication failed");
     }
 
-    const session = data?.session;
-    if (!session?.access_token || !session?.refresh_token) {
+    if (!data?.session?.access_token || !data?.session?.refresh_token) {
       throw new Error("Login succeeded but no session was returned");
     }
 
-    const { data: sessionData, error } = await supabase.auth.setSession({
-      access_token: session.access_token,
-      refresh_token: session.refresh_token,
-    });
-
-    if (error) throw error;
-    return sessionData;
+    return persistBackendSession(data.session);
   },
 
   async signOut() {

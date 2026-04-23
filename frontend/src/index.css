@@ -399,13 +399,16 @@ pre {
 }
 
 .users-files-table-wrapper {
+  max-height: 28rem;
   overflow-x: auto;
+  overflow-y: auto;
   border: 1px solid var(--border-color);
   border-radius: 0.85rem;
 }
 
 .users-files-table {
   width: 100%;
+  min-width: 42rem;
   border-collapse: collapse;
 }
 

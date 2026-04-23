@@ -28,6 +28,9 @@ function RepoFilesTable({ files }) {
     return <div className="users-empty-subtle">no tracked files</div>;
   }
 
+  const visibleFiles = files.slice(0, 250);
+  const hiddenCount = files.length - visibleFiles.length;
+
   return (
     <div className="users-files-table-wrapper">
       <table className="users-files-table">
@@ -39,7 +42,7 @@ function RepoFilesTable({ files }) {
           </tr>
         </thead>
         <tbody>
-          {files.map((file) => (
+          {visibleFiles.map((file) => (
             <tr key={`${file.path}-${file.last_modified || 'unknown'}`}>
               <td>{file.path || 'unknown'}</td>
               <td>{formatBytes(file.size_bytes || 0)}</td>
@@ -48,6 +51,11 @@ function RepoFilesTable({ files }) {
           ))}
         </tbody>
       </table>
+      {hiddenCount > 0 ? (
+        <div className="users-empty-subtle">
+          Showing first 250 files. {hiddenCount} more file{hiddenCount === 1 ? '' : 's'} tracked.
+        </div>
+      ) : null}
     </div>
   );
 }

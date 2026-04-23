@@ -8,7 +8,12 @@ import fs from "fs/promises";
 import os from "os";
 import path from "path";
 import { applyEnvironmentFilter, getEnvironmentKey } from "../utils/environment.js";
-import { insertPushEventWithFallback, insertAnnexObjectWithFallback, insertActivityLogWithFallback } from "../services/syncService.js";
+import {
+    insertPushEventWithFallback,
+    insertAnnexObjectWithFallback,
+    insertActivityLogWithFallback,
+    insertActivityLogWithUserTokenFallback
+} from "../services/syncService.js";
 
 const router = express.Router();
 
@@ -1026,16 +1031,21 @@ router.post("/:id/request-review", authMiddleware, async (req, res) => {
         }
 
         // uses activity_log as the lightweight admin review notification path
-        const activityError = await insertActivityLogWithFallback({
+        const reviewPayload = {
             user_id: ownerId,
             repo_id: repoId,
             event_type: "review_requested",
             detail: `Requested admin review for ${project.name}`
-        });
+        };
 
-        if (activityError) {
+        const activityError = await insertActivityLogWithFallback(reviewPayload);
+        const resolvedActivityError = activityError
+            ? await insertActivityLogWithUserTokenFallback(reviewPayload, req.accessToken)
+            : null;
+
+        if (resolvedActivityError) {
             return res.status(500).json({
-                error: { message: activityError.message || "Failed to request review" }
+                error: { message: resolvedActivityError.message || "Failed to request review" }
             });
         }
 

@@ -90,8 +90,8 @@ export default function DashboardLayout() {
         </div>
       </aside>
 
-      <main className="flex-1 ml-64 p-8">
-        <div className="max-w-6xl mx-auto">
+      <main className="flex-1 ml-64 p-8 min-w-0 overflow-x-auto">
+        <div className="max-w-6xl min-w-0 mx-auto">
           {/* <AuthDebug /> */}
           <Outlet />
         </div>

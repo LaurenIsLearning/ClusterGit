@@ -31,12 +31,13 @@ export default function AdminNodes() {
 
     useEffect(() => {
         let isMounted = true;
+        let hasLoaded = false;
 
         const load = async () => {
-            if (isMounted) {
+            if (isMounted && !hasLoaded) {
                 setLoading(true);
-                setError('');
             }
+            if (isMounted) setError('');
 
             try {
                 const data = await adminService.getNodes();
@@ -49,6 +50,7 @@ export default function AdminNodes() {
                 }
             } finally {
                 if (isMounted) {
+                    hasLoaded = true;
                     setLoading(false);
                 }
             }

@@ -57,6 +57,39 @@ export async function insertActivityLogWithFallback(payload) {
     return lastError;
 }
 
+export async function insertActivityLogWithUserTokenFallback(payload, accessToken) {
+    if (!accessToken || !process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
+        return new Error('Missing authenticated Supabase context for activity log fallback');
+    }
+
+    const attempts = [
+        payload,
+        { ...payload, event_type: "commit_recorded" },
+        { ...payload, event_type: "upload" }
+    ];
+
+    let lastError = null;
+    for (const attempt of attempts) {
+        const response = await fetch(`${process.env.SUPABASE_URL.replace(/\/+$/, '')}/rest/v1/activity_log`, {
+            method: 'POST',
+            headers: {
+                apikey: process.env.SUPABASE_SERVICE_ROLE_KEY,
+                Authorization: `Bearer ${accessToken}`,
+                'Content-Type': 'application/json',
+                Prefer: 'return=minimal',
+            },
+            body: JSON.stringify(attempt),
+        });
+
+        if (response.ok) return null;
+
+        const body = await response.json().catch(() => ({}));
+        lastError = new Error(body.message || body.error || `Activity log insert failed (${response.status})`);
+    }
+
+    return lastError;
+}
+
 // ─── MIME helpers ─────────────────────────────────────────────────────────────
 
 const MIME_MAP = {

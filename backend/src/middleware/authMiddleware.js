@@ -30,6 +30,7 @@ export const requireAuth = async (req, res, next) => {
       email: user.email ?? null,
       raw: user,
     };
+    req.accessToken = token;
 
     next();
   } catch (err) {

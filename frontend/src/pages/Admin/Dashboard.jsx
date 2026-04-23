@@ -41,6 +41,7 @@ export default function AdminDashboard() {
 
     const formatBytes = (bytes) => {
         const value = Number(bytes) || 0;
+        if (value >= 1024 ** 4) return `${(value / (1024 ** 4)).toFixed(2)} TB`;
         if (value >= 1024 ** 3) return `${(value / (1024 ** 3)).toFixed(2)} GB`;
         if (value >= 1024 ** 2) return `${(value / (1024 ** 2)).toFixed(1)} MB`;
         if (value >= 1024) return `${(value / 1024).toFixed(1)} KB`;
@@ -49,8 +50,10 @@ export default function AdminDashboard() {
 
     const onlineNodes = nodes.filter(n => n.status === 'online').length;
     const totalNodes = nodes.length;
-    const totalStorageBytes = nodes.reduce((sum, node) => sum + (Number(node.storageTotalBytes) || 0), 0);
-    const usedStorageBytes = nodes.reduce((sum, node) => sum + (Number(node.storageUsedBytes) || 0), 0);
+    const nodeTotalStorageBytes = nodes.reduce((sum, node) => sum + (Number(node.storageTotalBytes) || 0), 0);
+    const nodeUsedStorageBytes = nodes.reduce((sum, node) => sum + (Number(node.storageUsedBytes) || 0), 0);
+    const totalStorageBytes = nodeTotalStorageBytes || Number(summary?.total_storage_bytes) || 0;
+    const usedStorageBytes = nodeUsedStorageBytes || Number(summary?.used_storage_bytes) || 0;
     const storageUsed = formatBytes(usedStorageBytes);
     const storageTotal = formatBytes(totalStorageBytes);
     const archivedRepos = summary?.archived_repositories || [];

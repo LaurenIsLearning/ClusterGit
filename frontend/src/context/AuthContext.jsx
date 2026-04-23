@@ -8,6 +8,13 @@ const AuthContext = createContext(null);
 async function fetchRole(userId) {
   if (!userId) return null;
 
+  try {
+    const profile = await authService.getProfile();
+    if (profile?.role) return profile.role;
+  } catch (error) {
+    console.warn("[fetchRole] backend profile lookup failed, falling back to direct profile read:", error);
+  }
+
   const { data, error } = await supabase
     .from("user_profiles")
     .select("role")
