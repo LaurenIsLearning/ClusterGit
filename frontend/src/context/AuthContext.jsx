@@ -113,12 +113,26 @@ export function AuthProvider({ children }) {
 
       signUp: async (email, password) => {
         setAuthError(null);
-        return authService.signUp(email, password);
+        const data = await authService.signUp(email, password);
+        const sessionUser = data?.session?.user ?? data?.user ?? null;
+        if (sessionUser) {
+          setUser(sessionUser);
+          const r = await fetchRole(sessionUser.id);
+          setRole(r || "student");
+        }
+        return data;
       },
 
       signIn: async (email, password) => {
         setAuthError(null);
-        return authService.signIn(email, password);
+        const data = await authService.signIn(email, password);
+        const sessionUser = data?.session?.user ?? data?.user ?? null;
+        if (sessionUser) {
+          setUser(sessionUser);
+          const r = await fetchRole(sessionUser.id);
+          setRole(r || "student");
+        }
+        return data;
       },
 
       signInWithGitHub: async (redirectTo) => {

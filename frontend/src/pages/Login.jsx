@@ -55,8 +55,16 @@ export default function Login() {
 
     try {
       if (isRegisterMode) {
-        await signUp(email, password);
-        addToast("Account created successfully! Welcome to ClusterGit.", "success");
+        const data = await signUp(email, password);
+        if (data?.session?.access_token || data?.user) {
+          addToast("Account created successfully! Welcome to ClusterGit.", "success");
+          navigate("/dashboard", { replace: true });
+        } else {
+          addToast("Account created. Please sign in to continue.", "success");
+          setIsRegisterMode(false);
+          setPassword("");
+          setConfirmPassword("");
+        }
       } else {
         await signIn(email, password);
         addToast("Welcome back!", "success");
