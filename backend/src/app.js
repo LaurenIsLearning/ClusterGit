@@ -10,6 +10,7 @@ import publicRoutes from "./routes/public.js";
 import gitHttpRoutes from "./routes/gitHttp.js";
 
 const app = express();
+app.set("trust proxy", true);
 
 // Git Smart HTTP routes BEFORE body parsers — they exchange raw binary streams
 app.use("/git", gitHttpRoutes);

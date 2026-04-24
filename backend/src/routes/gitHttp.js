@@ -14,6 +14,43 @@ const router = express.Router();
 
 const GIT_BIN = process.platform === "win32" ? "git" : "/usr/bin/git";
 
+function parseForwardedHeader(value = "") {
+    return String(value || "")
+        .split(",")[0]
+        .trim()
+        .toLowerCase();
+}
+
+function getPublicProtocol(req) {
+    const cfVisitor = req.headers["cf-visitor"];
+    if (typeof cfVisitor === "string" && cfVisitor) {
+        try {
+            const parsed = JSON.parse(cfVisitor);
+            if (parsed?.scheme === "https" || parsed?.scheme === "http") {
+                return parsed.scheme;
+            }
+        } catch {
+            // ignore malformed proxy metadata and fall through
+        }
+    }
+
+    const forwardedProto = parseForwardedHeader(req.headers["x-forwarded-proto"]);
+    if (forwardedProto === "https" || forwardedProto === "http") {
+        return forwardedProto;
+    }
+
+    const host = parseForwardedHeader(req.headers["x-forwarded-host"] || req.headers.host);
+    if (host.endsWith(".clustergit.com") || host === "clustergit.com") {
+        return "https";
+    }
+
+    return req.protocol || "http";
+}
+
+function getPublicHost(req) {
+    return parseForwardedHeader(req.headers["x-forwarded-host"] || req.headers.host);
+}
+
 // Collapse double slashes that git-annex produces when the remote URL has a
 // trailing slash (e.g. Drake.git//config → Drake.git/config).
 router.use((req, _res, next) => {
@@ -69,8 +106,8 @@ router.get("/:userId/:repo/config", async (req, res) => {
 
         // Advertise the smart HTTP annex URL so git-annex clients populate
         // remote.<name>.annexUrl and use the HTTP P2P API for content transfer.
-        const protocol = req.headers["x-forwarded-proto"] || req.protocol;
-        const host = req.headers["x-forwarded-host"] || req.headers.host;
+        const protocol = getPublicProtocol(req);
+        const host = getPublicHost(req);
         const repoUrl = `${protocol}://${host}/git/${req.params.userId}/${req.params.repo}`;
         const annexUrl = `annex+${repoUrl}`;
 
