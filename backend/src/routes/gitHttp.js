@@ -51,6 +51,19 @@ function getPublicHost(req) {
     return parseForwardedHeader(req.headers["x-forwarded-host"] || req.headers.host);
 }
 
+function getPublicAuthority(req) {
+    const host = getPublicHost(req);
+    if (!host) return host;
+    if (host.match(/:\d+$/) || host.startsWith("[")) {
+        return host;
+    }
+
+    const protocol = getPublicProtocol(req);
+    if (protocol === "https") return `${host}:443`;
+    if (protocol === "http") return `${host}:80`;
+    return host;
+}
+
 // Collapse double slashes that git-annex produces when the remote URL has a
 // trailing slash (e.g. Drake.git//config → Drake.git/config).
 router.use((req, _res, next) => {
@@ -107,8 +120,8 @@ router.get("/:userId/:repo/config", async (req, res) => {
         // Advertise the smart HTTP annex URL so git-annex clients populate
         // remote.<name>.annexUrl and use the HTTP P2P API for content transfer.
         const protocol = getPublicProtocol(req);
-        const host = getPublicHost(req);
-        const repoUrl = `${protocol}://${host}/git/${req.params.userId}/${req.params.repo}`;
+        const authority = getPublicAuthority(req);
+        const repoUrl = `${protocol}://${authority}/git/${req.params.userId}/${req.params.repo}`;
         const annexUrl = `annex+${repoUrl}`;
 
         res.setHeader("Content-Type", "text/plain");
