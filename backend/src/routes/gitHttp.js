@@ -1,11 +1,25 @@
 import express from "express";
-import { spawn } from "child_process";
+import { spawn, execFile } from "child_process";
+import { promisify } from "util";
+import crypto from "crypto";
+import path from "path";
+import fs from "fs/promises";
+import { createWriteStream, createReadStream } from "fs";
 import { resolveExistingRepoPath, getAnnexUuid } from "../services/gitService.js";
 import { syncPushMetadata } from "../services/syncService.js";
+
+const execAsync = promisify(execFile);
 
 const router = express.Router();
 
 const GIT_BIN = process.platform === "win32" ? "git" : "/usr/bin/git";
+
+// Collapse double slashes that git-annex produces when the remote URL has a
+// trailing slash (e.g. Drake.git//config → Drake.git/config).
+router.use((req, _res, next) => {
+    if (req.url.includes("//")) req.url = req.url.replace(/\/\/+/g, "/");
+    next();
+});
 
 /**
  * Resolve the bare repo path from the URL params.
@@ -31,10 +45,127 @@ router.get("/:userId/:repo/config", async (req, res) => {
         const uuid = await getAnnexUuid(repoPath);
         if (!uuid) return res.status(404).end("Not Found\n");
 
+        // Advertise the P2P HTTP URL so git-annex clients automatically set
+        // remote.<name>.annex-p2phttp-url and can use `git annex copy --to origin`.
+        const protocol = req.headers["x-forwarded-proto"] || req.protocol;
+        const host = req.headers["x-forwarded-host"] || req.headers.host;
+        const p2pUrl = `${protocol}://${host}/git/${req.params.userId}/${req.params.repo}`;
+
         res.setHeader("Content-Type", "text/plain");
-        res.end(`[annex]\n\tuuid = ${uuid}\n`);
+        res.end(`[annex]\n\tuuid = ${uuid}\n\tp2phttp-url = ${p2pUrl}\n`);
     } catch {
         res.status(500).end("Internal server error\n");
+    }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// git-annex P2P HTTP API (v3)
+//
+// Enables `git annex copy --to origin` / `git annex get` directly over HTTP.
+// git-annex >= 10.20230213 clients auto-detect these endpoints and use them
+// instead of failing with "copying to this remote is not supported".
+//
+// HEAD  /:userId/:repo/git-annex/v3/key/:key  — check if key is present
+// GET   /:userId/:repo/git-annex/v3/key/:key  — download key content
+// POST  /:userId/:repo/git-annex/v3/key/:key  — upload key content
+// ─────────────────────────────────────────────────────────────────────────────
+
+function annexHashDir(key, upper = false) {
+    // git-annex uses MD5 of the key, first 4 hex chars split as 2+2 dirs.
+    // Older versions used upper-case hex; newer ones use lower-case.
+    const md5 = crypto.createHash("md5").update(key).digest("hex");
+    const hex = upper ? md5.toUpperCase() : md5;
+    return path.join(hex.slice(0, 2), hex.slice(2, 4));
+}
+
+function annexObjectPath(repoPath, key, upper = false) {
+    return path.join(repoPath, ".git", "annex", "objects", annexHashDir(key, upper), key, key);
+}
+
+async function findAnnexContent(repoPath, key) {
+    // First ask git-annex itself — it knows the exact layout.
+    try {
+        const { stdout } = await execAsync(GIT_BIN, ["annex", "contentlocation", key], { cwd: repoPath });
+        const rel = stdout.trim();
+        if (rel) {
+            const abs = path.join(repoPath, rel);
+            await fs.access(abs);
+            return abs;
+        }
+    } catch { /* fall through to filesystem check */ }
+
+    // Fallback: check both lower and upper hashdir layouts directly.
+    // This handles the case where the location log is stale or the content
+    // was written directly (e.g. via the P2P HTTP POST route) without updating
+    // the git-annex branch yet.
+    for (const upper of [false, true]) {
+        const candidate = annexObjectPath(repoPath, key, upper);
+        try {
+            await fs.access(candidate);
+            return candidate;
+        } catch { /* try next layout */ }
+    }
+
+    return null;
+}
+
+router.head("/:userId/:repo/git-annex/v3/key/:key", async (req, res) => {
+    try {
+        const repoPath = await resolveRepo(req);
+        const found = await findAnnexContent(repoPath, req.params.key);
+        if (found) {
+            res.setHeader("X-git-annex-key-is-present", "1");
+            return res.status(200).end();
+        }
+    } catch (err) {
+        console.error("[annex HEAD]", err);
+    }
+    res.status(404).end();
+});
+
+router.get("/:userId/:repo/git-annex/v3/key/:key", async (req, res) => {
+    try {
+        const repoPath = await resolveRepo(req);
+        const found = await findAnnexContent(repoPath, req.params.key);
+        if (found) {
+            res.setHeader("Content-Type", "application/octet-stream");
+            return createReadStream(found).pipe(res);
+        }
+    } catch (err) {
+        console.error("[annex GET]", err);
+    }
+    res.status(404).end();
+});
+
+router.post("/:userId/:repo/git-annex/v3/key/:key", async (req, res) => {
+    try {
+        const repoPath = await resolveRepo(req);
+        const { key } = req.params;
+
+        if (!/^[A-Za-z0-9+._-]+$/.test(key)) return res.status(400).end();
+
+        // Already have it — drain body and return success.
+        const existing = await findAnnexContent(repoPath, key);
+        if (existing) {
+            req.resume();
+            return res.status(200).end();
+        }
+
+        const targetPath = annexObjectPath(repoPath, key);
+        await fs.mkdir(path.dirname(targetPath), { recursive: true });
+
+        await new Promise((resolve, reject) => {
+            const ws = createWriteStream(targetPath, { mode: 0o444 });
+            req.pipe(ws);
+            ws.on("finish", resolve);
+            ws.on("error", reject);
+            req.on("error", reject);
+        });
+
+        res.status(200).end();
+    } catch (err) {
+        console.error("[annex POST]", err);
+        res.status(500).end();
     }
 });
 
