@@ -1,21 +1,20 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
+import { projectService } from '../services/projectService';
 import { X, File, CheckCircle2 } from 'lucide-react';
 import { createPortal } from 'react-dom';
 import { useToast } from '../context/ToastContext';
 
-export default function UploadModal({ project, isOpen, onClose, onComplete }) {
+export default function UploadModal({ project, projectId, isOpen, onClose, onComplete }) {
     const { addToast } = useToast();
     const [file, setFile] = useState(null);
     const [progress, setProgress] = useState(0);
     const [status, setStatus] = useState('idle'); // idle, uploading, complete
-    const uploadInterval = useRef(null);
 
     useEffect(() => {
         if (!isOpen) {
             setFile(null);
             setProgress(0);
             setStatus('idle');
-            if (uploadInterval.current) clearInterval(uploadInterval.current);
         }
     }, [isOpen]);
 
@@ -25,43 +24,45 @@ export default function UploadModal({ project, isOpen, onClose, onComplete }) {
         }
     };
 
+    // let the user back out cleanly if the upload stalls.
     const cancelUpload = () => {
-        if (uploadInterval.current) clearInterval(uploadInterval.current);
         setStatus('idle');
         setProgress(0);
         addToast('Upload cancelled', 'info');
     };
 
-    const startUpload = () => {
-        if (!file) return;
+    const startUpload = async () => {
+        if (!file || !projectId) return;
         setStatus('uploading');
         addToast(`Starting upload for ${file.name}...`, 'info');
 
-        let current = 0;
-        uploadInterval.current = setInterval(() => {
-            current += Math.random() * 5 + 2; // Random increment
-            if (current >= 100) {
-                current = 100;
-                clearInterval(uploadInterval.current);
-                setStatus('complete');
-                addToast('File uploaded successfully', 'success');
-                setTimeout(() => {
-                    onComplete(file);
-                    onClose();
-                }, 1000);
-            }
-            setProgress(current);
-        }, 200);
+        try {
+            const result = await projectService.uploadFile(projectId, file, (percent) => {
+                setProgress(percent);
+            });
+
+            setStatus('complete');
+            addToast('File uploaded successfully', 'success');
+            setTimeout(() => {
+                onComplete(result.file);
+                onClose();
+            }, 1000);
+        } catch (error) {
+            console.error('Upload failed:', error);
+            setStatus('idle');
+            setProgress(0);
+            addToast(error.message || 'Upload failed', 'error');
+        }
     };
 
     if (!isOpen) return null;
 
     return createPortal(
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-            <div className="w-full max-w-md bg-[--bg-secondary] border border-[--border-color] rounded-xl shadow-2xl p-6">
+        <div className="fixed inset-0 z-50 flex items-center justify-center overlay-scrim p-4">
+            <div className="modal-panel w-full max-w-md rounded-2xl p-6">
                 <div className="flex justify-between items-center mb-6">
                     <h2 className="text-xl font-bold">Upload to {project}</h2>
-                    <button onClick={onClose}><X className="w-5 h-5" /></button>
+                    <button onClick={onClose} className="p-2 rounded-lg hover:bg-[--bg-tertiary]"><X className="w-5 h-5" /></button>
                 </div>
 
                 {status === 'idle' ? (

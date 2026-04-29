@@ -1,137 +1,183 @@
-import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { useApp } from '../../context/AppContext';
-import { useToast } from '../../context/ToastContext';
-import { Save, User, Key, Bell, Shield } from 'lucide-react';
+import { useEffect, useState } from "react";
+import { useAuth } from "../../context/AuthContext";
+import { authService } from "../../services/authService";
 
-export default function StudentSettings() {
-    const { user } = useApp();
-    const { addToast } = useToast();
-    const navigate = useNavigate();
-    const [apiKey, setApiKey] = useState('cg_sk_live_51M...');
-    const [showKey, setShowKey] = useState(false);
+export default function Settings() {
+  const { user, role, loading } = useAuth();
+  const [displayName, setDisplayName] = useState("");
+  const [profileLoading, setProfileLoading] = useState(true);
+  const [profileSaving, setProfileSaving] = useState(false);
+  const [profileMessage, setProfileMessage] = useState("");
 
-    const handleCopy = () => {
-        navigator.clipboard.writeText(apiKey);
-        addToast('API Token copied to clipboard', 'success');
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [passwordSaving, setPasswordSaving] = useState(false);
+  const [passwordMessage, setPasswordMessage] = useState("");
+
+  useEffect(() => {
+    const loadProfile = async () => {
+      if (!user) return;
+      setProfileLoading(true);
+      setProfileMessage("");
+      try {
+        const profile = await authService.getProfile();
+        setDisplayName(profile?.display_name || "");
+      } catch (error) {
+        setProfileMessage(error.message || "Failed to load profile");
+      } finally {
+        setProfileLoading(false);
+      }
     };
 
-    const handleRegenerate = () => {
-        addToast('Token regenerated successfully', 'success');
-        setApiKey('cg_sk_live_' + Math.random().toString(36).substring(7));
-    };
+    loadProfile();
+  }, [user]);
 
-    const handleSave = () => {
-        addToast('Settings saved successfully', 'success');
-    };
+  const onSaveDisplayName = async (e) => {
+    e.preventDefault();
+    setProfileMessage("");
 
-    const handleCancel = () => {
-        addToast('Changes discarded', 'info');
-        navigate('/dashboard');
-    };
+    const trimmed = displayName.trim();
+    if (!trimmed) {
+      setProfileMessage("Display name cannot be empty");
+      return;
+    }
 
-    const handleAvatar = () => {
-        addToast('Avatar upload feature coming soon', 'info');
-    };
+    setProfileSaving(true);
+    try {
+      const updated = await authService.updateDisplayName(trimmed);
+      setDisplayName(updated?.display_name || trimmed);
+      setProfileMessage("Display name updated");
+    } catch (error) {
+      setProfileMessage(error.message || "Failed to update display name");
+    } finally {
+      setProfileSaving(false);
+    }
+  };
 
-    return (
-        <div className="max-w-2xl space-y-8">
-            <div>
-                <h1 className="text-3xl font-bold mb-2">Account Settings</h1>
-                <p className="text-[--text-secondary]">Manage your profile and git credentials.</p>
-            </div>
+  const onChangePassword = async (e) => {
+    e.preventDefault();
+    setPasswordMessage("");
 
-            {/* Profile Section */}
-            <div className="card p-6 space-y-6">
-                <h2 className="text-xl font-bold flex items-center gap-2">
-                    <User className="w-5 h-5" /> Profile Information
-                </h2>
+    if (!newPassword || newPassword.length < 6) {
+      setPasswordMessage("Password must be at least 6 characters");
+      return;
+    }
 
-                <div className="flex items-center gap-4 mb-6">
-                    <div className="h-16 w-16 rounded-full bg-[--bg-tertiary] flex items-center justify-center text-xl font-bold border border-[--border-color]">
-                        {user?.avatar || 'ST'}
-                    </div>
-                    <div>
-                        <button onClick={handleAvatar} className="text-sm text-[--accent-primary] hover:underline font-medium">Change Avatar</button>
-                        <p className="text-xs text-[--text-secondary]">JPG, GIF or PNG. 1MB max.</p>
-                    </div>
-                </div>
+    if (newPassword !== confirmPassword) {
+      setPasswordMessage("Passwords do not match");
+      return;
+    }
 
-                <div className="grid gap-4">
-                    <div className="space-y-2">
-                        <label className="text-sm font-medium">Display Name</label>
-                        <input
-                            type="text"
-                            defaultValue={user?.name}
-                            className="w-full p-2 rounded-md bg-[--bg-primary] border border-[--border-color] focus:border-[--accent-primary] outline-none"
-                        />
-                    </div>
-                    <div className="space-y-2">
-                        <label className="text-sm font-medium">Email Address</label>
-                        <input
-                            type="email"
-                            defaultValue={user?.email}
-                            disabled
-                            className="w-full p-2 rounded-md bg-[--bg-tertiary] border border-[--border-color] text-[--text-muted] cursor-not-allowed"
-                        />
-                    </div>
-                </div>
-            </div>
+    setPasswordSaving(true);
+    try {
+      await authService.updatePassword(newPassword);
+      setNewPassword("");
+      setConfirmPassword("");
+      setPasswordMessage("Password updated");
+    } catch (error) {
+      setPasswordMessage(error.message || "Failed to update password");
+    } finally {
+      setPasswordSaving(false);
+    }
+  };
 
-            {/* Git Credentials */}
-            <div className="card p-6 space-y-6">
-                <h2 className="text-xl font-bold flex items-center gap-2">
-                    <Key className="w-5 h-5" /> Git Credentials
-                </h2>
+  if (loading) return null;
 
-                <div className="p-4 bg-[--bg-tertiary]/50 rounded-lg border border-[--border-color]">
-                    <div className="flex justify-between items-center mb-2">
-                        <label className="text-sm font-medium">Personal Access Token</label>
-                        <button
-                            onClick={() => setShowKey(!showKey)}
-                            className="text-xs text-[--accent-primary] hover:underline"
-                        >
-                            {showKey ? 'Hide' : 'Reveal'}
-                        </button>
-                    </div>
-                    <div className="flex gap-2">
-                        <code className="flex-1 p-2 bg-black/30 rounded border border-[--border-color] font-mono text-sm text-[--text-muted]">
-                            {showKey ? apiKey : 'cg_sk_live_•••••••••••••••••••••'}
-                        </code>
-                        <button onClick={handleCopy} className="btn btn-secondary text-xs">Copy</button>
-                    </div>
-                    <p className="text-xs text-[--text-secondary] mt-2">
-                        Use this token to authenticate when pushing large files via the CLI.
-                    </p>
-                </div>
+  return (
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-3xl font-bold">Account Settings</h1>
+        <p className="text-[--text-secondary]">Manage your profile and git credentials.</p>
+      </div>
 
-                <button onClick={handleRegenerate} className="btn btn-secondary w-full">Regenerate Token</button>
-            </div>
+      <div className="rounded-2xl border border-[--border-color] bg-[--bg-secondary] p-6">
+        <h2 className="text-xl font-semibold mb-4">Profile Information</h2>
 
-            {/* Notifications */}
-            <div className="card p-6 space-y-6">
-                <h2 className="text-xl font-bold flex items-center gap-2">
-                    <Bell className="w-5 h-5" /> Notifications
-                </h2>
+        <form className="grid gap-4 max-w-xl" onSubmit={onSaveDisplayName}>
+          <div>
+            <label className="block text-sm font-medium mb-2">Email Address</label>
+            <input
+              value={user?.email ?? ""}
+              readOnly
+              className="w-full px-4 py-2.5 rounded-lg border border-[--border-color] bg-[--bg-tertiary]"
+            />
+          </div>
 
-                <div className="space-y-4">
-                    <label className="flex items-center justify-between cursor-pointer">
-                        <span className="text-sm">Email me when uploads complete</span>
-                        <input type="checkbox" defaultChecked className="toggle" />
-                    </label>
-                    <label className="flex items-center justify-between cursor-pointer">
-                        <span className="text-sm">Email me about quota warnings</span>
-                        <input type="checkbox" defaultChecked className="toggle" />
-                    </label>
-                </div>
-            </div>
+          <div>
+            <label className="block text-sm font-medium mb-2">Display Name</label>
+            <input
+              value={displayName}
+              onChange={(e) => setDisplayName(e.target.value)}
+              disabled={profileLoading || profileSaving}
+              className="w-full px-4 py-2.5 rounded-lg border border-[--border-color] bg-[--bg-tertiary]"
+              placeholder="Enter display name"
+            />
+          </div>
 
-            <div className="flex justify-end gap-4">
-                <button onClick={handleCancel} className="btn btn-ghost">Cancel</button>
-                <button onClick={handleSave} className="btn btn-primary gap-2">
-                    <Save className="w-4 h-4" /> Save Changes
-                </button>
-            </div>
-        </div>
-    );
+          <div>
+            <label className="block text-sm font-medium mb-2">Role</label>
+            <input
+              value={role ?? "unknown"}
+              readOnly
+              className="w-full px-4 py-2.5 rounded-lg border border-[--border-color] bg-[--bg-tertiary]"
+            />
+          </div>
+
+          <div className="flex items-center gap-3">
+            <button
+              type="submit"
+              disabled={profileLoading || profileSaving}
+              className="btn btn-primary"
+            >
+              {profileSaving ? "Saving..." : "Save Display Name"}
+            </button>
+            {profileMessage && (
+              <span className="text-sm text-[--text-secondary]">{profileMessage}</span>
+            )}
+          </div>
+        </form>
+      </div>
+
+      <div className="rounded-2xl border border-[--border-color] bg-[--bg-secondary] p-6">
+        <h2 className="text-xl font-semibold mb-4">Password</h2>
+        <form className="grid gap-4 max-w-xl" onSubmit={onChangePassword}>
+          <div>
+            <label className="block text-sm font-medium mb-2">New Password</label>
+            <input
+              type="password"
+              value={newPassword}
+              onChange={(e) => setNewPassword(e.target.value)}
+              className="w-full px-4 py-2.5 rounded-lg border border-[--border-color] bg-[--bg-tertiary]"
+              placeholder="Enter new password"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium mb-2">Confirm New Password</label>
+            <input
+              type="password"
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+              className="w-full px-4 py-2.5 rounded-lg border border-[--border-color] bg-[--bg-tertiary]"
+              placeholder="Confirm new password"
+            />
+          </div>
+
+          <div className="flex items-center gap-3">
+            <button
+              type="submit"
+              disabled={passwordSaving}
+              className="btn btn-secondary"
+            >
+              {passwordSaving ? "Updating..." : "Update Password"}
+            </button>
+            {passwordMessage && (
+              <span className="text-sm text-[--text-secondary]">{passwordMessage}</span>
+            )}
+          </div>
+        </form>
+      </div>
+    </div>
+  );
 }
+

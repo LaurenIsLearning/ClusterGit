@@ -2,7 +2,10 @@ import path from 'path';
 import os from 'os';
 
 // Repository storage configuration
-export const REPO_BASE_PATH = process.env.REPO_BASE_PATH || path.join(os.homedir(), 'clustergit-repos');
+const rawRepoPath = process.env.REPO_BASE_PATH || "/repos"; // path.join(os.homedir(), 'clustergit-repos');    This gets seen as root/clustergit-repos in docker
+export const REPO_BASE_PATH = path.isAbsolute(rawRepoPath)
+    ? rawRepoPath
+    : path.resolve(process.cwd(), rawRepoPath);
 
 // Git-annex configuration
 export const GIT_ANNEX_CONFIG = {
@@ -13,7 +16,7 @@ export const GIT_ANNEX_CONFIG = {
 
 // Server configuration
 export const SERVER_HOST = process.env.SERVER_HOST || 'localhost';
-export const SERVER_PORT = process.env.PORT || 8080;
+export const SERVER_PORT = process.env.PORT || 80;
 
 export default {
     REPO_BASE_PATH,

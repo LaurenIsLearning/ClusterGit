@@ -1,19 +1,35 @@
 import express from "express";
 import { supabase } from "../utils/supabase.js";
+import authMiddleware from "../middleware/authMiddleware.js";
+import { normalizeEmail, validatePasswordAuthEmail } from "../utils/authValidation.js";
 const router = express.Router();
 
 // REGISTER
 router.post("/register", async (req, res) => {
-    const { email, password } = req.body;
+    const normalizedEmail = normalizeEmail(req.body?.email);
+    const { password, display_name, role } = req.body;
+    const emailError = validatePasswordAuthEmail(normalizedEmail);
 
-    if (!email || !password) {
+    if (emailError) {
+        return res.status(400).json({
+            error: { message: emailError }
+        });
+    }
+
+    if (!password) {
         return res.status(400).json({
             error: { message: "Email and password are required" }
         });
     }
 
+    if (String(password).length < 6) {
+        return res.status(400).json({
+            error: { message: "Password must be at least 6 characters" }
+        });
+    }
+
     const { data, error } = await supabase.auth.signUp({
-        email,
+        email: normalizedEmail,
         password,
     });
 
@@ -23,21 +39,57 @@ router.post("/register", async (req, res) => {
         });
     }
 
+    const userId = data?.user?.id;
+    if (userId) {
+        const fallbackDisplayName = normalizedEmail?.split("@")?.[0] || "user";
+        const { error: profileError } = await supabase
+            .from("user_profiles")
+            .upsert({
+                user_id: userId,
+                role: role || "student",
+                display_name: display_name || fallbackDisplayName
+            }, { onConflict: "user_id" });
+
+        if (profileError) {
+            console.error("Failed to upsert user profile metadata:", profileError);
+        }
+
+        const { error: activityError } = await supabase
+            .from("activity_log")
+            .insert({
+                user_id: userId,
+                event_type: "user_registered",
+                detail: `User registered with email ${normalizedEmail}`
+            });
+
+        if (activityError) {
+            console.error("Failed to log registration activity:", activityError);
+        }
+    }
+
     return res.json(data);
 });
 
 // LOGIN
 router.post("/login", async (req, res) => {
-    const { email, password } = req.body;
+    const normalizedEmail = normalizeEmail(req.body?.email);
+    const { password } = req.body;
+    const emailError = validatePasswordAuthEmail(normalizedEmail);
 
-    if (!email || !password) {
+    if (emailError) {
+        return res.status(400).json({
+            error: { message: emailError }
+        });
+    }
+
+    if (!password) {
         return res.status(400).json({
             error: { message: "Email and password are required" }
         });
     }
 
     const { data, error } = await supabase.auth.signInWithPassword({
-        email,
+        email: normalizedEmail,
         password,
     });
 
@@ -92,6 +144,83 @@ router.get("/session", async (req, res) => {
     }
 
     return res.json({ user });
+});
+
+// GET PROFILE (for authenticated user)
+router.get("/profile", authMiddleware, async (req, res) => {
+    const userId = req.user.id;
+
+    const { data, error } = await supabase
+        .from("user_profiles")
+        .select("display_name, role")
+        .eq("user_id", userId)
+        .maybeSingle();
+
+    if (error) {
+        return res.status(500).json({
+            error: { message: error.message || "Failed to load profile" }
+        });
+    }
+
+    return res.json({
+        user_id: userId,
+        email: req.user.email,
+        display_name: data?.display_name || null,
+        role: data?.role || null
+    });
+});
+
+// UPDATE DISPLAY NAME (for authenticated user)
+router.patch("/profile", authMiddleware, async (req, res) => {
+    const userId = req.user.id;
+    const displayName = String(req.body?.display_name || "").trim();
+
+    if (!displayName) {
+        return res.status(400).json({
+            error: { message: "Display name is required" }
+        });
+    }
+
+    if (displayName.length > 60) {
+        return res.status(400).json({
+            error: { message: "Display name must be 60 characters or fewer" }
+        });
+    }
+
+    // role is NOT NULL in user_profiles; preserve existing role or use default on first write.
+    const { data: existingProfile } = await supabase
+        .from("user_profiles")
+        .select("role")
+        .eq("user_id", userId)
+        .maybeSingle();
+
+    const resolvedRole = existingProfile?.role || "student";
+
+    const { data, error } = await supabase
+        .from("user_profiles")
+        .upsert(
+            {
+                user_id: userId,
+                display_name: displayName,
+                role: resolvedRole
+            },
+            { onConflict: "user_id" }
+        )
+        .select("display_name, role")
+        .single();
+
+    if (error) {
+        return res.status(500).json({
+            error: { message: error.message || "Failed to update profile" }
+        });
+    }
+
+    return res.json({
+        user_id: userId,
+        email: req.user.email,
+        display_name: data?.display_name || displayName,
+        role: data?.role || null
+    });
 });
 
 export default router;

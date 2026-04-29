@@ -1,5 +1,8 @@
 node_modules
 .env
+.env.local
+.env.devlocal
+.env.cluster
 
 #for demo to ignore keys and portable git files
 # Ignore portable runtime
@@ -17,3 +20,17 @@ ClusterGit-Demo-Portable/
 ClusterGit-Demo/portable/
 ClusterGit-Demo/keys/
 ClusterGit-Demo/assets/*.bin
+
+#ignore local test repos
+backend/clustergit-repos/
+#hi
+*.history
+*.patch
+*.localhistory
+*.js.json
+
+# VS Code Local History
+.lh
+
+local-repos
+.DS_Store

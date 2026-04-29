@@ -1,23 +1,54 @@
 import { useEffect, useState } from 'react';
-import { mockService } from '../../services/mockData';
-import { PieChart, Clock, Database, AlertCircle } from 'lucide-react';
+import { projectService } from '../../services/projectService';
+import { Clock, Database } from 'lucide-react';
 
 export default function StudentDashboard() {
-    const [quota, setQuota] = useState(null);
+    const [quota, setQuota] = useState({ used: 0, total: 20 * 1024 * 1024 * 1024 });
+    const [activity, setActivity] = useState([]);
     const [loading, setLoading] = useState(true);
+    const [error, setError] = useState('');
 
     useEffect(() => {
-        mockService.getQuota().then(data => {
-            setQuota(data);
-            setLoading(false);
-        });
+        const load = async () => {
+            try {
+                const data = await projectService.getDashboardSummary();
+                setQuota(data?.quota || { used: 0, total: 20 * 1024 * 1024 * 1024 });
+                setActivity(data?.recent_activity || []);
+            } catch (err) {
+                setError(err.message || 'Failed to load dashboard summary');
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        load();
     }, []);
 
     if (loading) return <div className="p-10 text-center">Loading dashboard...</div>;
 
-    const usedPercent = (quota.used / quota.total) * 100;
+    if (error) return <div className="p-10 text-center text-red-500">{error}</div>;
+
+    const usedPercent = quota.total > 0 ? Math.min(100, (quota.used / quota.total) * 100) : 0;
     const gbUsed = (quota.used / (1024 * 1024 * 1024)).toFixed(1);
-    const gbTotal = (quota.total / (1024 * 1024 * 1024)).toFixed(0);
+    const gbTotal = (quota.total / (1024 * 1024 * 1024)).toFixed(1);
+
+    const formatRelativeTime = (iso) => {
+        if (!iso) return 'just now';
+        const timeMs = new Date(iso).getTime();
+        if (Number.isNaN(timeMs)) return 'just now';
+        const deltaSeconds = Math.floor((Date.now() - timeMs) / 1000);
+        if (deltaSeconds < 60) return 'just now';
+        const minutes = Math.floor(deltaSeconds / 60);
+        if (minutes < 60) return `${minutes} min ago`;
+        const hours = Math.floor(minutes / 60);
+        if (hours < 24) return `${hours} hr ago`;
+        const days = Math.floor(hours / 24);
+        if (days < 30) return `${days} day${days === 1 ? '' : 's'} ago`;
+        const months = Math.floor(days / 30);
+        if (months < 12) return `${months} month${months === 1 ? '' : 's'} ago`;
+        const years = Math.floor(months / 12);
+        return `${years} year${years === 1 ? '' : 's'} ago`;
+    };
 
     return (
         <div className="space-y-8">
@@ -28,76 +59,47 @@ export default function StudentDashboard() {
                 </div>
             </div>
 
-            <div className="grid md:grid-cols-2 gap-6">
-                {/* Storage Quota Card */}
-                <div className="card p-6">
-                    <div className="flex items-center justify-between mb-6">
-                        <h2 className="text-lg font-semibold flex items-center gap-2">
-                            <Database className="w-5 h-5 text-[--accent-primary]" />
-                            Storage Quota
-                        </h2>
-                        <span className="text-sm font-medium text-[--text-muted]">{gbUsed} GB / {gbTotal} GB</span>
-                    </div>
+            {/* Storage Quota Card */}
+            <div className="card p-6">
+                <div className="flex items-center justify-between mb-6">
+                    <h2 className="text-lg font-semibold flex items-center gap-2">
+                        <Database className="w-5 h-5 text-emerald-600" />
+                        Storage Quota
+                    </h2>
+                    <span className="text-sm font-medium text-slate-600">{gbUsed} GB / {gbTotal} GB</span>
+                </div>
 
-                    <div className="mb-4">
-                        <div className="h-4 w-full bg-[--bg-tertiary] rounded-full overflow-hidden">
-                            <div
-                                className="h-full bg-[--accent-primary] transition-all duration-1000 ease-out"
-                                style={{ width: `${usedPercent}%` }}
-                            />
-                        </div>
-                    </div>
-
-                    <div className="flex justify-between text-sm text-[--text-secondary]">
-                        <span>{usedPercent.toFixed(1)}% Used</span>
-                        <span>{(100 - usedPercent).toFixed(1)}% Available</span>
+                <div className="mb-4">
+                    <div className="h-4 w-full bg-emerald-100 rounded-full overflow-hidden">
+                        <div
+                            className="h-full bg-emerald-600 transition-all duration-1000 ease-out shadow-sm"
+                            style={{ width: `${usedPercent}%` }}
+                        />
                     </div>
                 </div>
 
-                {/* System Status Card */}
-                <div className="card p-6">
-                    <div className="flex items-center justify-between mb-6">
-                        <h2 className="text-lg font-semibold flex items-center gap-2">
-                            <AlertCircle className="w-5 h-5 text-[--status-success]" />
-                            Cluster Status
-                        </h2>
-                        <span className="badge badge-success">Operational</span>
-                    </div>
-
-                    <div className="space-y-4">
-                        <div className="flex justify-between items-center py-2 border-b border-[--border-color]">
-                            <span className="text-[--text-muted]">Write Speed</span>
-                            <span className="font-mono">45 MB/s</span>
-                        </div>
-                        <div className="flex justify-between items-center py-2 border-b border-[--border-color]">
-                            <span className="text-[--text-muted]">Read Speed</span>
-                            <span className="font-mono">82 MB/s</span>
-                        </div>
-                        <div className="flex justify-between items-center pt-2">
-                            <span className="text-[--text-muted]">Replication</span>
-                            <span className="font-mono text-[--status-success]">Synced</span>
-                        </div>
-                    </div>
+                <div className="flex justify-between text-sm text-slate-500 font-medium">
+                    <span>{usedPercent.toFixed(1)}% Used</span>
+                    <span>{(100 - usedPercent).toFixed(1)}% Available</span>
                 </div>
             </div>
 
-            {/* Activity Feed mockup */}
+            {/* Activity Feed */}
             <div className="card p-6">
                 <h2 className="text-lg font-semibold mb-6 flex items-center gap-2">
                     <Clock className="w-5 h-5 text-[--text-muted]" />
                     Recent Activity
                 </h2>
                 <div className="space-y-6">
-                    {[
-                        { action: 'Uploaded gpt_finetune.bin', time: '2 hours ago', project: 'NLP Large Models' },
-                        { action: 'Synced training_data.mp4', time: '1 day ago', project: 'Computer Vision Final' },
-                        { action: 'Created new project', time: '3 days ago', project: 'Graphics Dataset' }
-                    ].map((item, i) => (
-                        <div key={i} className="flex gap-4 items-start">
+                    {activity.length === 0 && (
+                        <p className="text-sm text-[--text-secondary]">No recent activity yet.</p>
+                    )}
+                    {activity.map((item) => (
+                        <div key={item.id} className="flex gap-4 items-start">
                             <div className="h-2 w-2 mt-2 rounded-full bg-[--accent-primary]" />
                             <div>
-                                <p className="font-medium">{item.action}</p>
-                                <p className="text-sm text-[--text-secondary]">{item.project} • {item.time}</p>
+                                <p className="font-medium">{item.detail || item.event_type}</p>
+                                <p className="text-sm text-[--text-secondary]">{item.project} • {formatRelativeTime(item.created_at)}</p>
                             </div>
                         </div>
                     ))}

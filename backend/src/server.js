@@ -1,17 +1,19 @@
-import express from "express";
-import cors from "cors";
-import dotenv from "dotenv";
-dotenv.config();
-import authRoutes from "./routes/auth.js";
-import repoRoutes from "./routes/repos.js";
-import commitRoutes from "./routes/commits.js";
-const app = express();
-app.use(cors());
-app.use(express.json());
-// Register your API routes
-app.use("/api/auth", authRoutes);
-app.use("/api/repos", repoRoutes);
-app.use("/api/commits", commitRoutes);
-app.listen(process.env.PORT, () => {
-console.log(`ClusterGit API running on port ${process.env.PORT}`);
+import app from "./app.js";
+
+
+//logging to watch Node
+process.on("uncaughtException", (err) => {
+  console.error("Uncaught Exception:", err);
 });
+process.on("unhandledRejection", (err) => {
+  console.error("Unhandled Rejection:", err);
+});
+
+const PORT = process.env.PORT || 3000;
+
+app.listen(PORT, () => {
+  console.log(`ClusterGit API running on port ${PORT}`);
+}).on('error', (err) => {
+  console.error('Listen error:', err);
+  process.exit(1);
+})

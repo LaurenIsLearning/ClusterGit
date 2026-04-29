@@ -1,0 +1,26 @@
+name: Preview Deploy
+
+on:
+  push:
+    branches-ignore:
+      - develop
+      - main
+    create:
+
+jobs:
+  deploy-preview:
+    if: github.ref_type == 'branch'
+    runs-on: self-hosted
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Deploy preview environment
+        run: |
+          chmod +x scripts/deploy-preview.sh
+          ./scripts/deploy-preview.sh "${{ github.ref_name }}"
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          REPO_BASE_PATH: ${{ vars.REPO_BASE_PATH }}
